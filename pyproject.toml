@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "masters_thesis"
+version = "0.0.1"
+authors = [
+  { name="Andreas Fiehn", email="s204125@dtu.dk" },
+  { name="August Tollerup", email="s204139@dtu.dk"},
+  { name="Michael Harborg", email="s204138@dtu.dk" }
+]
+description = "Codebase for Masters Thesis project on Machine Unlearning."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/Maplewarrior/Masters-thesis"
+Issues = "https://github.com/Maplewarrior/Masters-thesis/issues"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.ruff]
+line-length = 120
