@@ -15,12 +15,12 @@ class DataGenerator:
         self.outlier_idx = None
 
     def generate_data(self, n_samples=5000, n_features=2, n_informative=2, n_redundant=0, 
-                      n_clusters_per_class=1, n_classes=4, outliers=False):
+                      n_clusters_per_class=1, n_classes=4, n_outliers=100, outlier_scale=2.0, outlier_variance=0.2, outlier_class=None):
         self.X, self.y = make_classification(n_samples=n_samples, n_features=n_features, n_informative=n_informative, 
                            n_redundant=n_redundant, n_clusters_per_class=n_clusters_per_class, random_state=self.random_state, n_classes=n_classes)
         
 
-        self.make_outliers()
+        self.make_outliers(n_outliers=n_outliers, scale=outlier_scale, scale_variance=outlier_variance, class_idx=outlier_class)
 
         print("Data generated successfully with the following properties:")
         print(f"Number of samples: {n_samples}")
@@ -188,13 +188,11 @@ class DataGenerator:
         return self.forget_X, self.forget_y, self.retain_X, self.retain_y
 
 
-    
-
 
 if __name__ == "__main__":
-    data_generator = DataGenerator(random_state=41)
-    data_generator.generate_data()
-    data_generator.draw_forget_set(100,1, 0.5)
+    data_generator = DataGenerator(random_state=42)
+    data_generator.generate_data(n_samples=1000, n_features=2, n_informative=2, n_redundant=0, n_outliers=50, outlier_scale=4.0, outlier_variance=0.4, outlier_class=1)
+    data_generator.draw_forget_set(n_points=20,class_idx=1, ood_ratio=0.5)
     # pdb.set_trace() 
     data_generator.plot_data()
 
