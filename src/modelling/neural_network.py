@@ -10,12 +10,14 @@ class NeuralNetwork(nn.Module):
         """
         self.M = M
         self.n_classes = n_classes
-        self.net = nn.Sequential([nn.Linear(self.M, self.M),
-                                  nn.ReLU(),
-                                  nn.Linear(self.M, self.n_classes)
-                                  ])
+        self.net = nn.Sequential(nn.Linear(self.M, self.M),
+                               nn.ReLU(),
+                               nn.Linear(self.M, self.n_classes)
+                               )
         self.softmax = nn.Softmax(dim=-1)
     
     def forward(self, x):
         logits = self.net(x)
         return {'logits': logits, 'probabilities': self.softmax(logits)}
+    
+    
