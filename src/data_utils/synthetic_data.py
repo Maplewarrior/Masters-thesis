@@ -7,7 +7,7 @@ import pdb
 from torch.utils.data import Dataset, DataLoader
 
 class SyntheticDataset(Dataset):
-    def __init__(self, X, y):
+    def __init__(self, X, y, use_indices: bool = False):
         """
         Args:
             X (numpy.ndarray): Features of shape (num_samples, num_features).
@@ -15,14 +15,18 @@ class SyntheticDataset(Dataset):
         """
         self.X = torch.tensor(X, dtype=torch.float32)
         self.y = torch.tensor(y, dtype=torch.long)
-
+        self.indices = torch.arange(len(self.X)) if use_indices else None
+      
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+        if self.indices is not None:
+            return self.X[idx], self.y[idx], self.indices[idx]
+        else:
+            return self.X[idx], self.y[idx]
 
-def create_dataloaders(data_generator, batch_size=32):
+def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False):
     """
     Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
 
@@ -36,9 +40,19 @@ def create_dataloaders(data_generator, batch_size=32):
     print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
 
     # Full dataset
-    full_dataset = SyntheticDataset(data_generator.X, data_generator.y)
-    print(f"  Full dataset size: {len(full_dataset)}")
-    full_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
+    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, use_indices=use_indices)
+    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, use_indices=use_indices)
+    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, use_indices=use_indices)
+
+
+
+    print(f"  Full dataset size: {len(full_train_dataset)}")
+    print(f"  Full val dataset size: {len(full_val_dataset)}")
+    print(f"  Full test dataset size: {len(full_test_dataset)}")
+
+    full_train_loader = DataLoader(full_train_dataset, batch_size=batch_size, shuffle=True)
+    full_val_loader = DataLoader(full_val_dataset, batch_size=batch_size, shuffle=True)
+    full_test_loader = DataLoader(full_test_dataset, batch_size=batch_size, shuffle=True)
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:
@@ -57,9 +71,11 @@ def create_dataloaders(data_generator, batch_size=32):
         forget_loader = None
 
     return {
-        "full_loader": full_loader,
-        "retain_loader": retain_loader,
-        "forget_loader": forget_loader
+        "train_full_loader": full_train_loader,
+        "val_loader": full_val_loader,
+        "test_loader": full_test_loader,
+        "train_retain_loader": retain_loader,
+        "train_forget_loader": forget_loader
     }
 
 
@@ -73,6 +89,15 @@ class DataGenerator:
         self.retain_X = None
         self.retain_y = None
         self.outlier_idx = None
+        self.train_idx = None
+        self.val_idx = None
+        self.test_idx = None
+        self.val_X = None
+        self.val_y = None
+        self.test_X = None
+        self.test_y = None
+        self.train_X = None
+        self.train_y = None
 
     def generate_data(self, n_samples=5000, n_features=2, n_informative=2, n_redundant=0, 
                       n_clusters_per_class=1, n_classes=4, n_outliers=100, outlier_scale=2.0, outlier_variance=0.2, outlier_class=None):
@@ -180,6 +205,41 @@ class DataGenerator:
         if self.X is None or self.y is None:
             raise ValueError("Data not generated yet. Call generate_data() first.")
         return self.X, self.y
+    
+    def split_data(self, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1):
+        if self.X is None or self.y is None:
+            raise ValueError("Data not generated yet. Call generate_data() first.")
+        
+        # Ensure ratios sum to 1
+        if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-10:
+            raise ValueError("Ratios must sum to 1")
+
+        # Create array of indices
+        indices = np.arange(len(self.X))
+        
+        # First split: separate test set
+        remaining_idx, self.test_idx = np.split(
+            np.random.permutation(indices), 
+            [int((train_ratio + val_ratio) * len(indices))]
+        )
+        
+        # Second split: separate train and validation from remaining
+        self.train_idx, self.val_idx = np.split(
+            remaining_idx,
+            [int((train_ratio/(train_ratio + val_ratio)) * len(remaining_idx))]
+        )
+
+        # Update train, val and test sets
+        self.train_X = self.X[self.train_idx]
+        self.train_y = self.y[self.train_idx]
+        
+        self.val_X = self.X[self.val_idx]
+        self.val_y = self.y[self.val_idx]
+
+        self.test_X = self.X[self.test_idx]
+        self.test_y = self.y[self.test_idx]
+
+        return self.train_idx, self.val_idx, self.test_idx
 
     def draw_forget_set(self, n_points, class_idx=None, ood_ratio=0.0):
         """
@@ -208,18 +268,30 @@ class DataGenerator:
 
         if self.outlier_idx is None or len(self.outlier_idx) == 0:
             raise ValueError("No OOD points available. Run make_outliers() first.")
+        
+
+        if self.train_X is None or self.train_y is None:
+            raise ValueError("Train data not generated yet. Call split_data() first.")
 
         # Compute the number of ID and OOD points to select
         n_ood = int(n_points * ood_ratio)
         n_id = n_points - n_ood
+        
 
         # Select in-distribution (ID) points
         if class_idx is not None:
+            print(f"Selecting ID and OOD points from class {class_idx}")
+            # Only get outliers that is within the train set
             available_id_indices = np.where(self.y == class_idx)[0]
+            available_id_indices = np.intersect1d(available_id_indices, self.train_idx)
             available_ood_indices = np.array([idx for idx in self.outlier_idx if self.y[idx] == class_idx])  # OOD from same class
+            available_ood_indices = np.intersect1d(available_ood_indices, self.train_idx)
         else:
+            print(f"Selecting ID and OOD points from all classes")
             available_id_indices = np.arange(len(self.X))
+            available_id_indices = np.intersect1d(available_id_indices, self.train_idx)
             available_ood_indices = self.outlier_idx  # Any OOD points
+            available_ood_indices = np.intersect1d(available_ood_indices, self.train_idx)
 
         # Ensure enough ID points exist
         if len(available_id_indices) < n_id:
@@ -227,6 +299,10 @@ class DataGenerator:
 
         # Ensure enough OOD points exist for selection
         n_ood = min(n_ood, len(available_ood_indices))
+
+        print(f" Available ID points: {len(available_id_indices)}")
+        print(f" Available OOD points: {len(available_ood_indices)}")
+
 
         # Select random ID points
         forget_id_idx = np.random.choice(available_id_indices, size=n_id, replace=False)
@@ -240,13 +316,18 @@ class DataGenerator:
         self.forget_X = self.X[forget_idx]
         self.forget_y = self.y[forget_idx]
 
+
+        # merge forget, val and test set idx
+        forget_idx = np.concatenate([forget_idx, self.val_idx, self.test_idx])
+
         # Create the retain set
         self.retain_X = np.delete(self.X, forget_idx, axis=0)
         self.retain_y = np.delete(self.y, forget_idx, axis=0)
 
         print(f"Forget set drawn with {n_id} ID points and {n_ood} OOD points from class: {class_idx if class_idx is not None else 'All'}")
+
         
-        return self.forget_X, self.forget_y, self.retain_X, self.retain_y
+        return self.forget_X, self.forget_y, self.retain_X, self.retain_y, self.val_X, self.val_y, self.test_X, self.test_y
 
 
 
@@ -256,23 +337,37 @@ if __name__ == "__main__":
                                  n_informative=2, n_redundant=0, 
                                  n_outliers=50, outlier_scale=4.0, 
                                  outlier_variance=0.4, outlier_class=1)
+    data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
     data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+    data_generator.plot_data()
 
     dataloaders = create_dataloaders(data_generator, batch_size=32)
 
 
+
+
     # Iterate over full dataset
-    for batch in dataloaders["full_loader"]:
+    for batch in dataloaders["train_full_loader"]:
         X_batch, y_batch = batch
         print("Full Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
         break 
 
-    for batch in dataloaders["retain_loader"]:
+    for batch in dataloaders["val_loader"]:
+        X_batch, y_batch = batch
+        print("Full Val Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
+        break 
+
+    for batch in dataloaders["test_loader"]:
+        X_batch, y_batch = batch
+        print("Full Test Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
+        break 
+
+    for batch in dataloaders["train_retain_loader"]:
         X_batch, y_batch = batch
         print("Retain Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
         break 
 
-    for batch in dataloaders["forget_loader"]:
+    for batch in dataloaders["train_forget_loader"]:
         X_batch, y_batch = batch
         print("Forget Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
         break 
