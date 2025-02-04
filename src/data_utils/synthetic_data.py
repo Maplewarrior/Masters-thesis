@@ -60,7 +60,6 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
     full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
 
-
     print(f"  Full dataset size: {len(full_train_dataset)}")
     print(f"  Full val dataset size: {len(full_val_dataset)}")
     print(f"  Full test dataset size: {len(full_test_dataset)}")
@@ -85,6 +84,7 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
         print(f"  Forget dataset size: {len(forget_dataset)}")
     else:
         forget_loader = None
+
 
     return {
         "train_full_loader": full_train_loader,
@@ -163,6 +163,12 @@ class DataGenerator:
         # Distribute outliers among selected classes
         outliers_per_class = n_outliers if class_idx is not None else n_outliers // len(target_classes)
 
+        # Outliers for each class. It should sum to n_outliers
+        n_outliers_per_class_list = [outliers_per_class] * len(target_classes)
+        remaining = n_outliers - sum(n_outliers_per_class_list)
+        for i in range(remaining):
+            n_outliers_per_class_list[i] += 1
+
         for class_label in target_classes:
             if class_label not in unique_classes:
                 print(f"Warning: Class {class_label} not found in dataset.")
@@ -172,7 +178,8 @@ class DataGenerator:
             class_indices = np.where(self.y == class_label)[0]
 
             # Randomly select points to become outliers
-            selected_indices = np.random.choice(class_indices, size=min(outliers_per_class, len(class_indices)), replace=False)
+            n_out = n_outliers_per_class_list[class_label] if class_idx is None else outliers_per_class
+            selected_indices = np.random.choice(class_indices, size=min(n_out, len(class_indices)), replace=False)
             outlier_indices.extend(selected_indices)
 
             # Compute direction vectors
@@ -311,22 +318,34 @@ class DataGenerator:
         # Compute the number of ID and OOD points to select
         n_ood = int(n_points * ood_ratio)
         n_id = n_points - n_ood
+
+        # check if there are enough ID points
+        if len(self.train_idx) - len(self.outlier_idx) < n_id:
+            raise ValueError(f"Not enough in-distribution points available (needed: {n_id}, found: {len(self.train_idx) - len(self.outlier_idx)})")
         
+        # check if there are enough OOD points
+        if len(self.outlier_idx) < n_ood:
+            raise ValueError(f"Not enough out-of-distribution points available (needed: {n_ood}, found: {len(self.outlier_idx)})")
 
         # Select in-distribution (ID) points
         if class_idx is not None:
             print(f"Selecting ID and OOD points from class {class_idx}")
-            # Only get outliers that is within the train set
             available_id_indices = np.where(self.y == class_idx)[0]
-            available_id_indices = np.intersect1d(available_id_indices, self.train_idx)
             available_ood_indices = np.array([idx for idx in self.outlier_idx if self.y[idx] == class_idx])  # OOD from same class
-            available_ood_indices = np.intersect1d(available_ood_indices, self.train_idx)
+            
         else:
             print(f"Selecting ID and OOD points from all classes")
             available_id_indices = np.arange(len(self.X))
-            available_id_indices = np.intersect1d(available_id_indices, self.train_idx)
+
             available_ood_indices = self.outlier_idx  # Any OOD points
-            available_ood_indices = np.intersect1d(available_ood_indices, self.train_idx)
+
+        # Only get outliers that is within the train set
+        available_ood_indices = np.intersect1d(available_ood_indices, self.train_idx)
+
+        # Only get ID points that is within the train set
+        available_id_indices = np.intersect1d(available_id_indices, self.train_idx)
+        # Only get ID points that is not an outlier
+        available_id_indices = np.setdiff1d(available_id_indices, self.outlier_idx)
 
         # Ensure enough ID points exist
         if len(available_id_indices) < n_id:
@@ -351,14 +370,12 @@ class DataGenerator:
         self.forget_X = self.X[forget_idx]
         self.forget_y = self.y[forget_idx]
 
+        to_delete_idx = np.concatenate([forget_idx, self.val_idx, self.test_idx])
+        retain_idx = np.setdiff1d(self.train_idx, to_delete_idx)
 
-        # merge forget, val and test set idx
-        forget_idx = np.concatenate([forget_idx, self.val_idx, self.test_idx])
-        retain_idx = np.setdiff1d(self.train_idx, forget_idx)
-
-        # Create the retain set
-        self.retain_X = np.delete(self.X, forget_idx, axis=0)
-        self.retain_y = np.delete(self.y, forget_idx, axis=0)
+        # make retain set
+        self.retain_X = np.delete(self.X, to_delete_idx, axis=0)
+        self.retain_y = np.delete(self.y, to_delete_idx, axis=0)
 
         # Get all indices in self.train_indices that are in forget_idx
         self.forget_idx_in_train = np.where(np.isin(self.train_indices, forget_idx))[0]
@@ -374,10 +391,10 @@ if __name__ == "__main__":
     data_generator.generate_data(n_samples=1000, n_features=2, 
                                  n_informative=2, n_redundant=0, 
                                  n_outliers=50, outlier_scale=4.0, 
-                                 outlier_variance=0.4, outlier_class=1)
+                                 outlier_variance=0.4, outlier_class=None)
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
     data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
-    data_generator.plot_data()
+    # data_generator.plot_data()
 
     dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
 
