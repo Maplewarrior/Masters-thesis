@@ -52,7 +52,8 @@ class NeuralNetwork(nn.Module):
                 total_loss += loss.item()
             
             avg_loss = total_loss / len(dataloader)
-            print(f'Epoch {epoch+1}/{n_epochs}, Average Loss: {avg_loss:.4f}')
+            
+        print(f'Average Loss: {avg_loss:.4f}')
 
         return self
     
@@ -63,4 +64,12 @@ class NeuralNetwork(nn.Module):
             predictions = torch.argmax(output['probabilities'], dim=1)
         self.train()  # Set the model back to training mode
         return predictions
+    
+    def predict_proba(self, X):
+        self.eval()  # Set the model to evaluation mode
+        with torch.no_grad():
+            output = self(X)
+            probabilities = output['probabilities']
+        self.train()  # Set the model back to training mode
+        return probabilities
     
