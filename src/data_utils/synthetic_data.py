@@ -6,7 +6,7 @@ import pdb
 
 from torch.utils.data import Dataset, DataLoader
 
-class CustomDataset(Dataset):
+class SyntheticDataset(Dataset):
     def __init__(self, X, y):
         """
         Args:
@@ -36,13 +36,13 @@ def create_dataloaders(data_generator, batch_size=32):
     print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
 
     # Full dataset
-    full_dataset = CustomDataset(data_generator.X, data_generator.y)
+    full_dataset = SyntheticDataset(data_generator.X, data_generator.y)
     print(f"  Full dataset size: {len(full_dataset)}")
     full_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:
-        retain_dataset = CustomDataset(data_generator.retain_X, data_generator.retain_y)
+        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y)
         retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Retain dataset size: {len(retain_dataset)}")
     else:
@@ -50,7 +50,7 @@ def create_dataloaders(data_generator, batch_size=32):
 
     # Forget set
     if data_generator.forget_X is not None and data_generator.forget_y is not None:
-        forget_dataset = CustomDataset(data_generator.forget_X, data_generator.forget_y)
+        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y)
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Forget dataset size: {len(forget_dataset)}")
     else:
