@@ -7,26 +7,40 @@ import pdb
 from torch.utils.data import Dataset, DataLoader
 
 class SyntheticDataset(Dataset):
-    def __init__(self, X, y, use_indices: bool = False):
+    def __init__(self, X, y, use_indices: bool = False, onehot_labels: bool = False):
         """
         Args:
             X (numpy.ndarray): Features of shape (num_samples, num_features).
             y (numpy.ndarray): Labels of shape (num_samples,).
         """
+        # Convert features to float32
         self.X = torch.tensor(X, dtype=torch.float32)
+        # Convert labels to long (integer)
         self.y = torch.tensor(y, dtype=torch.long)
         self.indices = torch.arange(len(self.X)) if use_indices else None
+
+        self.onehot_labels = onehot_labels
+
+        if self.onehot_labels:
+            self.y = self.onehot_encode_labels(self.y)
       
     def __len__(self):
         return len(self.X)
+    
+    def onehot_encode_labels(self, y):
+        return torch.eye(y.max() + 1)[y]
 
     def __getitem__(self, idx):
         if self.indices is not None:
             return self.X[idx], self.y[idx], self.indices[idx]
         else:
             return self.X[idx], self.y[idx]
+        
+    
+        
 
-def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False):
+
+def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     """
     Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
 
@@ -39,11 +53,13 @@ def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False)
     """
     print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
 
-    # Full dataset
-    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, use_indices=use_indices)
-    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, use_indices=use_indices)
-    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, use_indices=use_indices)
+    indices = np.arange(len(data_generator.train_X))
 
+
+    # Full dataset
+    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, onehot_labels=onehot_labels)
+    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels)
+    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels)
 
 
     print(f"  Full dataset size: {len(full_train_dataset)}")
@@ -56,7 +72,7 @@ def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False)
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:
-        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y)
+        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y, onehot_labels=onehot_labels)
         retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Retain dataset size: {len(retain_dataset)}")
     else:
@@ -64,7 +80,7 @@ def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False)
 
     # Forget set
     if data_generator.forget_X is not None and data_generator.forget_y is not None:
-        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y)
+        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels)
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Forget dataset size: {len(forget_dataset)}")
     else:
@@ -75,7 +91,9 @@ def create_dataloaders(data_generator, batch_size=32, use_indices: bool = False)
         "val_loader": full_val_loader,
         "test_loader": full_test_loader,
         "train_retain_loader": retain_loader,
-        "train_forget_loader": forget_loader
+        "train_forget_loader": forget_loader,
+        "forget_idx_in_train": data_generator.forget_idx_in_train,
+        "retain_idx_in_train": data_generator.retain_idx_in_train
     }
 
 
@@ -99,13 +117,21 @@ class DataGenerator:
         self.train_X = None
         self.train_y = None
 
+        self.forget_idx_in_train = None
+        self.retain_idx_in_train = None
+
+        self.indices = None
+
     def generate_data(self, n_samples=5000, n_features=2, n_informative=2, n_redundant=0, 
                       n_clusters_per_class=1, n_classes=4, n_outliers=100, outlier_scale=2.0, outlier_variance=0.2, outlier_class=None):
         self.X, self.y = make_classification(n_samples=n_samples, n_features=n_features, n_informative=n_informative, 
                            n_redundant=n_redundant, n_clusters_per_class=n_clusters_per_class, random_state=self.random_state, n_classes=n_classes)
-        
+        self.indices = np.arange(len(self.X))
+
+
 
         self.make_outliers(n_outliers=n_outliers, scale=outlier_scale, scale_variance=outlier_variance, class_idx=outlier_class)
+
 
         print("Data generated successfully with the following properties:")
         print(f"   Number of samples: {n_samples}")
@@ -194,6 +220,12 @@ class DataGenerator:
         if self.forget_X is not None and self.forget_y is not None:
             plt.scatter(self.forget_X[:, 0], self.forget_X[:, 1], color="red", s=10, label="Forget Set", alpha=0.5)
 
+        # also plot circles around the test and val set
+        if self.test_X is not None and self.test_y is not None:
+            plt.scatter(self.test_X[:, 0], self.test_X[:, 1], color="black", s=15, label="Test Set", alpha=1, facecolors='none', edgecolors='gold', linewidths=1, marker='o')
+        if self.val_X is not None and self.val_y is not None:
+            plt.scatter(self.val_X[:, 0], self.val_X[:, 1], color="black", s=15, label="Validation Set", alpha=1, facecolors='none', edgecolors='purple', linewidths=1, marker='o')
+
 
         plt.xlabel("Feature 1")
         plt.ylabel("Feature 2")
@@ -232,12 +264,15 @@ class DataGenerator:
         # Update train, val and test sets
         self.train_X = self.X[self.train_idx]
         self.train_y = self.y[self.train_idx]
-        
+
+        self.train_indices = self.indices[self.train_idx]
+    
         self.val_X = self.X[self.val_idx]
         self.val_y = self.y[self.val_idx]
 
         self.test_X = self.X[self.test_idx]
         self.test_y = self.y[self.test_idx]
+
 
         return self.train_idx, self.val_idx, self.test_idx
 
@@ -319,13 +354,17 @@ class DataGenerator:
 
         # merge forget, val and test set idx
         forget_idx = np.concatenate([forget_idx, self.val_idx, self.test_idx])
+        retain_idx = np.setdiff1d(self.train_idx, forget_idx)
 
         # Create the retain set
         self.retain_X = np.delete(self.X, forget_idx, axis=0)
         self.retain_y = np.delete(self.y, forget_idx, axis=0)
 
-        print(f"Forget set drawn with {n_id} ID points and {n_ood} OOD points from class: {class_idx if class_idx is not None else 'All'}")
+        # Get all indices in self.train_indices that are in forget_idx
+        self.forget_idx_in_train = np.where(np.isin(self.train_indices, forget_idx))[0]
+        self.retain_idx_in_train = np.where(np.isin(self.train_indices, retain_idx))[0]
 
+        print(f"Forget set drawn with {n_id} ID points and {n_ood} OOD points from class: {class_idx if class_idx is not None else 'All'}")
         
         return self.forget_X, self.forget_y, self.retain_X, self.retain_y, self.val_X, self.val_y, self.test_X, self.test_y
 
@@ -343,6 +382,7 @@ if __name__ == "__main__":
 
     dataloaders = create_dataloaders(data_generator, batch_size=32)
 
+    pdb.set_trace()
 
 
 
