@@ -303,7 +303,6 @@ class DataGenerator:
         print(f" Available ID points: {len(available_id_indices)}")
         print(f" Available OOD points: {len(available_ood_indices)}")
 
-        pdb.set_trace()
 
         # Select random ID points
         forget_id_idx = np.random.choice(available_id_indices, size=n_id, replace=False)
@@ -320,7 +319,6 @@ class DataGenerator:
 
         # merge forget, val and test set idx
         forget_idx = np.concatenate([forget_idx, self.val_idx, self.test_idx])
-        pdb.set_trace()
 
         # Create the retain set
         self.retain_X = np.delete(self.X, forget_idx, axis=0)
@@ -341,8 +339,11 @@ if __name__ == "__main__":
                                  outlier_variance=0.4, outlier_class=1)
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
     data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+    data_generator.plot_data()
 
     dataloaders = create_dataloaders(data_generator, batch_size=32)
+
+
 
 
     # Iterate over full dataset
