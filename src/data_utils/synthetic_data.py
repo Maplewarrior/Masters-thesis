@@ -42,9 +42,6 @@ class SyntheticDataset(Dataset):
             return self.X[idx], self.y[idx]
         
     
-        
-
-
 def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     """
     Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
@@ -84,7 +81,6 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     if data_generator.forget_X is not None and data_generator.forget_y is not None:
         forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
 
-        pdb.set_trace()
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Forget dataset size: {len(forget_dataset)}")
     else:
@@ -99,7 +95,6 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
         "forget_idx_in_train": data_generator.forget_idx_in_train,
         "retain_idx_in_train": data_generator.retain_idx_in_train
     }
-
 
 class DataGenerator:
     def __init__(self, random_state=None):
@@ -372,7 +367,6 @@ class DataGenerator:
         print(f"Forget set drawn with {n_id} ID points and {n_ood} OOD points from class: {class_idx if class_idx is not None else 'All'}")
         
         return self.forget_X, self.forget_y, self.retain_X, self.retain_y, self.val_X, self.val_y, self.test_X, self.test_y
-
 
 
 if __name__ == "__main__":
