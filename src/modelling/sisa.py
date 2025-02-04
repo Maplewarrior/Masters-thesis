@@ -129,11 +129,13 @@ class SISA:
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
         for slice_id, _ in enumerate(shard_slices):
-            slice_indices = np.array(shard_slices[:slice_id+1]).flatten()
+            # Below looks wierd because we need to handle different slice sizes.
+            # We flatten the slices and concatenate them.
+            slice_indices = np.concatenate([np.asarray(slice_arr).flatten() for slice_arr in shard_slices[:slice_id+1]])
             amount_of_slices = slice_id + 1
             n_epochs = int((2 * amount_of_slices / (amount_of_slices + 1)) * self.n_epochs)
             
-            print(f"\nTraining model on slices 1:{amount_of_slices} of shard {shard_id}")
+            print(f"\nTraining model on slices {start_slice}:{start_slice+slice_id} of shard {shard_id}")
             print(f"Dynamic epochs: {n_epochs}")
             
             slice_data = self.dataset.X[slice_indices]
@@ -223,6 +225,10 @@ class SISA:
         if shard_id is None:
             raise ValueError(f"Datapoint {datapoint_idx} not found in any shard")
         
+        slice_forget_point_index = self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].index(datapoint_idx)
+        self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].pop(slice_forget_point_index)
+        print(f"Datapoint {datapoint_idx} removed from shard {shard_id} slice {slice_idx}")
+
         self.train_model_on_shard(shard_id, start_slice=slice_idx-1)
 
         return self.shard_models
@@ -255,11 +261,17 @@ if __name__ == "__main__":
     sisa.forget_datapoint(102)
     sisa.forget_datapoint(103)
 
+    print("Verify that the datapoints are forgotten:")
+    print("Datapoint 100: ", sisa.find_slice_for_datapoint(100))
+    print("Datapoint 101: ", sisa.find_slice_for_datapoint(101))
+    print("Datapoint 102: ", sisa.find_slice_for_datapoint(102))
+    print("Datapoint 103: ", sisa.find_slice_for_datapoint(103))
+
     # Predict on the same 10 samples again
     predictions = sisa.predict(data_generator.X[:10].reshape(10, -1))
     post_forget_predictions = predictions
 
+    print("Pre-forget predictions:")
     print(pre_forget_predictions)
+    print("Post-forget predictions:")
     print(post_forget_predictions)
-
-    pdb.set_trace()
