@@ -1,18 +1,29 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+
 import pdb
 
-from src.data_utils.utils import load_csv
-from src.data_utils.data_preprocessor import DataPreprocessor
+import torch.nn as nn
+from src.modelling.trainer import Trainer
+from src.modelling.neural_network import NeuralNetwork
+from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
+from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
 
-data_dir = 'data/sd-1001-2014-0/CSV'
-df = load_csv(filepath=f'{data_dir}/Paper1_WebData_Final.csv')
+if __name__ == '__main__':
+    n_features = 2
+    n_classes = 4
+    data_generator = DataGenerator(random_state=42)
+    data_generator.generate_data(n_samples=1000, n_features=n_features,
+                                 n_classes=n_classes, n_informative=2, 
+                                 n_redundant=0, n_outliers=50, outlier_scale=4.0, 
+                                 outlier_variance=0.4, outlier_class=1)
+    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+    dataloaders = create_dataloaders(data_generator, batch_size=32)
 
-# data_preprocessor = DataPreprocessor()
-# df = data_preprocessor.preprocess(df)
+    model = NeuralNetwork(n_features, n_classes)
+    trainer = Trainer(model, train_dataloader=dataloaders['full_loader'], val_dataloader=None)
+    trainer.train()
 
-ag_hist = df['age_group'].hist()
-
-pdb.set_trace()
-
+    criterion = nn.CrossEntropyLoss()
+    SSD = SelectiveSynapticDampening(model, criterion)
+    SSD.calculate_FIM(dataloaders['full_loader'], savename='full_synthetic_dataset')
+    
 
