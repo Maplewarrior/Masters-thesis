@@ -57,7 +57,10 @@ class SISA:
         We shard the data into n_shards shards.
         We create a Shard object for each shard and add it to the shards_dict.
         """
-        splits = np.array_split(np.arange(len(self.dataset.X)), self.n_shards)
+        # Shuffle the data
+        indices = np.arange(len(self.dataset.X))
+        np.random.shuffle(indices)
+        splits = np.array_split(indices, self.n_shards)
         for shard_id, shard_indices in enumerate(splits):
             shard = Shard(shard_id=shard_id, shard_indices=shard_indices.tolist())
             self.shards_dict.shards[f"shard_{shard_id}"] = shard
@@ -248,6 +251,9 @@ if __name__ == "__main__":
 
     # Forget a datapoint
     sisa.forget_datapoint(100)
+    sisa.forget_datapoint(101)
+    sisa.forget_datapoint(102)
+    sisa.forget_datapoint(103)
 
     # Predict on the same 10 samples again
     predictions = sisa.predict(data_generator.X[:10].reshape(10, -1))
@@ -255,3 +261,5 @@ if __name__ == "__main__":
 
     print(pre_forget_predictions)
     print(post_forget_predictions)
+
+    pdb.set_trace()
