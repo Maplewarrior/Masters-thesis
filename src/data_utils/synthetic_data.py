@@ -1,7 +1,67 @@
 from sklearn.datasets import make_classification
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 import pdb
+
+from torch.utils.data import Dataset, DataLoader
+
+class CustomDataset(Dataset):
+    def __init__(self, X, y):
+        """
+        Args:
+            X (numpy.ndarray): Features of shape (num_samples, num_features).
+            y (numpy.ndarray): Labels of shape (num_samples,).
+        """
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.long)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+
+def create_dataloaders(data_generator, batch_size=32):
+    """
+    Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
+
+    Args:
+        data_generator (DataGenerator): Instance of the DataGenerator.
+        batch_size (int): Batch size for the DataLoaders.
+
+    Returns:
+        dict: A dictionary containing the DataLoaders.
+    """
+    print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
+
+    # Full dataset
+    full_dataset = CustomDataset(data_generator.X, data_generator.y)
+    print(f"  Full dataset size: {len(full_dataset)}")
+    full_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
+
+    # Retain set
+    if data_generator.retain_X is not None and data_generator.retain_y is not None:
+        retain_dataset = CustomDataset(data_generator.retain_X, data_generator.retain_y)
+        retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True)
+        print(f"  Retain dataset size: {len(retain_dataset)}")
+    else:
+        retain_loader = None
+
+    # Forget set
+    if data_generator.forget_X is not None and data_generator.forget_y is not None:
+        forget_dataset = CustomDataset(data_generator.forget_X, data_generator.forget_y)
+        forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
+        print(f"  Forget dataset size: {len(forget_dataset)}")
+    else:
+        forget_loader = None
+
+    return {
+        "full_loader": full_loader,
+        "retain_loader": retain_loader,
+        "forget_loader": forget_loader
+    }
+
 
 class DataGenerator:
     def __init__(self, random_state=None):
@@ -23,12 +83,13 @@ class DataGenerator:
         self.make_outliers(n_outliers=n_outliers, scale=outlier_scale, scale_variance=outlier_variance, class_idx=outlier_class)
 
         print("Data generated successfully with the following properties:")
-        print(f"Number of samples: {n_samples}")
-        print(f"Number of features: {n_features}")
-        print(f"Number of informative features: {n_informative}")
-        print(f"Number of redundant features: {n_redundant}")
-        print(f"Number of clusters per class: {n_clusters_per_class}")
-        print(f"Number of classes: {n_classes}")
+        print(f"   Number of samples: {n_samples}")
+        print(f"   Number of features: {n_features}")
+        print(f"   Number of informative features: {n_informative}")
+        print(f"   Number of redundant features: {n_redundant}")
+        print(f"   Number of clusters per class: {n_clusters_per_class}")
+        print(f"   Number of classes: {n_classes}")
+        print(f"   Number of outliers: {n_outliers}")
 
 
     def make_outliers(self, n_outliers=100, scale=2.0, scale_variance=0.2, class_idx=None):
@@ -191,10 +252,30 @@ class DataGenerator:
 
 if __name__ == "__main__":
     data_generator = DataGenerator(random_state=42)
-    data_generator.generate_data(n_samples=1000, n_features=2, n_informative=2, n_redundant=0, n_outliers=50, outlier_scale=4.0, outlier_variance=0.4, outlier_class=1)
-    data_generator.draw_forget_set(n_points=20,class_idx=1, ood_ratio=0.5)
-    # pdb.set_trace() 
-    data_generator.plot_data()
+    data_generator.generate_data(n_samples=1000, n_features=2, 
+                                 n_informative=2, n_redundant=0, 
+                                 n_outliers=50, outlier_scale=4.0, 
+                                 outlier_variance=0.4, outlier_class=1)
+    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+
+    dataloaders = create_dataloaders(data_generator, batch_size=32)
+
+
+    # Iterate over full dataset
+    for batch in dataloaders["full_loader"]:
+        X_batch, y_batch = batch
+        print("Full Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
+        break 
+
+    for batch in dataloaders["retain_loader"]:
+        X_batch, y_batch = batch
+        print("Retain Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
+        break 
+
+    for batch in dataloaders["forget_loader"]:
+        X_batch, y_batch = batch
+        print("Forget Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
+        break 
 
 
 
