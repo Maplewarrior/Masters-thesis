@@ -7,11 +7,14 @@ import pdb
 from torch.utils.data import Dataset, DataLoader
 
 class SyntheticDataset(Dataset):
-    def __init__(self, X, y, use_indices: bool = False, onehot_labels: bool = False):
+    def __init__(self, X, y, use_indices: bool = False, onehot_labels: bool = False, n_classes: int = None):
         """
         Args:
             X (numpy.ndarray): Features of shape (num_samples, num_features).
             y (numpy.ndarray): Labels of shape (num_samples,).
+            use_indices (bool): Whether to return indices with each batch.
+            onehot_labels (bool): Whether to one-hot encode the labels.
+            n_classes (int): Number of classes for one-hot encoding.
         """
         # Convert features to float32
         self.X = torch.tensor(X, dtype=torch.float32)
@@ -22,13 +25,15 @@ class SyntheticDataset(Dataset):
         self.onehot_labels = onehot_labels
 
         if self.onehot_labels:
-            self.y = self.onehot_encode_labels(self.y)
-      
+            self.y = self.onehot_encode_labels(self.y, n_classes)
+
     def __len__(self):
         return len(self.X)
     
-    def onehot_encode_labels(self, y):
-        return torch.eye(y.max() + 1)[y]
+    def onehot_encode_labels(self, y, n_classes):
+        if n_classes is None:
+            n_classes = y.max() + 1
+        return torch.zeros(len(y), n_classes).scatter_(1, y.unsqueeze(1), 1)
 
     def __getitem__(self, idx):
         if self.indices is not None:
@@ -53,13 +58,10 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     """
     print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
 
-    indices = np.arange(len(data_generator.train_X))
-
-
     # Full dataset
-    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, onehot_labels=onehot_labels)
-    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels)
-    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels)
+    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
 
 
     print(f"  Full dataset size: {len(full_train_dataset)}")
@@ -72,7 +74,7 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:
-        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y, onehot_labels=onehot_labels)
+        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
         retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Retain dataset size: {len(retain_dataset)}")
     else:
@@ -80,7 +82,9 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
 
     # Forget set
     if data_generator.forget_X is not None and data_generator.forget_y is not None:
-        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels)
+        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+
+        pdb.set_trace()
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Forget dataset size: {len(forget_dataset)}")
     else:
@@ -116,7 +120,7 @@ class DataGenerator:
         self.test_y = None
         self.train_X = None
         self.train_y = None
-
+        self.n_classes = None
         self.forget_idx_in_train = None
         self.retain_idx_in_train = None
 
@@ -128,6 +132,7 @@ class DataGenerator:
                            n_redundant=n_redundant, n_clusters_per_class=n_clusters_per_class, random_state=self.random_state, n_classes=n_classes)
         self.indices = np.arange(len(self.X))
 
+        self.n_classes = n_classes
 
 
         self.make_outliers(n_outliers=n_outliers, scale=outlier_scale, scale_variance=outlier_variance, class_idx=outlier_class)
@@ -380,11 +385,7 @@ if __name__ == "__main__":
     data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
     data_generator.plot_data()
 
-    dataloaders = create_dataloaders(data_generator, batch_size=32)
-
-    pdb.set_trace()
-
-
+    dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
 
     # Iterate over full dataset
     for batch in dataloaders["train_full_loader"]:
