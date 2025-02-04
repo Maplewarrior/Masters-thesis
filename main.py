@@ -8,8 +8,15 @@ from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
 from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
 
 if __name__ == '__main__':
+    ### set constants
+    ## for the dataset:
     n_features = 2
     n_classes = 4
+    ## for SSD:
+    alpha = 0.7
+    _lambda = 0.5
+
+    ### Create synthetic dataset
     data_generator = DataGenerator(random_state=42)
     data_generator.generate_data(n_samples=1000, n_features=n_features,
                                  n_classes=n_classes, n_informative=2, 
@@ -23,7 +30,9 @@ if __name__ == '__main__':
     trainer.train()
 
     criterion = nn.CrossEntropyLoss()
-    SSD = SelectiveSynapticDampening(model, criterion)
-    SSD.calculate_FIM(dataloaders['full_loader'], savename='full_synthetic_dataset')
+    SSD = SelectiveSynapticDampening(model, criterion, alpha, _lambda)
+    SSD(full_dataloader=dataloaders['full_loader'], forget_dataloader=dataloaders['forget_loader'])
+
     
+
 
