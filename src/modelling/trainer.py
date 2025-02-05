@@ -4,11 +4,11 @@ import torch.optim as optim
 from tqdm import tqdm
 
 class Trainer:
-    def __init__(self, model, train_dataloader, val_dataloader) -> None:
+    def __init__(self, model, train_dataloader, val_dataloader, n_epochs=20) -> None:
         ### initialization
         self.model = model
         self.device = 'cpu'
-        self.n_epochs = 70
+        self.n_epochs = n_epochs
         self.model.to(self.device)
 
         self.train_dataloader = train_dataloader
@@ -28,7 +28,7 @@ class Trainer:
                 label = label.to(self.device)
 
                 out = self.model(ipt)
-                acc += ((out['probabilities'].argmax(dim=1)) == label).sum().item()
+                acc += ((out['probabilities'].argmax(dim=1)) == label.argmax(dim=1)).sum().item()
 
                 self.optimizer.zero_grad()
                 loss = self.criterion(out['logits'], label)
@@ -55,7 +55,7 @@ class Trainer:
                 out = self.model(ipt)
                 loss = self.criterion(out['logits'], label)
                 
-                acc += ((out['probabilities'].argmax(dim=1)) == label).sum().item()
+                acc += ((out['probabilities'].argmax(dim=1)) == label.argmax(dim=1)).sum().item()
 
                 losses.append(loss.item())
                 # if step % 5 ==0 :            

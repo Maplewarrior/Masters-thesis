@@ -1,4 +1,3 @@
-
 import pdb
 import pandas as pd
 import torch.nn as nn
@@ -6,20 +5,20 @@ import torch.nn as nn
 from src.modelling.trainer import Trainer
 from src.modelling.neural_network import NeuralNet
 from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
-from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
+from src.modelling.scrub import ScrubR
 from src.modelling.unlearning_evaluator import UnlearningEvaluator
 
 if __name__ == '__main__':
     ### set constants
     ## for the experiment:
-    n_repeats = 10
+    n_repeats = 5
     n_epochs = 20
     ## for the dataset:
     n_features = 25
     n_classes = 4
     ## SSD hyperparameters:
-    alpha = 2.5
-    _lambda = 0.1 #0.1
+    # alpha = 2.5
+    # _lambda = 0.1 #0.1
 
     ### Create synthetic dataset
     data_generator = DataGenerator(random_state=42)
@@ -30,6 +29,7 @@ if __name__ == '__main__':
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
     data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
     dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+    x, y = next(iter(dataloaders['train_full_loader']))
 
     results = {'unlearned_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
                'retrained_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []}}
@@ -48,8 +48,20 @@ if __name__ == '__main__':
 
         # apply SSD on unlearned model
         criterion = nn.CrossEntropyLoss()
-        SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha, _lambda)
-        SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
+        mu = 0
+        for param in unlearned_model.parameters():
+            mu += param.data.mean()
+        print(f'Mu before: {mu}')
+        scrub = ScrubR(unlearned_model, alpha=1, gamma=1.)
+        scrub(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'], n_rounds=1)
+        mu = 0
+        for param in unlearned_model.parameters():
+            mu += param.data.mean()
+        print(f'Mu after: {mu}')
+        pdb.set_trace()
+        for name, param in unlearned_model.named_parameters():
+            print(f'name: {name}')
+            print(f'Param: \n', param)
         
         # evaluate unlearning performance 
         unlearning_evaluator = UnlearningEvaluator()

@@ -2,6 +2,20 @@ import torch
 import torch.optim as optim
 import pdb
 
+"""
+How will the input space be partitioned based on the neural network.
+mad max: affine spline insights into deep learning.
+
+Use for func equivalence: If two NN's create the same partitioning in input space, then they are roughly the same
+
+More convex in deeper layers...
+Maybe dampening in last layer the model is 
+
+Evaluation
+-----------
+When can we compare 
+"""
+
 class SelectiveSynapticDampening:
     def __init__(self, 
                  model, 
@@ -61,12 +75,12 @@ class SelectiveSynapticDampening:
             for name, param in self.model.named_parameters():
                 updated_parameter = param.data.clone()
                 dampen_mask = FIM_forget[name] > self.alpha * FIM_full[name] # find which paramters to dampen
-                print(f'Original parameter: {param}')
-                print(f'Dampen mask: {dampen_mask}')
+                # print(f'Original parameter: {param}')
+                # print(f'Dampen mask: {dampen_mask}')
                 # calculate dampening factors and apply them
                 beta = torch.min((self._lambda * FIM_full[name][dampen_mask] / FIM_forget[name][dampen_mask]), torch.tensor(1))
                 updated_parameter[dampen_mask] = beta * updated_parameter[dampen_mask]
                 # update parameter in the model
                 param.copy_(updated_parameter)
-                print(f'Updated parameter: {param}')
+                # print(f'Updated parameter: {param}')
         
