@@ -42,7 +42,7 @@ class SyntheticDataset(Dataset):
             return self.X[idx], self.y[idx]
         
     
-def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
+def create_dataloaders(data_generator, batch_size=32, onehot_labels=False, use_indices=False):
     """
     Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
 
@@ -56,9 +56,9 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
     print(f"Creating dataloaders for synthetic data with batch size {batch_size}")
 
     # Full dataset
-    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
-    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
-    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+    full_train_dataset = SyntheticDataset(data_generator.train_X, data_generator.train_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes, use_indices=use_indices)
+    full_val_dataset = SyntheticDataset(data_generator.val_X, data_generator.val_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes, use_indices=use_indices)
+    full_test_dataset = SyntheticDataset(data_generator.test_X, data_generator.test_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes, use_indices=use_indices)
 
     print(f"  Full dataset size: {len(full_train_dataset)}")
     print(f"  Full val dataset size: {len(full_val_dataset)}")
@@ -70,7 +70,7 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:
-        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+        retain_dataset = SyntheticDataset(data_generator.retain_X, data_generator.retain_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes, use_indices=use_indices)
         retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Retain dataset size: {len(retain_dataset)}")
     else:
@@ -78,7 +78,7 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False):
 
     # Forget set
     if data_generator.forget_X is not None and data_generator.forget_y is not None:
-        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes)
+        forget_dataset = SyntheticDataset(data_generator.forget_X, data_generator.forget_y, onehot_labels=onehot_labels, n_classes=data_generator.n_classes, use_indices=use_indices)
 
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True)
         print(f"  Forget dataset size: {len(forget_dataset)}")

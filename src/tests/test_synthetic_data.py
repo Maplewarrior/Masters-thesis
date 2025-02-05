@@ -29,6 +29,14 @@ class TestSyntheticDataset(unittest.TestCase):
         self.assertEqual(X_item.shape, (2,))
         self.assertTrue(isinstance(y_item.item(), int))
 
+    def test_dataset_with_indices(self):
+        dataset = SyntheticDataset(self.X, self.y, use_indices=True)
+        X_item, y_item, idx = dataset[0]
+        self.assertEqual(X_item.shape, (2,))
+        self.assertTrue(isinstance(y_item.item(), int))
+        self.assertTrue(isinstance(idx.item(), int))
+        self.assertEqual(idx.item(), 0)
+
 class TestDataGenerator(unittest.TestCase):
     def setUp(self):
         self.data_generator = DataGenerator(random_state=42)
@@ -131,7 +139,6 @@ class TestDataGenerator(unittest.TestCase):
         self.assertEqual(len(test_y), n_test)
 
 
-
 class TestDataLoaders(unittest.TestCase):
     def setUp(self):
         self.data_generator = DataGenerator(random_state=42)
@@ -156,6 +163,13 @@ class TestDataLoaders(unittest.TestCase):
         X_batch, y_batch = next(iter(dataloaders['train_full_loader']))
         self.assertEqual(X_batch.shape[1], 2)  # number of features
         self.assertTrue(X_batch.shape[0] <= 32)  # batch size
+
+    
+    def test_dataloader_with_indices(self):
+        dataloaders = create_dataloaders(self.data_generator, batch_size=32, use_indices=True)
+        X_batch, y_batch, indices = next(iter(dataloaders['train_full_loader']))
+        self.assertEqual(len(indices), X_batch.shape[0])
+        self.assertTrue(torch.all(indices < len(self.data_generator.train_X)))
 
 if __name__ == '__main__':
     unittest.main() 
