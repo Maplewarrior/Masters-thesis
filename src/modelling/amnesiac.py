@@ -55,7 +55,7 @@ class AmnesiacTrainer:
         self.batch_mapping = {}
         self.batch_params = {}
     
-    def train(self, train_loader, val_loader, epochs=10, ckpt=False):
+    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False):
         """Train the model.
 
         Args:
@@ -91,8 +91,12 @@ class AmnesiacTrainer:
                     self.save_checkpoint(epoch)
                 
                 train_loss = total_loss / len(train_loader)
-                val_loss, val_acc = self.evaluate(val_loader)
-                pbar.set_description(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+
+                if val_loader is not None:
+                    val_loss, val_acc = self.evaluate(val_loader)
+                    pbar.set_description(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+                else:
+                    pbar.set_description(f"Train Loss: {train_loss:.4f}")
     
     def save_checkpoint(self, epoch):
         """Save a checkpoint of the model and training state.
