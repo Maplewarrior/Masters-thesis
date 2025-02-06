@@ -1,7 +1,8 @@
-pandas
-numpy
-scikit-learn
-matplotlib
-torch
-tqdm
+pandas==2.6.0
+numpy==2.2.2
+scikit-learn==1.6.1
+matplotlib==3.10.0
+torch==2.6.0
+tqdm==4.67.1
+torchvision==0.21.0
 -e .
