@@ -104,7 +104,7 @@ unlearning_train_loader = torch.utils.data.DataLoader(unlearningdata, batch_size
 # Get the folders to save the results in
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(script_dir))
-results_folder = os.path.join(project_root, "results", "amnesiac")
+results_folder = os.path.join(project_root, "results", "amnesiac", "paper_implementation")
 if not os.path.exists(results_folder):
     os.makedirs(results_folder)
 
