@@ -131,6 +131,9 @@ def test_forget_datapoint(sisa_instance):
     
     # Forget the datapoint
     sisa_instance.forget_datapoint(test_idx)
+
+    # Check if the models are removed
+    assert len(sisa_instance.shard_models["shard_0"]) == 1
     
     # Check if the datapoint was removed
     new_slice_len = len(sisa_instance.shards_dict.shards["shard_0"].slices[0])
