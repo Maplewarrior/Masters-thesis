@@ -1,6 +1,7 @@
 import pdb
 import pandas as pd
 import torch.nn as nn
+import copy
 
 from src.modelling.trainer import Trainer
 from src.modelling.neural_network import NeuralNet
@@ -11,7 +12,7 @@ from src.modelling.unlearning_evaluator import UnlearningEvaluator
 if __name__ == '__main__':
     ### set constants
     ## for the experiment:
-    n_repeats = 5
+    n_repeats = 10
     n_epochs = 20
     ## for the dataset:
     n_features = 25
@@ -27,12 +28,14 @@ if __name__ == '__main__':
                                  n_redundant=0, n_outliers=50, outlier_scale=4.0, 
                                  outlier_variance=0.4, outlier_class=1)
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+    # data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
+    data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
     dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
     x, y = next(iter(dataloaders['train_full_loader']))
 
     results = {'unlearned_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
-               'retrained_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []}}
+               'retrained_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
+               'functional_equivalence': {'retain': [], 'forget': [], 'val': [], 'forget w retrained': []}}
     
     for _ in range(n_repeats):
         # define and train unlearned model on the full dataset
@@ -45,23 +48,12 @@ if __name__ == '__main__':
         retrained_trainer = Trainer(retrained_model, train_dataloader=dataloaders['train_retain_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
         retrained_trainer.train()
         retrained_trainer.eval()
+        
+        original_model = copy.deepcopy(unlearned_model)
+        # print(f'Before scrub:\n{unlearned_model.net[0].weight}')
 
-        # apply SSD on unlearned model
-        criterion = nn.CrossEntropyLoss()
-        mu = 0
-        for param in unlearned_model.parameters():
-            mu += param.data.mean()
-        print(f'Mu before: {mu}')
-        scrub = ScrubR(unlearned_model, alpha=1, gamma=1.)
-        scrub(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'], n_rounds=1)
-        mu = 0
-        for param in unlearned_model.parameters():
-            mu += param.data.mean()
-        print(f'Mu after: {mu}')
-        pdb.set_trace()
-        for name, param in unlearned_model.named_parameters():
-            print(f'name: {name}')
-            print(f'Param: \n', param)
+        scrub = ScrubR(unlearned_model, original_model, alpha=1., gamma=1.)
+        scrub(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'], dataloaders['val_loader'], n_rounds=6)
         
         # evaluate unlearning performance 
         unlearning_evaluator = UnlearningEvaluator()
@@ -81,10 +73,29 @@ if __name__ == '__main__':
         results['retrained_model']['retain_acc'].append(retrained_retain_acc)
         results['retrained_model']['forget_acc'].append(retrained_forget_acc)
         results['retrained_model']['val_acc'].append(retrained_val_acc)
+
+        retain_func_equiv = unlearning_evaluator.functional_equivalence(original_model, unlearned_model, metric='JS-divergence', dataloader=dataloaders['train_retain_loader'])
+        forget_func_equiv = unlearning_evaluator.functional_equivalence(original_model, unlearned_model, metric='JS-divergence', dataloader=dataloaders['train_forget_loader'])
+        val_func_equiv = unlearning_evaluator.functional_equivalence(original_model, unlearned_model, metric='JS-divergence', dataloader=dataloaders['val_loader'])
+
+        forget_func_equiv_retrained = unlearning_evaluator.functional_equivalence(retrained_model, unlearned_model, metric='JS-divergence', dataloader=dataloaders['train_forget_loader'])
+        
+        results['functional_equivalence']['retain'].append(retain_func_equiv)
+        results['functional_equivalence']['forget'].append(forget_func_equiv)
+        results['functional_equivalence']['val'].append(val_func_equiv)
+        results['functional_equivalence']['forget w retrained'].append(forget_func_equiv_retrained)
+
     
     df_results_u = pd.DataFrame.from_dict(results['unlearned_model'])
     df_results_r = pd.DataFrame.from_dict(results['retrained_model'])
+    df_results_fe = pd.DataFrame.from_dict(results['functional_equivalence'])
+
     print(f'Unlearning results:\n{df_results_u}')
+    print(f'mean retain_acc: {df_results_u['retain_acc'].mean():.3f}, mean forget_acc: {df_results_u['forget_acc'].mean():.3f} mean val_acc: {df_results_u['val_acc'].mean():.3f}')
+    
     print(f'Retraining results:\n{df_results_r}')
+    print(f'mean retain_acc: {df_results_r['retain_acc'].mean():.3f}, mean forget_acc: {df_results_r['forget_acc'].mean():.3f} mean val_acc: {df_results_r['val_acc'].mean():.3f}')
+    
+    print(f'Functional equivalence results:\n{df_results_fe}')
     pdb.set_trace()
 

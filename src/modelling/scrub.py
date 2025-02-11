@@ -1,32 +1,92 @@
-from typing import Any
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import copy
 import pdb
+from src.data_utils.synthetic_data import SyntheticDataset
+from torch.utils.data import DataLoader
+import numpy as np
+import os
+
 class ScrubR:
-    def __init__(self, model, alpha, gamma) -> None:
+    def __init__(self, model, original_model, alpha, gamma):
         self.model = model
-        self.original_model = copy.deepcopy(self.model)
-        self.__freeze_original_model()
-        self.CE = nn.CrossEntropyLoss()
+        self.original_model = original_model
+        # self.__freeze_original_model()
+        # self.CE = nn.CrossEntropyLoss(reduction='sum')
+        self.CE = nn.CrossEntropyLoss(reduction='none')
         self.KL = nn.KLDivLoss(reduction='batchmean')
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
-        # self.min_optimizer = optim.Adam(self.model.parameters(), lr = 1e-4)
-        self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-10)
-        
-    def __freeze_original_model(self):
-        for param in self.original_model.parameters():
-            param.requires_grad=False
+
+        self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-2)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
+
+    def construct_validation_set(self, forget_dataloader, val_dataloader):
+        """
+        A function for constructing a validation set that is "of the same distribution" as the forget dataset. This is the +R step in the method.
+        "of the same distribution" is interpreted as being in terms of the label distribution.
+        """
+        forget_dataset = forget_dataloader.dataset
+        val_dataset = val_dataloader.dataset
+        X_val = val_dataset.X
+        y_val = val_dataset.y.argmax(dim=1)
+        n_classes = len(list(set(y_val))) # assumes all classes are in the validation set...
+        labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+
+        sample_sizes = []
+
+        X_values = []
+        y_values = []
+        for i, label in enumerate(labels):
+            # find val set indexes that correspond to the label
+            val_label_idx = torch.where(y_val == label)[0]
+            # find sample size
+            sample_size = min(counts[i].item(), len(val_label_idx))
+            sample_sizes.append(sample_size)
+            # draw random samples
+            idxs = torch.randperm(sample_size)
+            # draw subset of data based on index
+            X = X_val[val_label_idx[idxs]]
+            y = y_val[val_label_idx[idxs]]
+            X_values.append(X)
+            y_values.append(y)
+
+        # check if exact distribution could be constructed..
+        if not (torch.tensor(sample_sizes) == counts).all():
+            print("Exact distribution could not be constructed..")
+
+        X_values = torch.cat(X_values)
+        y_values = torch.cat(y_values)
+
+        dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=n_classes)
+        dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
+        return dataloader
+
+
+    def calculate_error(self, model, dataloader, return_scalar=True):
+        model.eval()
+        losses = []
+        with torch.no_grad():
+            for x, y in dataloader:
+                logits = model(x)['logits']
+                loss = self.CE(logits, y)
+                losses.append(loss)
+
+        if return_scalar:
+            return torch.mean(torch.cat(losses))
+
+        return torch.cat(losses)
 
     def max_step(self, x, y):
         """
         Maximization step of the SCRUB loss: Encourages the model to have high error on forget data.
         """
+        self.model.train()
         self.optimizer.zero_grad()
-        probabilities = self.model(x)['probabilities']
-        loss = -self.KL(input=torch.log(probabilities) + 1e-6, target=y) # maximize KL divergence
+        logits = self.model(x)['logits']
+        log_probabilities = self.log_softmax(logits)
+        loss = -self.KL(input=log_probabilities, target=y) # maximize KL divergence
         loss.backward()
         self.optimizer.step()
 
@@ -34,23 +94,50 @@ class ScrubR:
         """
         Miminimzation step of the SCRUB loss: Encourages performance to have low error and have similar outputs to original model on retain data.
         """
-        self.optimizer.zero_grad()
         with torch.no_grad():
             teacher_probs = self.original_model(x)['probabilities']
-        
+        self.optimizer.zero_grad()
+
         student_out = self.model(x)
-        reg_term = self.KL(input=torch.log(student_out['probabilities']), target=teacher_probs)
-        fit_term = self.CE(student_out['logits'], y)
+        student_log_probs = self.log_softmax(student_out['logits'])
+
+        reg_term = self.KL(input=student_log_probs, target=teacher_probs)
+        fit_term = self.CE(student_out['logits'], y).mean()
         loss = self.alpha * reg_term + self.gamma * fit_term
+        # print(f'Min loss: {loss}')
         loss.backward()
         self.optimizer.step()
 
-    def __call__(self, retain_dataloader, forget_dataloader, n_rounds: int) -> Any:
+    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True):
+        validate_err_dataloader = self.construct_validation_set(forget_dataloader, val_dataloader)
+        forget_errors = []
         
-        for _ in range(n_rounds):
+        for i in range(n_rounds):
             for x, y in forget_dataloader:
                 self.max_step(x, y)
-            
             for x, y in retain_dataloader:
                 self.min_step(x, y)
-    
+
+            err = self.calculate_error(self.model, forget_dataloader)
+            forget_errors.append(err.item())
+            torch.save(self.model.state_dict(), f'weights/tmp/scrub+r_epoch{i+1}.pth')
+
+        err_threshold = self.calculate_error(self.model, validate_err_dataloader)
+        # choose best epoch as the latest one where the error was below threshold
+        try:
+            best_epoch = torch.where(torch.tensor(forget_errors) < err_threshold)[0][-1] + 1
+        except Exception as e:
+            print("Sometimes an index error is thrown here which is fucking weird :). It happens randomly and it's because a shape changes.")
+            pdb.set_trace()
+
+        best_ckpt = f'weights/tmp/scrub+r_epoch{best_epoch.item()}.pth'
+        sd = torch.load(best_ckpt, weights_only=False)
+
+        self.model.load_state_dict(sd)
+        self.model.eval()
+
+        if remove_weights:
+            files = os.listdir('weights/tmp')
+            for file in files:
+                os.remove(f"weights/tmp/{file}")
+
