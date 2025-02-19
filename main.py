@@ -18,7 +18,7 @@ from src.modelling.unlearning_evaluator import UnlearningEvaluator
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='experiment', choices=['experiment', 'visualize'], help='what to do when running the script (default: %(default)s)')
-    parser.add_argument('--unlearn-type', type=str, default='SAE', choices=['SSD', 'Scrub+R', 'SAE'], help='What type of unlearning algorithm to apply.')
+    parser.add_argument('--unlearn-type', type=str, default='SSD', choices=['SSD', 'Scrub+R', 'SAE'], help='What type of unlearning algorithm to apply.')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')    
     
     args = parser.parse_args()
@@ -44,8 +44,9 @@ if __name__ == '__main__':
     data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
     dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
     x, y = next(iter(dataloaders['train_full_loader']))
-
-    results = {'unlearned_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
+    
+    results = {'original_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
+               'unlearned_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
                'retrained_model': {'retain_acc': [], 'forget_acc': [], 'val_acc': []},
                'functional_equivalence': {'retain': [], 'forget': [], 'val': [], 'forget w retrained': []}}
     
@@ -71,7 +72,7 @@ if __name__ == '__main__':
         
         elif args.unlearn_type == 'SSD':
             criterion = nn.CrossEntropyLoss()
-            SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha=2.5, _lambda=0.1)
+            SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha=5.0, _lambda=0.1)
             SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
         
         elif args.unlearn_type == 'SAE':
@@ -92,6 +93,10 @@ if __name__ == '__main__':
         # evaluate unlearning performance 
         unlearning_evaluator = UnlearningEvaluator()
         
+        original_retain_acc = unlearning_evaluator.evaluate_performance(original_model, dataloaders['train_retain_loader'])['accuracy']
+        original_forget_acc = unlearning_evaluator.evaluate_performance(original_model, dataloaders['train_forget_loader'])['accuracy']
+        original_val_acc = unlearning_evaluator.evaluate_performance(original_model, dataloaders['val_loader'])['accuracy']
+
         unlearned_retain_acc = unlearning_evaluator.evaluate_performance(unlearned_model, dataloaders['train_retain_loader'])['accuracy']
         unlearned_forget_acc = unlearning_evaluator.evaluate_performance(unlearned_model, dataloaders['train_forget_loader'])['accuracy']
         unlearned_val_acc = unlearning_evaluator.evaluate_performance(unlearned_model, dataloaders['val_loader'])['accuracy']
@@ -100,6 +105,10 @@ if __name__ == '__main__':
         retrained_forget_acc = unlearning_evaluator.evaluate_performance(retrained_model, dataloaders['train_forget_loader'])['accuracy']
         retrained_val_acc = unlearning_evaluator.evaluate_performance(retrained_model, dataloaders['val_loader'])['accuracy']
         
+        results['original_model']['retain_acc'].append(original_retain_acc)
+        results['original_model']['forget_acc'].append(original_forget_acc)
+        results['original_model']['val_acc'].append(original_val_acc)
+
         results['unlearned_model']['retain_acc'].append(unlearned_retain_acc)
         results['unlearned_model']['forget_acc'].append(unlearned_forget_acc)
         results['unlearned_model']['val_acc'].append(unlearned_val_acc)
@@ -119,16 +128,19 @@ if __name__ == '__main__':
         results['functional_equivalence']['val'].append(val_func_equiv)
         results['functional_equivalence']['forget w retrained'].append(forget_func_equiv_retrained)
 
-    
+    df_results_o = pd.DataFrame.from_dict(results['original_model'])
     df_results_u = pd.DataFrame.from_dict(results['unlearned_model'])
     df_results_r = pd.DataFrame.from_dict(results['retrained_model'])
     df_results_fe = pd.DataFrame.from_dict(results['functional_equivalence'])
 
-    print(f'Unlearning results:\n{df_results_u}')
-    print(f'mean retain_acc: {df_results_u['retain_acc'].mean():.3f}, mean forget_acc: {df_results_u['forget_acc'].mean():.3f} mean val_acc: {df_results_u['val_acc'].mean():.3f}')
+    print(f'\n\nOriginal model:') #\n{df_results_o}')
+    print(f'mean retain_acc: {df_results_o['retain_acc'].mean():.3f}, mean forget_acc: {df_results_o['forget_acc'].mean():.3f} mean val_acc: {df_results_o['val_acc'].mean():.3f}\n')
+
+    print(f'Unlearning results:') #\n{df_results_u}')
+    print(f'mean retain_acc: {df_results_u['retain_acc'].mean():.3f}, mean forget_acc: {df_results_u['forget_acc'].mean():.3f} mean val_acc: {df_results_u['val_acc'].mean():.3f}\n')
     
-    print(f'Retraining results:\n{df_results_r}')
-    print(f'mean retain_acc: {df_results_r['retain_acc'].mean():.3f}, mean forget_acc: {df_results_r['forget_acc'].mean():.3f} mean val_acc: {df_results_r['val_acc'].mean():.3f}')
+    print(f'Retraining results:') #\n{df_results_r}')
+    print(f'mean retain_acc: {df_results_r['retain_acc'].mean():.3f}, mean forget_acc: {df_results_r['forget_acc'].mean():.3f} mean val_acc: {df_results_r['val_acc'].mean():.3f}\n')
     
     print(f'Functional equivalence results:\n{df_results_fe}')
     pdb.set_trace()
