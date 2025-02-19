@@ -52,27 +52,13 @@ class MASO:
         """
         Plot the input space partitions up to and including the specified layer.
         layer_idx represents how many layers to include (1 = first layer, 2 = first+second layer, etc.)
+        Previous layers' splines are shown in grey.
         """
         # Create a grid of points
         x_min, x_max = self.X[:, 0].min() - 1, self.X[:, 0].max() + 1
         y_min, y_max = self.X[:, 1].min() - 1, self.X[:, 1].max() + 1
         xx, yy = np.meshgrid(np.linspace(x_min, x_max, 1000),
                             np.linspace(y_min, y_max, 1000))
-        
-        # Reshape the input points (10000, 2)
-        grid_points = np.vstack([xx.ravel(), yy.ravel()]).T  # Shape: (10000, 2)
-        
-        # Forward pass through the layers
-        current_activation = grid_points
-        for i in range(layer_idx):
-            W, b = self.maso_params[i]
-            # Linear transformation
-            current_activation = np.dot(current_activation, W.T) + b
-            # Apply ReLU activation
-            current_activation = np.maximum(0, current_activation)
-        
-        # Reshape the final activation for plotting
-        Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
         
         # Create figure
         plt.figure(figsize=(10, 8))
@@ -83,15 +69,38 @@ class MASO:
         # Plot the data points
         scatter = plt.scatter(self.X[:, 0], self.X[:, 1], c=y_classes, cmap='viridis')
         
-        # Plot the decision boundary for each neuron in the final layer
-        for i in range(Z.shape[-1]):
-            plt.contour(xx, yy, Z[:,:,i], levels=[0], colors='red', alpha=0.5)
+        # Plot splines for each layer
+        grid_points = np.vstack([xx.ravel(), yy.ravel()]).T
+        current_activation = grid_points
+        
+        # Plot each layer's splines
+        for layer in range(layer_idx):
+            W, b = self.maso_params[layer]
+            # Linear transformation
+            current_activation = np.dot(current_activation, W.T) + b
+            # Apply ReLU activation
+            current_activation = np.maximum(0, current_activation)
+            
+            # Reshape for plotting
+            Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
+            
+            # If this is not the final layer, plot in grey
+            if layer < layer_idx - 1:
+                color = 'grey'
+                alpha = 0.6 * ((layer + 1) / layer_idx)  # Scale alpha by layer depth
+            else:
+                color = 'red'
+                alpha = 0.8
+                
+            # Plot the decision boundary for each neuron
+            for i in range(Z.shape[-1]):
+                plt.contour(xx, yy, Z[:,:,i], levels=[0], colors=color, alpha=alpha)
         
         # Add colorbar for the scatter plot
         plt.colorbar(scatter, label='Class')
         plt.xlabel('Feature 1')
         plt.ylabel('Feature 2')
-        plt.title(f'Input Space Partitions - Through Layer {layer_idx}')
+        plt.title(f'Input Space Partitions - Through Layer {layer_idx}\n(Previous layers shown in grey)')
         plt.show()
 
 if __name__ == "__main__":
