@@ -44,16 +44,27 @@ class AmnesiacTrainer:
         optimizer (torch.optim.Optimizer): Optimizer used for training
         batch_mapping (dict): Maps data indices to batch indices for each epoch
         batch_params (dict): Stores parameter updates for each batch
+        cache_gradients (bool): Whether to cache gradients for each batch or save them to file
     """
 
-    def __init__(self, model: AmnesiacModel, lr=0.001, criterion=None, optimizer=None, device=None):
+    def __init__(self, model: AmnesiacModel, 
+                 lr: float=0.001, 
+                 criterion: nn.Module = None,
+                  optimizer: optim.Optimizer = None,
+                  device: str=None, 
+                  cache_gradients: bool = True):
         
         self.device = "cpu" if device is None else device
         self.model = model.to(self.device)
         self.criterion = nn.CrossEntropyLoss() if criterion is None else criterion
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr) if optimizer is None else optimizer
+        # {epoch: {x_idx: batch_idx}}
         self.batch_mapping = {}
+        # {epoch: {batch_idx: param_diff}}
         self.batch_params = {}
+        self.cache_gradients = cache_gradients
+        if cache_gradients:
+            print(f"Caching gradients. This could take a lot of memory.")
     
     def train(self, train_loader, val_loader=None, epochs=10, ckpt=False):
         """Train the model.
@@ -71,20 +82,44 @@ class AmnesiacTrainer:
                 
                 for batch_idx, (x, y, indices) in enumerate(train_loader):
                     x, y = x.float(), y.long()
+                    x = x.to(self.device)
+                    y = y.to(self.device)
                     self.optimizer.zero_grad()
                     
                     before_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
                     
                     outputs = self.model(x)
-                    loss = self.criterion(outputs['logits'], y)
+                    # Criterion expects logits if outputs is a dictionary, otherwise it expects the output directly (used for resnet)
+                    loss = self.criterion(outputs['logits'] if isinstance(outputs, dict) and 'logits' in outputs else outputs, y)
                     loss.backward()
                     self.optimizer.step()
                     
                     after_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
                     
+
+                    # save difference to file
                     self.batch_mapping.setdefault(epoch, {}).update({idx.item(): batch_idx for idx in indices})
-                    self.batch_params.setdefault(epoch, {}).update({batch_idx: {name: after_params[name] - before_params[name] for name in before_params}})
-                    
+
+
+                    param_diff = {name: after_params[name] - before_params[name] for name in before_params}
+
+                    if not self.cache_gradients:    
+                        # Save difference to file, and save path to memory
+                        param_diff_path = f"results/amnesiac/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
+                        if not os.path.exists(os.path.dirname(param_diff_path)):
+                            os.makedirs(os.path.dirname(param_diff_path))
+
+
+                        # save difference to file, this folder will be bloated quickly
+                        with open(param_diff_path, "wb") as f:
+                            torch.save(param_diff, f)
+
+                        self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff_path})
+                    else:
+                        # Save difference in memory
+                        self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff})
+
+
                     total_loss += loss.item()
 
                 if ckpt:
@@ -148,6 +183,7 @@ class AmnesiacTrainer:
             indices_to_forget (list): List of data indices to forget
         """
         batches = {}
+        
         for epoch in self.batch_mapping:
             batches_to_forget = list(set([self.batch_mapping[epoch][idx] for idx in indices_to_forget if idx in self.batch_mapping[epoch]]))
             if batches_to_forget:
@@ -162,20 +198,26 @@ class AmnesiacTrainer:
             for epoch in batches:
                 for batch_idx in batches[epoch]:
                     if batch_idx in self.batch_params[epoch]:
-                        grads = self.batch_params[epoch][batch_idx]
+                        if not self.cache_gradients:
+                            grads = torch.load(self.batch_params[epoch][batch_idx])
+                        else:
+                            grads = self.batch_params[epoch][batch_idx]
                         for name, param in self.model.named_parameters():
                             param -= grads[name]
         
         print("Forgetting complete.")
     
-    def test(self, test_loader):
+    def test(self, test_loader, dname=None):
         """Evaluate the model on test data.
 
         Args:
             test_loader (DataLoader): DataLoader for test data
         """
         _, test_acc = self.evaluate(test_loader)
-        print(f"Test Accuracy: {test_acc:.2f}%")
+        if dname is not None:
+            print(f"{dname} - Test Accuracy: {test_acc:.2f}%")
+        else:
+            print(f"Test Accuracy: {test_acc:.2f}%")
 
 if __name__ == "__main__":
 
