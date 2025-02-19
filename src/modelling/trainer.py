@@ -4,16 +4,16 @@ import torch.optim as optim
 from tqdm import tqdm
 import pdb
 class Trainer:
-    def __init__(self, model, train_dataloader, val_dataloader, n_epochs=20) -> None:
+    def __init__(self, model, train_dataloader, val_dataloader, n_epochs=20, lr=3e-3, device='cpu') -> None:
         ### initialization
         self.model = model
-        self.device = 'cpu'
+        self.device = device
         self.n_epochs = n_epochs
         self.model.to(self.device)
 
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
-        self.optimizer = optim.Adam(self.model.parameters(), lr=3e-3)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = nn.CrossEntropyLoss()
 
     def train_sae(self):
@@ -43,10 +43,18 @@ class Trainer:
                     epoch = int(step * self.n_epochs / num_steps) + 1
                     pbar.set_description(f"epoch={epoch}, step={step}, loss={torch.mean(torch.tensor(losses)):.1f}, acc={acc/((step+1)*self.train_dataloader.batch_size):.4f}")
 
-    def train(self):
+    def train(self, n_epochs=None):
+        """
+        Train the model for a specified number of epochs.
+
+        Args:
+            n_epochs (int, optional): The number of epochs to train for. If None, the number of epochs specified in the constructor is used.
+        """
+
         losses = []
         self.model.train()
-        num_steps = len(self.train_dataloader) * self.n_epochs
+        n_epochs = self.n_epochs if n_epochs is None else n_epochs
+        num_steps = len(self.train_dataloader) * n_epochs
         acc = 0
         with tqdm(range(num_steps)) as pbar:
             for step in pbar:
@@ -63,7 +71,7 @@ class Trainer:
                 losses.append(loss.item())
 
                 if step % 5 ==0 :
-                    epoch = int(step * self.n_epochs / num_steps) + 1
+                    epoch = int(step * n_epochs / num_steps) + 1
                     pbar.set_description(f"epoch={epoch}, step={step}, loss={torch.mean(torch.tensor(losses)):.1f}, acc={acc/((step+1)*self.train_dataloader.batch_size):.4f}")
                 
     def eval(self):
