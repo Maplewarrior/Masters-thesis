@@ -1,5 +1,31 @@
 import torch
 import torch.nn as nn
+import pdb
+
+class NeuralNet(nn.Module):
+    def __init__(self, M: int, n_classes: int) -> None:
+        super().__init__()
+        """
+            M (int): Feature dimension of the data
+            n_classes (int): Number of classes in the dataset.
+        """
+        self.M = M
+        self.n_classes = n_classes
+        self.net = nn.Sequential(nn.Linear(self.M, self.M * 8),
+                                 nn.ReLU(),
+                                 nn.Linear(self.M * 8, self.M * 4),
+                                 nn.ReLU(),
+                                 nn.Linear(self.M * 4, self.n_classes))
+        self.softmax = nn.Softmax(dim=-1)
+    
+    def forward(self, x, start_idx: int = 0, stop_idx: int = None):
+        logits = self.net[start_idx:stop_idx](x)
+        return {'logits': logits, 'probabilities': self.softmax(logits)}
+
+    def predict(self, x, start_idx: int = 0, stop_idx: int = None):
+        self.eval()
+        with torch.no_grad():
+            return self(x, start_idx, stop_idx)
 
 class NeuralNetwork(nn.Module):
     def __init__(self, M: int, n_classes: int) -> None:
