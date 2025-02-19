@@ -66,7 +66,7 @@ class AmnesiacTrainer:
         if cache_gradients:
             print(f"Caching gradients. This could take a lot of memory.")
     
-    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False):
+    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False, class_to_forget=None):
         """Train the model.
 
         Args:
@@ -74,6 +74,7 @@ class AmnesiacTrainer:
             val_loader (DataLoader): DataLoader for validation data  
             epochs (int, optional): Number of epochs to train for. Defaults to 10.
             ckpt (bool, optional): Whether to save checkpoints. Defaults to False.
+            class_to_forget (int, optional): Class to forget. Defaults to None. If None, gradients for all classes are cached.
         """
         with tqdm(range(epochs)) as pbar:
             for epoch in pbar:
@@ -95,30 +96,18 @@ class AmnesiacTrainer:
                     self.optimizer.step()
                     
                     after_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
-                    
-
-                    # save difference to file
-                    self.batch_mapping.setdefault(epoch, {}).update({idx.item(): batch_idx for idx in indices})
-
 
                     param_diff = {name: after_params[name] - before_params[name] for name in before_params}
 
-                    if not self.cache_gradients:    
-                        # Save difference to file, and save path to memory
-                        param_diff_path = f"results/amnesiac/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
-                        if not os.path.exists(os.path.dirname(param_diff_path)):
-                            os.makedirs(os.path.dirname(param_diff_path))
+                    # Save batch mapping and param diff if either:
+                    # 1. We're not targeting a specific class (class_to_forget is None)
+                    # 2. The batch contains samples from the class we want to forget
+                    should_save = (class_to_forget is None) or (class_to_forget in y)
 
-
-                        # save difference to file, this folder will be bloated quickly
-                        with open(param_diff_path, "wb") as f:
-                            torch.save(param_diff, f)
-
-                        self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff_path})
-                    else:
-                        # Save difference in memory
-                        self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff})
-
+                    
+                    if should_save:
+                        self.batch_mapping.setdefault(epoch, {}).update({idx.item(): batch_idx for idx in indices})
+                        param_diff_path = self.save_param_diff(param_diff, epoch, batch_idx)
 
                     total_loss += loss.item()
 
@@ -133,6 +122,35 @@ class AmnesiacTrainer:
                 else:
                     pbar.set_description(f"Train Loss: {train_loss:.4f}")
     
+    def save_param_diff(self, param_diff: torch.Tensor, epoch: int, batch_idx: int) -> str:
+        """
+        Save gradient differences either to file or memory.
+        
+        Args:
+            param_diff: The parameter difference tensor to save
+            epoch: Current epoch number
+            batch_idx: Current batch index
+            
+        Returns:
+            str: Path to saved gradients if cache_gradients is False, else empty string
+        """
+        if not self.cache_gradients:    
+            # Save difference to file, and save path to memory
+            param_diff_path = f"results/amnesiac/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
+            if not os.path.exists(os.path.dirname(param_diff_path)):
+                os.makedirs(os.path.dirname(param_diff_path))
+
+            # save difference to file
+            with open(param_diff_path, "wb") as f:
+                torch.save(param_diff, f)
+
+            self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff_path})
+            return param_diff_path
+        else:
+            # Save difference in memory
+            self.batch_params.setdefault(epoch, {}).update({batch_idx: param_diff})
+            return ""
+
     def save_checkpoint(self, epoch):
         """Save a checkpoint of the model and training state.
 
@@ -176,16 +194,20 @@ class AmnesiacTrainer:
         
         return val_loss / len(loader), 100 * correct / total
     
-    def forget(self, indices_to_forget):
+    def forget(self, indices_to_forget=None):
         """Unlearn specific training examples by reverting their parameter updates.
 
         Args:
-            indices_to_forget (list): List of data indices to forget
+            indices_to_forget (list): List of data indices to forget. If None, all sensitive batches stored are reverted. Be sure to specifiy while training which should be sensitive batches.
         """
         batches = {}
         
         for epoch in self.batch_mapping:
-            batches_to_forget = list(set([self.batch_mapping[epoch][idx] for idx in indices_to_forget if idx in self.batch_mapping[epoch]]))
+            # Find the batches to remove
+            if indices_to_forget is not None:
+                batches_to_forget = list(set([self.batch_mapping[epoch][idx] for idx in indices_to_forget if idx in self.batch_mapping[epoch]]))
+            else:
+                batches_to_forget = list(set(self.batch_mapping[epoch].values()))
             if batches_to_forget:
                 batches[epoch] = batches_to_forget
         
@@ -230,7 +252,7 @@ if __name__ == "__main__":
 
     # Define data generation parameters
     n_classes = 4
-    n_samples = 10000
+    n_samples = 1000
     n_features = 2
     n_informative = 2
     n_redundant = 0
@@ -245,8 +267,8 @@ if __name__ == "__main__":
     test_ratio = 0.1
 
     # Forget set parameters
-    forget_n_points = 5
-    forget_class = None
+    forget_n_points = 10
+    forget_class = 1
     forget_ood_ratio = 0.0
 
     # Generate synthetic data
@@ -271,9 +293,11 @@ if __name__ == "__main__":
     trainer = AmnesiacTrainer(model, lr=0.1, device=device)
 
     # Train and test model
-    trainer.train(train_full_loader, val_loader, epochs=10)
+    trainer.train(train_full_loader, val_loader, epochs=10, class_to_forget=forget_class)
     trainer.test(test_loader)
 
     # Forget samples and test again
     trainer.forget(indices_to_forget)
     trainer.test(test_loader)
+
+
