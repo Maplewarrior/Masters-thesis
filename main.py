@@ -11,6 +11,7 @@ from src.modelling.neural_network import NeuralNet
 from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
 from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
 from src.modelling.scrub import ScrubR
+from src.modelling.sisa import SISA
 from src.modelling.sae_unlearner import SAEUnlearner
 from src.modelling.SAE import SAE
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
@@ -20,7 +21,7 @@ from src.evaluation.results_table import create_latex_table
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='experiment', choices=['experiment', 'visualize', 'get_latex_results'], help='what to do when running the script (default: %(default)s)')
-    parser.add_argument('--unlearn-type', type=str, default='SSD', choices=['SSD', 'Scrub+R', 'SAE'], help='What type of unlearning algorithm to apply.')
+    parser.add_argument('--unlearn-type', type=str, default='SSD', choices=['SSD', 'Scrub+R', 'SISA', 'Amnesiac Unlearning','SAE'], help='What type of unlearning algorithm to apply.')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')    
     
     args = parser.parse_args()
@@ -57,16 +58,33 @@ if __name__ == '__main__':
                 }
 
         for i in range(n_repeats):
-            # define and train unlearned model on the full dataset
-            unlearned_model = NeuralNet(n_features, n_classes)
-            unlearned_trainer = Trainer(unlearned_model, train_dataloader=dataloaders['train_full_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
-            unlearned_trainer.train()
-            unlearned_trainer.eval()
-            # define and train retrained model on the retain dataset
-            retrained_model = NeuralNet(n_features, n_classes)
-            retrained_trainer = Trainer(retrained_model, train_dataloader=dataloaders['train_retain_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
-            retrained_trainer.train()
-            retrained_trainer.eval()
+            if args.unlearn_type in ['Scrub+R', 'SSD']:
+                # define and train unlearned model on the full dataset
+                unlearned_model = NeuralNet(n_features, n_classes)
+                unlearned_trainer = Trainer(unlearned_model, train_dataloader=dataloaders['train_full_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
+                unlearned_trainer.train()
+                unlearned_trainer.eval()
+                # define and train retrained model on the retain dataset
+                retrained_model = NeuralNet(n_features, n_classes)
+                retrained_trainer = Trainer(retrained_model, train_dataloader=dataloaders['train_retain_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
+                retrained_trainer.train()
+                retrained_trainer.eval()
+            
+            elif args.unlearn_type == 'SISA':
+                unlearned_model = SISA(dataloader=dataloaders['train_full_loader'], 
+                                       forget_loader=dataloaders['train_forget_loader'], 
+                                       n_shards=10, n_slices=10, n_features=n_features,
+                                       n_classes=n_classes, n_epochs=n_epochs)
+                unlearned_model.train_all_models()
+
+                retrained_model = SISA(dataloader=dataloaders['train_retain_loader'], 
+                                       forget_loader=dataloaders['train_forget_loader'], 
+                                       n_shards=10, n_slices=10, n_features=n_features,
+                                       n_classes=n_classes, n_epochs=n_epochs)
+                retrained_model.train_all_models()
+            
+            elif args.unlearn_type == 'Amnesiac Unlearning':
+                raise NotImplementedError()
             
             original_model = copy.deepcopy(unlearned_model)
 
@@ -83,6 +101,12 @@ if __name__ == '__main__':
                 SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
                 SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
             
+            elif args.unlearn_type == 'SISA':
+                # TODO: Forget all datapoints in the forget set. Michael question: How can we find all datapoint_idx for the forget dataloader?
+                unlearned_model.forget_datapoint(datapoint_idx=0)
+                raise NotImplementedError("Add SISA Unlearning for the forget dataloader")
+                
+
             elif args.unlearn_type == 'SAE':
                 _lambda = 1.0 # regularization strength
                 layer_num = 4 # which layer to apply the SAE
