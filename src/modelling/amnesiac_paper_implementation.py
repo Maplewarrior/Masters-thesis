@@ -116,7 +116,7 @@ accuracy_folder = os.path.join(results_folder, "accuracy")
 if not os.path.exists(accuracy_folder):
     os.makedirs(accuracy_folder)
 
-resnet_path = os.path.join(results_folder, "resnet.pt")
+resnet_path = os.path.join(results_folder, "resnet")
 if not os.path.exists(os.path.dirname(resnet_path)):
     os.makedirs(os.path.dirname(resnet_path))
 
@@ -224,7 +224,7 @@ resnet = resnet.to(device)
 optimizer = optim.Adam(resnet.parameters())
 
 
-# Train new model for 5 epochs
+# ======= Train new model for 5 epochs =======
 steps = []
 for epoch in range(1, trainingepochs+1):
   starttime = time.process_time()
@@ -275,6 +275,7 @@ resnet.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
 
+# ======= Unlearning steps =======
 for i in range(1, trainingepochs+1):
     for j in range(1600):
         path = f"steps/e{i}b{j:04}.pkl"
@@ -317,7 +318,7 @@ selective_post_accuracy_three = []
 selective_post_accuracy_nonthree =[]
 
 
-# Train model for 10 forgetful epochs
+# ======= Train model for 10 forgetful epochs =======
 for epoch in range(trainingepochs+1,trainingepochs+forgetfulepochs+1):
   # train(resnet, epoch, nonthree_train_loader, returnable=False)
   thracc, nacc, _, _ = train(resnet, epoch, nonthree_train_loader, returnable=True)
