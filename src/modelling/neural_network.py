@@ -20,9 +20,9 @@ class NeuralNet(nn.Module):
     
     def forward(self, x, start_idx: int = 0, stop_idx: int = None):
         logits = self.net[start_idx:stop_idx](x)
-        return {'logits': logits, 'probabilities': self.softmax(logits)}
+        return {'logits': logits, 'probabilities': self.softmax(logits), 'predictions': torch.argmax(logits, dim=-1)}
 
-    def predict(self, x, start_idx: int = 0, stop_idx: int = None):
+    def inference(self, x, start_idx: int = 0, stop_idx: int = None):
         self.eval()
         with torch.no_grad():
             return self(x, start_idx, stop_idx)
