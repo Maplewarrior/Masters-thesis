@@ -232,6 +232,8 @@ class AmnesiacTrainer:
         results_folder = "results/amnesiac"
         checkpoint_folder = os.path.join(results_folder, "checkpoints")
         checkpoint_path = f"{checkpoint_folder}/checkpoint_{epoch}.pth"
+        # create the directory if it doesn't exist
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
         torch.save({
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
