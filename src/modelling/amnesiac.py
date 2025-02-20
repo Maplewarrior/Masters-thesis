@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from src.data_utils.synthetic_data import create_dataloaders, DataGenerator
 import os
+import json
 
 class AmnesiacModel(nn.Module):
     def __init__(self, M: int, n_classes: int):
@@ -48,7 +49,7 @@ class AmnesiacTrainer:
     """
 
     def __init__(self, model: AmnesiacModel, 
-                 lr: float=0.001, 
+                 lr: float=0.0001, 
                  criterion: nn.Module = None,
                   optimizer: optim.Optimizer = None,
                   device: str=None, 
@@ -64,9 +65,22 @@ class AmnesiacTrainer:
         self.batch_params = {}
         self.cache_gradients = cache_gradients
         if cache_gradients:
-            print(f"Caching gradients. This could take a lot of memory.")
+            print(f"Caching gradients. This could take a lot of memory. Download some more RAM if you run out.")
+        else:
+            print(f"Save gradients to file. This will save memory. Not storage space though :'(")
     
-    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False, class_to_forget=None, indices_to_forget=None, repair=False):
+    def train(self, 
+              train_loader, 
+              val_loader=None, 
+              epochs=10, 
+              ckpt=False, 
+              class_to_forget=None, 
+              indices_to_forget=None, 
+              repair=False, 
+              save_accuracy_to_file=False,
+              save_accuracy_to_file_name=None,
+              retain_loader=None,
+              forget_loader=None):
         """Train the model.
 
         Args:
@@ -77,16 +91,28 @@ class AmnesiacTrainer:
             class_to_forget (int, optional): Class to forget. Defaults to None. If both this and indices_to_forget are None, gradients for all classes are cached.
             indices_to_forget (list, optional): List of data indices to forget. Defaults to None. If both this and class_to_forget are None, gradients for all classes are cached.
             repair (bool, optional): Whether to train in the repair phase. Defaults to False. If True, no gradients are stored for forgetting.
+            save_accuracy_to_file (bool, otional): Whether to save accuracy to file. Defaults to False.
+            save_accuracy_to_file_name (str, optional): Name of file to save accuracy to. Defaults to None. If None, accuracy is saved to file with name "accuracies.txt".
+            retain_loader (DataLoader, optional): DataLoader for retain set. Defaults to None. Used to evaluate accuracy on retain set. If not None, this accuracy is not saved to file if save_accuracy_to_file is True.
+            forget_loader (DataLoader, optional): DataLoader for forget set. Defaults to None. Used to evaluate accuracy on forget set. If not None, this accuracy is not saved to file if save_accuracy_to_file is True.
         """
 
         # not both class_to_forget and indices_to_forget can be specified
         if class_to_forget is not None and indices_to_forget is not None:
             raise ValueError("Cannot specify both class_to_forget and indices_to_forget. Please specify only one.")
 
+        accuracies_validation = []
+        accuracies_forget = []
+        accuracies_retain = []
+
         with tqdm(range(epochs)) as pbar:
             for epoch in pbar:
                 self.model.train()
                 total_loss = 0.0
+
+
+                forget_accuracy = []
+                retain_accuracy = []
                 
                 for batch_idx, (x, y, indices) in enumerate(train_loader):
                     x, y = x.float(), y.long()
@@ -105,6 +131,7 @@ class AmnesiacTrainer:
                     after_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
                 
                     param_diff = {name: after_params[name] - before_params[name] for name in before_params}
+                    
 
                     # Save batch mapping and param diff if either:
                     # 1. We're not targeting a specific class (class_to_forget is None)
@@ -130,9 +157,42 @@ class AmnesiacTrainer:
 
                 if val_loader is not None:
                     val_loss, val_acc = self.evaluate(val_loader)
-                    pbar.set_description(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+                    pbar.set_description(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc*100:.2f}%")
+
+                    accuracies_validation.append(val_acc)
+
                 else:
                     pbar.set_description(f"Train Loss: {train_loss:.4f}")
+
+                if forget_loader is not None:
+                    forget_loss, forget_acc = self.evaluate(forget_loader)
+                    accuracies_forget.append(forget_acc)
+
+                if retain_loader is not None:
+                    retain_loss, retain_acc = self.evaluate(retain_loader)
+                    accuracies_retain.append(retain_acc)
+
+        accuracies_dict = {
+            "validation": accuracies_validation,
+        }
+
+        if forget_loader is not None:
+            accuracies_dict["forget"] = accuracies_forget
+        if retain_loader is not None:
+            accuracies_dict["retain"] = accuracies_retain
+
+        # save accuracies to json file
+        if save_accuracy_to_file is not None:
+
+            if save_accuracy_to_file_name is not None:
+                file_name = f"results/amnesiac/accuracy/{save_accuracy_to_file_name}_accuracies.json"
+            else:
+                file_name = f"results/amnesiac/accuracy/accuracies.json"
+            if not os.path.exists(os.path.dirname(file_name)):
+                os.makedirs(os.path.dirname(file_name))
+            with open(file_name, "w") as f:
+                json.dump(accuracies_dict, f)
+
     
     def save_param_diff(self, param_diff: torch.Tensor, epoch: int, batch_idx: int) -> str:
         """
@@ -195,16 +255,24 @@ class AmnesiacTrainer:
         with torch.no_grad():
             for (x, y, _) in loader:
                 x, y = x.float(), y.long()
+                x = x.to(self.device)
+                y = y.to(self.device)
                 outputs = self.model(x)
-                
-                loss = self.criterion(outputs['logits'], y)
+
+                loss = self.criterion(outputs['logits'] if isinstance(outputs, dict) and 'logits' in outputs else outputs, y)
                 val_loss += loss.item()
                 
-                preds = torch.argmax(outputs['probabilities'], dim=1)
+
+                # depending on the model, resnet does not return probabilities
+                if isinstance(outputs, dict) and 'probabilities' in outputs:
+                    preds = torch.argmax(outputs['probabilities'], dim=1)
+                else:
+                    preds = torch.argmax(outputs, dim=1)
+
                 correct += (preds == y).sum().item()
                 total += y.size(0)
         
-        return val_loss / len(loader), 100 * correct / total
+        return val_loss / len(loader), correct / total
     
     def forget(self, indices_to_forget=None):
         """Unlearn specific training examples by reverting their parameter updates.
@@ -240,17 +308,26 @@ class AmnesiacTrainer:
         
         print("Forgetting complete.")
     
-    def test(self, test_loader, dname=None):
+    def test(self, test_loader, dname=None, save_to_file_name=None):
         """Evaluate the model on test data.
 
         Args:
             test_loader (DataLoader): DataLoader for test data
         """
         _, test_acc = self.evaluate(test_loader)
+
+
         if dname is not None:
-            print(f"{dname}: {test_acc:.2f}%")
+            print(f"{dname}: {test_acc*100:.2f}%")
         else:
-            print(f"Test Accuracy: {test_acc:.2f}%")
+            print(f"Test Accuracy: {test_acc*100:.2f}%")
+
+        if save_to_file_name is not None:
+            file_name = f"results/amnesiac/accuracy/{save_to_file_name}.txt"
+            if not os.path.exists(os.path.dirname(file_name)):
+                os.makedirs(os.path.dirname(file_name))
+            with open(file_name, "a") as f:
+                f.write(f"{test_acc:.4f}\n")
 
         return test_acc
 
@@ -267,7 +344,7 @@ if __name__ == "__main__":
     n_classes = 4
     n_samples = 1000
     n_features = 2
-    n_informative = 2
+    n_informative = n_features
     n_redundant = 0
     n_outliers = 50
     outlier_scale = 4.0
@@ -282,7 +359,7 @@ if __name__ == "__main__":
     # Forget set parameters
     forget_n_points = 10
     forget_class = 1 # Forget a specific class
-    forget_ood_ratio = 0.5
+    forget_ood_ratio = 1.0
 
     # Generate synthetic data
     data_generator = DataGenerator(random_state=42)
@@ -294,7 +371,7 @@ if __name__ == "__main__":
     data_generator.draw_forget_set(n_points=forget_n_points, class_idx=forget_class, ood_ratio=forget_ood_ratio)
 
     # Create data loaders
-    dataloaders = create_dataloaders(data_generator, batch_size=8, use_indices=True, device=device)
+    dataloaders = create_dataloaders(data_generator, batch_size=1, use_indices=True, device=device)
 
     train_full_loader = dataloaders["train_full_loader"]
     retain_loader = dataloaders["train_retain_loader"]
@@ -313,20 +390,36 @@ if __name__ == "__main__":
 
     # %%
     # ============= Only store gradients for forget set =============
-    trainer.train(train_full_loader, val_loader, epochs=10, indices_to_forget=indices_to_forget)
-    trainer.test(test_loader, dname="Before forgetting, Test accuracy")
-    trainer.test(retain_loader, dname="Before forgetting, Retain accuracy")
-    trainer.test(forget_loader, dname="Before forgetting, Forget accuracy")
-    trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only gradients for sensitive batches
-    trainer.test(test_loader, dname="After forgetting, Test accuracy")
-    trainer.test(retain_loader, dname="After forgetting, Retain accuracy")
-    trainer.test(forget_loader, dname="After forgetting, Forget accuracy")
-    trainer.train(retain_loader, val_loader, epochs=2, repair=True) # repair performance on retain set
-    trainer.test(test_loader, dname="After repair, Test accuracy")
-    trainer.test(retain_loader, dname="After repair, Retain accuracy")
-    trainer.test(forget_loader, dname="After repair, Forget accuracy")
+    trainer.train(train_full_loader, val_loader, epochs=20, 
+                  indices_to_forget=indices_to_forget, 
+                  save_accuracy_to_file=True, 
+                  save_accuracy_to_file_name="training_phase", 
+                  retain_loader=retain_loader, 
+                  forget_loader=forget_loader)
+    
+    trainer.test(test_loader, dname="Before forgetting, Test accuracy", save_to_file_name="before_forgetting_test_accuracy")
+    trainer.test(retain_loader, dname="Before forgetting, Retain accuracy", save_to_file_name="before_forgetting_retain_accuracy")
+    trainer.test(forget_loader, dname="Before forgetting, Forget accuracy", save_to_file_name="before_forgetting_forget_accuracy")
 
-    exit()
+    trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only gradients for sensitive batches
+
+    trainer.test(test_loader, dname="After forgetting, Test accuracy", save_to_file_name="after_forgetting_test_accuracy")
+    trainer.test(retain_loader, dname="After forgetting, Retain accuracy", save_to_file_name="after_forgetting_retain_accuracy")
+    trainer.test(forget_loader, dname="After forgetting, Forget accuracy", save_to_file_name="after_forgetting_forget_accuracy")
+
+    # %%
+    # ============= Repair performance on retain set =============
+    trainer.train(retain_loader, 
+                  val_loader, 
+                  epochs=10, 
+                  repair=True, 
+                  save_accuracy_to_file=True, 
+                  save_accuracy_to_file_name="repair_phase") # repair performance on retain set
+    
+    trainer.test(test_loader, dname="After repair, Test accuracy", save_to_file_name="after_repair_test_accuracy")
+    trainer.test(retain_loader, dname="After repair, Retain accuracy", save_to_file_name="after_repair_retain_accuracy")
+    trainer.test(forget_loader, dname="After repair, Forget accuracy", save_to_file_name="after_repair_forget_accuracy")
+
     # %%
     # ============= Store all gradients, pick indices to forget =============
     trainer.train(train_full_loader, val_loader, epochs=10)
