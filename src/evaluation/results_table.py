@@ -1,3 +1,5 @@
+import pdb
+
 def create_latex_table(results_dict):
     """
     Convert nested results dictionary to a LaTeX table string.
@@ -69,10 +71,15 @@ def create_latex_table(results_dict):
         header1.extend([f"\\multicolumn{{{len(model_comparisons)}}}{{c}}{{{algorithm.replace('_', '\\_')}}}"])
     latex.append(" & ".join(header1) + " \\\\")
     
-    # Create second header row with model comparisons
+    
+    model_mapping = {'unlearned vs. original': "$\mathcal{M}_\\text{U}$ vs. $\mathcal{M}_\\text{O}$",
+                    'unlearned vs. retrained': "$\mathcal{M}_\\text{U}$ vs. $\mathcal{M}_\\text{R}$"} # type:ignore
+    
     header2 = [""]
+    # Create second header row with model comparisons
     for _ in unlearning_algorithms:
-        header2.extend([comp.replace("_", "\\_") for comp in model_comparisons])
+        header2.extend([model_mapping[comp] for comp in model_comparisons])
+        
     latex.append(" & ".join(header2) + " \\\\")
     
     latex.append("\\midrule")

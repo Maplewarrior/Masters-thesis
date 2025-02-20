@@ -9,6 +9,7 @@ venv/
 # dataset files
 data/
 sisa/
+experiments/
 
 # C extensions
 *.so

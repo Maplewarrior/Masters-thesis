@@ -26,13 +26,14 @@ class SISA:
     def __init__(self, dataloader: DataLoader,
                  n_shards: int = 10, n_slices: int = 10,
                  n_features: int = 2, n_classes: int = 2,
-                 n_epochs: int = 10):
+                 n_epochs: int = 10,
+                 save_dir: str = './experiments/checkpoints/SISA'):
         
         self.dataloader = dataloader
 
         self.dataset = self.dataloader.dataset if self.dataloader is not None else None
 
-        self.shard_models_path = "./src/sisa/models"
+        self.shard_models_path = save_dir #"./src/sisa/models"
         os.makedirs(self.shard_models_path, exist_ok=True)
         self.n_classes = n_classes
         self.n_features = n_features
@@ -105,10 +106,10 @@ class SISA:
         self.shard_data()
         self.slice_shards()
 
-        print("Shape of shards_dict:")
-        print("Amount of shards: ", len(self.shards_dict.shards))
-        for shard in self.shards_dict.shards.values():
-            print(f"Shard {shard.shard_id}: Amount of slices: {len(shard.slices)}")
+        # print("Shape of shards_dict:")
+        # print("Amount of shards: ", len(self.shards_dict.shards))
+        # for shard in self.shards_dict.shards.values():
+        #     print(f"Shard {shard.shard_id}: Amount of slices: {len(shard.slices)}")
 
         return self.shards_dict
     
@@ -176,7 +177,7 @@ class SISA:
         # Otherwise we send an error.
         if start_slice > 0:
             model = self.load_model(shard_id, start_slice-1)
-            print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
+            # print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
         
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
@@ -188,8 +189,8 @@ class SISA:
             
             slice_id = start_slice + slice_id
 
-            print(f"\nTraining model on slices {start_slice}:{slice_id} of shard {shard_id}")
-            print(f"Dynamic epochs: {n_epochs}")
+            # print(f"\nTraining model on slices {start_slice}:{slice_id} of shard {shard_id}")
+            # print(f"Dynamic epochs: {n_epochs}")
             
             slice_data = self.dataset.X[slice_indices]
             slice_labels = self.dataset.y[slice_indices]
@@ -198,7 +199,7 @@ class SISA:
 
             self.save_model(model, shard_id, slice_id)
 
-        print(f"\nFinished training models on shard {shard_id}")
+        # print(f"\nFinished training models on shard {shard_id}")
         return model
 
     def train_all_models(self):
@@ -250,6 +251,29 @@ class SISA:
 
         return predictions
 
+    def inference(self, x: torch.tensor):
+        """
+        @param x: A torch tensor of shape (batch_size x n_features)
+        returns: A tensor of size (batch_size x n_classes) with the averaged logits of all client models for x.
+        """
+        
+        all_model_logits = []
+        for idx, shard_id in tqdm(enumerate(range(self.n_shards))):
+            # Load most recent model, assumes that there are models for all slices
+            if hasattr(self, 'model_type'):
+                last_model = self.load_post_forget_model(shard_id).eval() if self.model_type == 'post_forget' else self.load_pre_forget_model(shard_id).eval()
+            else:
+                last_model = self.load_model(shard_id, self.n_slices - 1)
+
+            # Modify your NeuralNetwork class to return probabilities instead of argmax
+            with torch.no_grad():
+                logits = last_model(x)['logits']  # This should return softmax outputs
+            all_model_logits.append(logits)
+        
+        all_model_logits = torch.stack(all_model_logits)
+
+        return {'logits': all_model_logits.mean(dim=0)}
+        
     def find_slice_for_datapoint(self, datapoint_idx: int):
         """
         We find the slice that contains the datapoint.
@@ -257,7 +281,7 @@ class SISA:
         for shard in self.shards_dict.shards.values():
             for slice_idx, slice_indices in enumerate(shard.slices):
                 if datapoint_idx in slice_indices:
-                    print(f"Datapoint {datapoint_idx} found in shard {shard.shard_id} slice {slice_idx}")
+                    # print(f"Datapoint {datapoint_idx} found in shard {shard.shard_id} slice {slice_idx}")
                     return shard.shard_id, slice_idx
         return None, None
 
@@ -285,11 +309,11 @@ class SISA:
 
         # We remove the models for the slice we just forgot and all slices after it.
         for i in range(slice_idx, len(self.shards_dict.shards[f"shard_{shard_id}"].slices)):
-            print(f"Removing model for slice {i} from shard {shard_id}")
+            # print(f"Removing model for slice {i} from shard {shard_id}")
             # Copy model to pre-forget model
             self.remove_model(shard_id, i)
         
-        print(f"Datapoint {datapoint_idx} removed from shard {shard_id} slice {slice_idx}")
+        # print(f"Datapoint {datapoint_idx} removed from shard {shard_id} slice {slice_idx}")
 
         model = self.train_model_on_shard(shard_id, start_slice=slice_idx)
 

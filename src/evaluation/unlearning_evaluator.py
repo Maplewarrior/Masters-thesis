@@ -21,18 +21,14 @@ class UnlearningEvaluator:
         preds_c = []
         ys = []
         if unlearned_model != None and comparison_model != None:
-            unlearned_model.eval()
-            comparison_model.eval()
-            with torch.no_grad():
-                for (x, y) in dataloader:
-                    preds_u.append(unlearned_model.predict(x)['logits'])
-                    preds_c.append(comparison_model.predict(x)['logits'])
-                    ys.append(y)
-                preds_u = torch.cat(preds_u)
-                preds_c = torch.cat(preds_c)
-                ys = torch.cat(ys)
-                        
-        return preds_u, preds_c , ys
+            for (x, y) in dataloader:
+                preds_u.append(unlearned_model.inference(x)['logits'])
+                preds_c.append(comparison_model.inference(x)['logits'])
+                ys.append(y)
+            preds_u = torch.cat(preds_u)
+            preds_c = torch.cat(preds_c)
+            ys = torch.cat(ys)
+        return preds_u, preds_c, ys
 
     def evaluate(self, 
                  unlearned_model, 

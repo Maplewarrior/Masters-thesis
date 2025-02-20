@@ -38,7 +38,7 @@ if __name__ == '__main__':
         # _lambda = 0.1 #0.1
         ## set evaluation measures
         efficacy_metrics = ['accuracy', 'Hamming PD', 'min max normalized HPD']
-        func_equivalence_metrics = ['avg norm prediction difference', 'KL divergence', 'JS divergence']
+        func_equivalence_metrics = ['avg norm prediction difference', 'JS divergence']
         evaluation_metrics = efficacy_metrics + func_equivalence_metrics
 
         ### Create synthetic dataset
@@ -51,6 +51,7 @@ if __name__ == '__main__':
         # data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
         data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
         dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+        
         x, y = next(iter(dataloaders['train_full_loader']))
 
         results = {'unlearned vs. original': {'retain': [], 'forget': [], 'validation': []},
@@ -71,23 +72,28 @@ if __name__ == '__main__':
                 retrained_trainer.eval()
             
             elif args.unlearn_type == 'SISA':
-                unlearned_model = SISA(dataloader=dataloaders['train_full_loader'], 
-                                       forget_loader=dataloaders['train_forget_loader'], 
+                unlearned_model = SISA(dataloader=dataloaders['train_full_loader'],
                                        n_shards=10, n_slices=10, n_features=n_features,
-                                       n_classes=n_classes, n_epochs=n_epochs)
+                                       n_classes=n_classes, n_epochs=n_epochs,
+                                       save_dir='./experiments/checkpoints/SISA/original_model')
+                unlearned_shards_dict = unlearned_model.process_data()
+                original_shards_dict = unlearned_shards_dict
                 unlearned_model.train_all_models()
 
                 retrained_model = SISA(dataloader=dataloaders['train_retain_loader'], 
-                                       forget_loader=dataloaders['train_forget_loader'], 
                                        n_shards=10, n_slices=10, n_features=n_features,
-                                       n_classes=n_classes, n_epochs=n_epochs)
+                                       n_classes=n_classes, n_epochs=n_epochs,
+                                       save_dir='./experiments/checkpoints/SISA/retrained_model')
+                retrained_model.process_data()
                 retrained_model.train_all_models()
             
             elif args.unlearn_type == 'Amnesiac Unlearning':
                 raise NotImplementedError()
             
             original_model = copy.deepcopy(unlearned_model)
-
+            original_model.model_type = 'pre_forget'
+            unlearned_model.model_type = 'post_forget'
+            
             if args.unlearn_type == 'Scrub+R':
                 alpha = 1.
                 gamma = 1.
@@ -102,10 +108,7 @@ if __name__ == '__main__':
                 SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
             
             elif args.unlearn_type == 'SISA':
-                # TODO: Forget all datapoints in the forget set. Michael question: How can we find all datapoint_idx for the forget dataloader?
-                unlearned_model.forget_datapoint(datapoint_idx=0)
-                raise NotImplementedError("Add SISA Unlearning for the forget dataloader")
-                
+                unlearned_model.forget_datapoints(datapoint_idxs=dataloaders['forget_idx_in_train'])#.forget_datapoint(datapoint_idx=0)
 
             elif args.unlearn_type == 'SAE':
                 _lambda = 1.0 # regularization strength
@@ -122,7 +125,6 @@ if __name__ == '__main__':
                 sae_trainer.train_sae()
                 sd_after = sae_unlearner.model.state_dict()
 
-            
             # Model evaluation
             unlearning_evaluator = UnlearningEvaluator()
 
@@ -155,10 +157,9 @@ if __name__ == '__main__':
 
         results = {args.unlearn_type: results}
 
-        if not os.path.exists('experiments/'):
-            os.mkdir('experiments/')
+        os.makedirs('experiments/results', exist_ok=True)
         
-        with open(f'experiments/{args.unlearn_type}_results.json', 'w') as f:
+        with open(f'experiments/results/{args.unlearn_type}_results.json', 'w') as f:
             json.dump(results, f)
 
         results_table = create_latex_table(results)
@@ -166,10 +167,10 @@ if __name__ == '__main__':
 
 
     elif args.mode == 'get_latex_results':
-        result_files = os.listdir('experiments/')
+        result_files = os.listdir('experiments/results/')
         all_results = {}
         for file in result_files:
-            with open(f'experiments/{file}', 'r') as f:
+            with open(f'experiments/results/{file}', 'r') as f:
                 results = json.load(f)
             all_results.update(results)
         
