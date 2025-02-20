@@ -27,7 +27,8 @@ class DecisionBoundaryCreator:
             output = self.model(grid)
             # Handle dictionary output
             if isinstance(output, dict):
-                predictions = output['predictions']  # Use predictions key
+                probabilities = output['probabilities']  # Use predictions key
+                predictions = torch.argmax(probabilities, dim=1)
             elif isinstance(output, tuple):
                 predictions = output[0]
             else:
