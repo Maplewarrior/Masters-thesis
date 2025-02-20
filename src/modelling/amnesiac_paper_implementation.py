@@ -308,7 +308,7 @@ torch.save({
             'optimizer_state_dict': optimizer.state_dict(),
             }, path)
 
-path = F"{results_folder}/selective_post_trained.pt"
+path = F"{resnet_path}/selective_post_trained.pt"
 checkpoint = torch.load(path)
 resnet.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
