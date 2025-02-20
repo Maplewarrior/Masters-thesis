@@ -23,16 +23,14 @@ class ShardsDict(BaseModel):
 
 
 class SISA:
-    def __init__(self, dataloader: DataLoader, 
-                 forget_loader: DataLoader = None,
+    def __init__(self, dataloader: DataLoader,
                  n_shards: int = 10, n_slices: int = 10,
                  n_features: int = 2, n_classes: int = 2,
                  n_epochs: int = 10):
+        
         self.dataloader = dataloader
-        self.forget_loader = forget_loader
 
         self.dataset = self.dataloader.dataset if self.dataloader is not None else None
-        self.forget_dataset = self.forget_loader.dataset if self.forget_loader is not None else None
 
         self.shard_models_path = "./src/sisa/models"
         os.makedirs(self.shard_models_path, exist_ok=True)
@@ -75,7 +73,6 @@ class SISA:
         """
         # Shuffle the data
         indices = np.arange(len(self.dataset.X))
-        np.random.shuffle(indices)
         splits = np.array_split(indices, self.n_shards)
         for shard_id, shard_indices in enumerate(splits):
             os.makedirs(f"{self.shard_models_path}/shard_{shard_id}", exist_ok=True)
@@ -300,25 +297,12 @@ class SISA:
 
         return
 
-    def visualise_decision_boundaries(self, pre_forget: bool = True):
+    def forget_datapoints(self, datapoint_idxs: list[int]):
         """
-        We visualise the decision boundaries for each shard.
+        We forget a list of datapoints.
         """
-        plot_many_decision_boundaries(self.shard_models, 
-                                     self.dataset.X, 
-                                     self.dataset.y, 
-                                     n_rows=self.n_shards // 2,
-                                     affected_shards=self.shards_with_forgotten_points)
-        
-    def visualise_pre_forget_models_and_post_forget_models(self):
-        """
-        We visualise the pre-forget models and the post-forget models side by side.
-        """
-        plot_many_decision_boundaries_pre_post_forget(self.pre_forget_models, 
-                                                     self.post_forget_models, 
-                                                     self.dataset.X, 
-                                                     self.dataset.y,
-                                                     affected_shards=self.shards_with_forgotten_points)
+        for datapoint_idx in datapoint_idxs:
+            self.forget_datapoint(datapoint_idx)
 
     def evaluate_pre_post_forget(self, X_test: np.ndarray, y_test: np.ndarray):
         """
