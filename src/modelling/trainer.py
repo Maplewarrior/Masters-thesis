@@ -3,8 +3,16 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import pdb
+
 class Trainer:
-    def __init__(self, model, train_dataloader, val_dataloader, n_epochs=20, lr=3e-3, device='cpu') -> None:
+    def __init__(self, model, 
+                 train_dataloader, 
+                 val_dataloader, 
+                 n_epochs=20, 
+                 lr=3e-3, 
+                 device='cpu',
+                 loss: nn.Module = nn.CrossEntropyLoss()
+                 ) -> None:
         ### initialization
         self.model = model
         self.device = device
@@ -14,7 +22,7 @@ class Trainer:
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = loss
 
     def train_sae(self):
         losses = []
