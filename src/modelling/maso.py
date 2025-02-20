@@ -268,7 +268,7 @@ class MASO:
         plt.grid(True, alpha=0.2)
         plt.show()
 
-def maso_dataset(n_samples: int, n_features: int, n_classes: int, random_state: int = 42):
+def maso_dataset(n_samples: int, n_features: int, n_classes: int):
     """
     Generate synthetic dataset with random patterns (circular, semicircular, or gaussian) for different classes.
     
@@ -287,8 +287,6 @@ def maso_dataset(n_samples: int, n_features: int, n_classes: int, random_state: 
     X = np.zeros((n_samples, n_features))
     y = np.zeros((n_samples, n_classes))
     samples_per_class = n_samples // n_classes
-
-    np.random.seed(random_state)
     
     for class_idx in range(n_classes):
         start_idx = class_idx * samples_per_class
@@ -343,6 +341,8 @@ if __name__ == "__main__":
     n_samples = 1000
     n_features = 2
     n_classes = 4
+
+    np.random.seed(42)
     # ==============================
     # Generate data
     # ==============================
@@ -362,8 +362,7 @@ if __name__ == "__main__":
 
     X, y = maso_dataset(n_samples=n_samples, 
                        n_features=n_features, 
-                       n_classes=n_classes,
-                       random_state=69)
+                       n_classes=n_classes)
     
     # Train/val/test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
@@ -391,11 +390,11 @@ if __name__ == "__main__":
     trainer = Trainer(model, 
                      train_dataloader=train_loader, 
                      val_dataloader=val_loader, 
-                     lr=0.01, 
+                     lr=0.001, 
                      device='cpu',
                      loss=maso.loss)
     
-    trainer.train(n_epochs=100)
+    trainer.train(n_epochs=40)
 
     maso.plot_combined_visualization(layer_idx=3, 
                                    activation_fn=nn.functional.gelu,
