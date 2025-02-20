@@ -66,7 +66,7 @@ class AmnesiacTrainer:
         if cache_gradients:
             print(f"Caching gradients. This could take a lot of memory.")
     
-    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False, class_to_forget=None):
+    def train(self, train_loader, val_loader=None, epochs=10, ckpt=False, class_to_forget=None, indices_to_forget=None, repair=False):
         """Train the model.
 
         Args:
@@ -74,8 +74,15 @@ class AmnesiacTrainer:
             val_loader (DataLoader): DataLoader for validation data  
             epochs (int, optional): Number of epochs to train for. Defaults to 10.
             ckpt (bool, optional): Whether to save checkpoints. Defaults to False.
-            class_to_forget (int, optional): Class to forget. Defaults to None. If None, gradients for all classes are cached.
+            class_to_forget (int, optional): Class to forget. Defaults to None. If both this and indices_to_forget are None, gradients for all classes are cached.
+            indices_to_forget (list, optional): List of data indices to forget. Defaults to None. If both this and class_to_forget are None, gradients for all classes are cached.
+            repair (bool, optional): Whether to train in the repair phase. Defaults to False. If True, no gradients are stored for forgetting.
         """
+
+        # not both class_to_forget and indices_to_forget can be specified
+        if class_to_forget is not None and indices_to_forget is not None:
+            raise ValueError("Cannot specify both class_to_forget and indices_to_forget. Please specify only one.")
+
         with tqdm(range(epochs)) as pbar:
             for epoch in pbar:
                 self.model.train()
@@ -96,14 +103,19 @@ class AmnesiacTrainer:
                     self.optimizer.step()
                     
                     after_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
-
+                
                     param_diff = {name: after_params[name] - before_params[name] for name in before_params}
 
                     # Save batch mapping and param diff if either:
                     # 1. We're not targeting a specific class (class_to_forget is None)
                     # 2. The batch contains samples from the class we want to forget
-                    should_save = (class_to_forget is None) or (class_to_forget in y)
-
+                    # 3. The batch contains indices we want to forget
+                    should_save = ((class_to_forget is None) and (indices_to_forget is None)) or \
+                                ((class_to_forget is not None) and (class_to_forget in y)) or \
+                                ((indices_to_forget is not None) and any(idx.item() in indices_to_forget for idx in indices))
+                    
+                    if repair:
+                        should_save = False
                     
                     if should_save:
                         self.batch_mapping.setdefault(epoch, {}).update({idx.item(): batch_idx for idx in indices})
@@ -203,7 +215,6 @@ class AmnesiacTrainer:
         batches = {}
         
         for epoch in self.batch_mapping:
-            # Find the batches to remove
             if indices_to_forget is not None:
                 batches_to_forget = list(set([self.batch_mapping[epoch][idx] for idx in indices_to_forget if idx in self.batch_mapping[epoch]]))
             else:
@@ -237,9 +248,11 @@ class AmnesiacTrainer:
         """
         _, test_acc = self.evaluate(test_loader)
         if dname is not None:
-            print(f"{dname} - Test Accuracy: {test_acc:.2f}%")
+            print(f"{dname}: {test_acc:.2f}%")
         else:
             print(f"Test Accuracy: {test_acc:.2f}%")
+
+        return test_acc
 
 if __name__ == "__main__":
 
@@ -268,8 +281,8 @@ if __name__ == "__main__":
 
     # Forget set parameters
     forget_n_points = 10
-    forget_class = 1
-    forget_ood_ratio = 0.0
+    forget_class = 1 # Forget a specific class
+    forget_ood_ratio = 0.5
 
     # Generate synthetic data
     data_generator = DataGenerator(random_state=42)
@@ -284,6 +297,8 @@ if __name__ == "__main__":
     dataloaders = create_dataloaders(data_generator, batch_size=8, use_indices=True, device=device)
 
     train_full_loader = dataloaders["train_full_loader"]
+    retain_loader = dataloaders["train_retain_loader"]
+    forget_loader = dataloaders["train_forget_loader"]
     val_loader = dataloaders["val_loader"]
     test_loader = dataloaders["test_loader"]
     indices_to_forget = dataloaders["forget_idx_in_train"]
@@ -292,12 +307,42 @@ if __name__ == "__main__":
     model = AmnesiacModel(M=n_features, n_classes=n_classes)
     trainer = AmnesiacTrainer(model, lr=0.1, device=device)
 
-    # Train and test model
+    # ================================================
+    # Examples of usage below
+    # ================================================
+
+    # %%
+    # ============= Only store gradients for forget set =============
+    trainer.train(train_full_loader, val_loader, epochs=10, indices_to_forget=indices_to_forget)
+    trainer.test(test_loader, dname="Before forgetting, Test accuracy")
+    trainer.test(retain_loader, dname="Before forgetting, Retain accuracy")
+    trainer.test(forget_loader, dname="Before forgetting, Forget accuracy")
+    trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only gradients for sensitive batches
+    trainer.test(test_loader, dname="After forgetting, Test accuracy")
+    trainer.test(retain_loader, dname="After forgetting, Retain accuracy")
+    trainer.test(forget_loader, dname="After forgetting, Forget accuracy")
+    trainer.train(retain_loader, val_loader, epochs=2, repair=True) # repair performance on retain set
+    trainer.test(test_loader, dname="After repair, Test accuracy")
+    trainer.test(retain_loader, dname="After repair, Retain accuracy")
+    trainer.test(forget_loader, dname="After repair, Forget accuracy")
+
+    exit()
+    # %%
+    # ============= Store all gradients, pick indices to forget =============
+    trainer.train(train_full_loader, val_loader, epochs=10)
+    trainer.test(test_loader)
+    trainer.forget(indices_to_forget)
+    trainer.test(test_loader)
+
+    # %%
+    # ============= Forget specific class =============
+    # Train and test model only storing gradients for the forget set if it is in specified class
     trainer.train(train_full_loader, val_loader, epochs=10, class_to_forget=forget_class)
     trainer.test(test_loader)
 
     # Forget samples and test again
-    trainer.forget(indices_to_forget)
+    trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only sensitive batches
     trainer.test(test_loader)
+
 
 
