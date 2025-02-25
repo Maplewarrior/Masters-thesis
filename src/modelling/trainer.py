@@ -11,7 +11,8 @@ class Trainer:
                  n_epochs=20, 
                  lr=3e-3, 
                  device='cpu',
-                 loss: nn.Module = nn.CrossEntropyLoss()
+                 loss: nn.Module = nn.CrossEntropyLoss(),
+                 disable_tqdm=False
                  ) -> None:
         ### initialization
         self.model = model
@@ -23,13 +24,13 @@ class Trainer:
         self.val_dataloader = val_dataloader
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = loss
-
+        self.disable_tqdm = disable_tqdm
     def train_sae(self):
         losses = []
         self.model.train()
         num_steps = len(self.train_dataloader) * self.n_epochs
         acc = 0
-        with tqdm(range(num_steps)) as pbar:
+        with tqdm(range(num_steps), disable=self.disable_tqdm) as pbar:
             for step in pbar:
                 ipt, label = next(iter(self.train_dataloader))
                 ipt = ipt.to(self.device)
@@ -51,7 +52,7 @@ class Trainer:
                     epoch = int(step * self.n_epochs / num_steps) + 1
                     pbar.set_description(f"epoch={epoch}, step={step}, loss={torch.mean(torch.tensor(losses)):.1f}, acc={acc/((step+1)*self.train_dataloader.batch_size):.4f}")
 
-    def train(self, n_epochs=None):
+    def train(self, n_epochs=None, disable_tqdm=False):
         """
         Train the model for a specified number of epochs.
 
@@ -64,7 +65,7 @@ class Trainer:
         n_epochs = self.n_epochs if n_epochs is None else n_epochs
         num_steps = len(self.train_dataloader) * n_epochs
         acc = 0
-        with tqdm(range(num_steps)) as pbar:
+        with tqdm(range(num_steps), disable=self.disable_tqdm) as pbar:
             for step in pbar:
                 ipt, label = next(iter(self.train_dataloader))
                 ipt = ipt.to(self.device)
@@ -82,11 +83,11 @@ class Trainer:
                     epoch = int(step * n_epochs / num_steps) + 1
                     pbar.set_description(f"epoch={epoch}, step={step}, loss={torch.mean(torch.tensor(losses)):.1f}, acc={acc/((step+1)*self.train_dataloader.batch_size):.4f}")
                 
-    def eval(self):
+    def eval(self, disable_tqdm=False):
         losses = []
         self.model.eval()
         acc = 0 
-        with tqdm(range(len(self.val_dataloader))) as pbar:
+        with tqdm(range(len(self.val_dataloader)), disable=self.disable_tqdm) as pbar:
             for step in pbar:
                 ipt, label = next(iter(self.val_dataloader))
                 ipt = ipt.to(self.device)
