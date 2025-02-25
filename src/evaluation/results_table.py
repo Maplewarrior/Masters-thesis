@@ -68,7 +68,8 @@ def create_latex_table(results_dict):
     # Create first header row with unlearning algorithms
     header1 = ["Dataset"]
     for algorithm in unlearning_algorithms:
-        header1.extend([f"\\multicolumn{{{len(model_comparisons)}}}{{c}}{{{algorithm.replace('_', '\\_')}}}"])
+        escaped_algorithm = algorithm.replace('_', r'\_')
+        header1.extend([f"\\multicolumn{{{len(model_comparisons)}}}{{c}}{{{escaped_algorithm}}}"])
     latex.append(" & ".join(header1) + " \\\\")
     
     
@@ -91,7 +92,8 @@ def create_latex_table(results_dict):
         
         # Add metric rows for this dataset
         for metric in all_metrics:
-            row = [metric.replace("_", "\\_")]
+            escaped_metric = metric.replace('_', r'\_')
+            row = [escaped_metric]
             for algorithm in unlearning_algorithms:
                 for comparison in model_comparisons:
                     result = means[algorithm][comparison][dataset][metric]
