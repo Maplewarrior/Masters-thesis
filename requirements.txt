@@ -4,6 +4,7 @@ scikit-learn==1.6.1
 matplotlib==3.10.0
 torch==2.6.0
 tqdm==4.67.1
+rich==13.9.4
 torchvision==0.21.0
 pydantic>=2.10.6
 -e .
