@@ -332,6 +332,16 @@ class AmnesiacTrainer:
                 f.write(f"{test_acc:.4f}\n")
 
         return test_acc
+    
+    def delete_stored_gradients(self):
+        """Delete all cached gradients from memory."""
+        if self.cache_gradients:
+            raise ValueError("Cannot delete cached gradients if cache_gradients is True. They have to be saved to file.")
+        # delete from file
+        for epoch in self.batch_params:
+            for batch_idx in self.batch_params[epoch]:
+                if not self.cache_gradients:
+                    os.remove(self.batch_params[epoch][batch_idx])
 
 if __name__ == "__main__":
 
