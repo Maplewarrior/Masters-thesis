@@ -16,19 +16,19 @@ from src.modelling.sae_unlearner import SAEUnlearner
 from src.modelling.SAE import SAE
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from src.evaluation.results_table import create_latex_table
-
+from src.modelling.amnesiac import AmnesiacTrainer
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, default='experiment', choices=['experiment', 'visualize', 'get_latex_results'], help='what to do when running the script (default: %(default)s)')
-    parser.add_argument('--unlearn-type', type=str, default='SSD', choices=['SSD', 'Scrub+R', 'SISA', 'Amnesiac Unlearning','SAE'], help='What type of unlearning algorithm to apply.')
+    parser.add_argument('--unlearn-type', type=str, default='SSD', choices=['SSD', 'Scrub+R', 'SISA', 'amnesiac','SAE'], help='What type of unlearning algorithm to apply.')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')    
     
     args = parser.parse_args()
     if args.mode == 'experiment':
         ### set constants
         ## for the experiment:
-        n_repeats = 10
+        n_repeats = 2
         n_epochs = 20
         ## for the dataset:
         n_features = 25
@@ -50,15 +50,20 @@ if __name__ == '__main__':
         data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
         # data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
         data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
-        dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
-        
-        x, y = next(iter(dataloaders['train_full_loader']))
+
+        if args.unlearn_type == 'amnesiac':
+            dataloaders = create_dataloaders(data_generator, batch_size=1, use_indices=True, device=args.device)
+            x, y, indices = next(iter(dataloaders['train_full_loader']))
+        else:
+            dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True, device=args.device)
+            x, y = next(iter(dataloaders['train_full_loader']))
 
         results = {'unlearned vs. original': {'retain': [], 'forget': [], 'validation': []},
                 'unlearned vs. retrained': {'retain': [], 'forget': [], 'validation': []},
                 }
 
         for i in range(n_repeats):
+            # TODO Shouldn't we draw a new dataset or at least a new forget set for each repeat??
             if args.unlearn_type in ['Scrub+R', 'SSD']:
                 # define and train unlearned model on the full dataset
                 unlearned_model = NeuralNet(n_features, n_classes)
@@ -87,8 +92,28 @@ if __name__ == '__main__':
                 retrained_model.process_data()
                 retrained_model.train_all_models()
             
-            elif args.unlearn_type == 'Amnesiac Unlearning':
-                raise NotImplementedError()
+            elif args.unlearn_type == 'amnesiac':
+
+                unlearned_model = NeuralNet(n_features, n_classes)
+                trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=args.device, cache_gradients=True)
+
+                train_full_loader = dataloaders['train_full_loader']
+                val_loader = dataloaders['val_loader']
+                test_loader = dataloaders['test_loader']
+                retain_loader = dataloaders['train_retain_loader']
+                forget_loader = dataloaders['train_forget_loader']
+                indices_to_forget = dataloaders['forget_idx_in_train']
+
+                # training on full dataset while storing gradients for sensitive batches/points to forget later
+                trainer.train(train_full_loader, 
+                              epochs=n_epochs, 
+                              indices_to_forget=indices_to_forget, 
+                              save_accuracy_to_file=False)
+                
+                # define and train retrained model on the retain dataset
+                retrained_model = NeuralNet(n_features, n_classes)
+                retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=args.device, cache_gradients=True)
+                retrained_trainer.train(retain_loader, repair=True)            
             
             original_model = copy.deepcopy(unlearned_model)
             original_model.model_type = 'pre_forget'
@@ -125,6 +150,14 @@ if __name__ == '__main__':
                 sae_trainer.train_sae()
                 sd_after = sae_unlearner.model.state_dict()
 
+            elif args.unlearn_type == 'amnesiac':
+                trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only gradients for sensitive batches
+
+                # repair phase, hardcoded to 10 epochs
+                trainer.train(train_full_loader, epochs=10, 
+                            save_accuracy_to_file=False, 
+                            repair=True)
+                
             # Model evaluation
             unlearning_evaluator = UnlearningEvaluator()
 
