@@ -3,48 +3,49 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from src.modelling.amnesiac import AmnesiacModel, AmnesiacTrainer
-import os
-
-class SimpleDataset(Dataset):
-    def __init__(self):
-        # Create a simple 2D dataset with 4 points, 2 classes
-        self.x = torch.tensor([
-            [0.0, 0.0],  # class 0
-            [0.0, 1.0],  # class 1
-            [1.0, 0.0],  # class 0
-            [1.0, 1.0],  # class 1
-        ])
-        self.y = torch.tensor([0, 1, 0, 1])
-        self.indices = torch.tensor([0, 1, 2, 3])
-
-    def __len__(self):
-        return len(self.x)
-
-    def __getitem__(self, idx):
-        return self.x[idx], self.y[idx], self.indices[idx]
 
 @pytest.fixture
-def setup_trainer():
-    # Create model, trainer and dataloaders
+def simple_dataset():
+    """Fixture providing a simple 2D dataset with 4 points, 2 classes"""
+    class SimpleDataset(Dataset):
+        def __init__(self):
+            self.x = torch.tensor([
+                [0.0, 0.0],  # class 0
+                [0.0, 1.0],  # class 1
+                [1.0, 0.0],  # class 0
+                [1.0, 1.0],  # class 1
+            ])
+            self.y = torch.tensor([0, 1, 0, 1])
+            self.indices = torch.tensor([0, 1, 2, 3])
+
+        def __len__(self):
+            return len(self.x)
+
+        def __getitem__(self, idx):
+            return self.x[idx], self.y[idx], self.indices[idx]
+    
+    return SimpleDataset()
+
+@pytest.fixture
+def setup_trainer(simple_dataset):
+    """Fixture providing model, trainer and dataloaders"""
+    # Create model, trainer
     model = AmnesiacModel(M=2, n_classes=2)
     trainer = AmnesiacTrainer(model, lr=0.1, device="cpu")
-    
-    # Create datasets
-    dataset = SimpleDataset()
     
     # Create indices for forget and retain sets
     forget_indices = [1]  # forget the point [0,1]
     retain_indices = [0, 2, 3]
     
     # Create dataloaders
-    train_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(simple_dataset, batch_size=1, shuffle=False)
     forget_loader = DataLoader(
-        dataset, 
+        simple_dataset, 
         batch_size=1, 
         sampler=torch.utils.data.SubsetRandomSampler(forget_indices)
     )
     retain_loader = DataLoader(
-        dataset, 
+        simple_dataset, 
         batch_size=1, 
         sampler=torch.utils.data.SubsetRandomSampler(retain_indices)
     )
@@ -57,7 +58,10 @@ def setup_trainer():
         'forget_indices': forget_indices
     }
 
+@pytest.mark.amnesiac
+@pytest.mark.training
 def test_training_stores_gradients(setup_trainer):
+    """Test that training properly stores gradients for all samples"""
     trainer = setup_trainer['trainer']
     train_loader = setup_trainer['train_loader']
     
@@ -69,7 +73,10 @@ def test_training_stores_gradients(setup_trainer):
     assert len(trainer.batch_mapping[0]) == 4  # Should have 4 samples
     assert len(trainer.batch_params[0]) == 4   # Should have 4 batches of parameters
 
+@pytest.mark.amnesiac
+@pytest.mark.training
 def test_selective_gradient_storage(setup_trainer):
+    """Test that gradients are only stored for specified forget indices"""
     trainer = setup_trainer['trainer']
     train_loader = setup_trainer['train_loader']
     forget_indices = setup_trainer['forget_indices']
@@ -82,7 +89,10 @@ def test_selective_gradient_storage(setup_trainer):
     assert len(trainer.batch_mapping[0]) == 1  # Should only store the forget sample
     assert len(trainer.batch_params[0]) == 1   # Should only have 1 batch of parameters
 
+@pytest.mark.amnesiac
+@pytest.mark.unlearning
 def test_forgetting(setup_trainer):
+    """Test that forgetting reduces accuracy on forget set"""
     trainer = setup_trainer['trainer']
     train_loader = setup_trainer['train_loader']
     forget_loader = setup_trainer['forget_loader']
@@ -101,7 +111,10 @@ def test_forgetting(setup_trainer):
     # Accuracy on forget set should decrease
     assert final_forget_acc <= initial_forget_acc
 
+@pytest.mark.amnesiac
+@pytest.mark.repair
 def test_repair(setup_trainer):
+    """Test that repair improves or maintains accuracy on retain set"""
     trainer = setup_trainer['trainer']
     train_loader = setup_trainer['train_loader']
     retain_loader = setup_trainer['retain_loader']
@@ -121,7 +134,10 @@ def test_repair(setup_trainer):
     # Accuracy on retain set should improve or stay the same
     assert final_retain_acc >= initial_retain_acc
 
+@pytest.mark.amnesiac
+@pytest.mark.checkpointing
 def test_checkpoint_saving(setup_trainer, tmp_path):
+    """Test that checkpoints are properly saved with all required components"""
     trainer = setup_trainer['trainer']
     train_loader = setup_trainer['train_loader']
     
