@@ -13,14 +13,63 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.10'
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest
+        pip install pytest pytest-github-actions-annotate-failures
         
-    - name: Run tests
+    - name: Run Synthetic Data Tests
       run: |
-        pytest 
+        echo "::group::Synthetic Dataset Tests"
+        pytest -v -m synthetic_dataset
+        echo "::endgroup::"
+        
+        echo "::group::Data Generator Tests"
+        pytest -v -m data_generator
+        echo "::endgroup::"
+        
+        echo "::group::Outlier Tests"
+        pytest -v -m outliers
+        echo "::endgroup::"
+        
+        echo "::group::Forget Set Tests"
+        pytest -v -m forget_set
+        echo "::endgroup::"
+        
+        echo "::group::Dataloader Tests"
+        pytest -v -m dataloaders
+        echo "::endgroup::"
+
+    - name: Run SISA Tests
+      run: |
+        echo "::group::SISA Tests"
+        pytest -v -m sisa
+        echo "::endgroup::"
+
+    - name: Run Amnesiac Tests
+      run: |
+        echo "::group::Amnesiac Training Tests"
+        pytest -v -m "amnesiac and training"
+        echo "::endgroup::"
+        
+        echo "::group::Amnesiac Unlearning Tests"
+        pytest -v -m "amnesiac and unlearning"
+        echo "::endgroup::"
+        
+        echo "::group::Amnesiac Repair Tests"
+        pytest -v -m "amnesiac and repair"
+        echo "::endgroup::"
+        
+        echo "::group::Amnesiac Checkpointing Tests"
+        pytest -v -m "amnesiac and checkpointing"
+        echo "::endgroup::"
+
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "::group::Full Test Summary"
+        pytest -v --durations=0 -ra
+        echo "::endgroup::" 

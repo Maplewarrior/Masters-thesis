@@ -31,6 +31,7 @@ def sisa_instance(sample_data):
         n_epochs=2
     )
 
+@pytest.mark.sisa
 def test_sisa_initialization(sisa_instance):
     """Test if SISA is initialized correctly"""
     assert sisa_instance.n_shards == 2
@@ -38,6 +39,7 @@ def test_sisa_initialization(sisa_instance):
     assert isinstance(sisa_instance.shards_dict, ShardsDict)
     assert len(sisa_instance.shards_dict.shards) == 0
 
+@pytest.mark.sisa
 def test_shard_data(sisa_instance):
     """Test if data is sharded correctly"""
     sisa_instance.shard_data()
@@ -49,6 +51,7 @@ def test_shard_data(sisa_instance):
         all_indices.extend(shard.shard_indices)
     assert len(set(all_indices)) == len(sisa_instance.dataset.X)
 
+@pytest.mark.sisa
 def test_slice_shards(sisa_instance):
     """Test if shards are sliced correctly"""
     sisa_instance.shard_data()
@@ -63,12 +66,14 @@ def test_slice_shards(sisa_instance):
             slice_indices.extend(slice_data)
         assert set(slice_indices) == set(shard.shard_indices)
 
+@pytest.mark.sisa
 def test_process_data(sisa_instance):
     """Test if process_data combines sharding and slicing correctly"""
     shards_dict = sisa_instance.process_data()
     assert isinstance(shards_dict, ShardsDict)
     assert len(shards_dict.shards) == 2
 
+@pytest.mark.sisa
 def test_train_model_on_shard(sisa_instance):
     """Test if model training works for a single shard"""
     sisa_instance.process_data()
@@ -82,6 +87,7 @@ def test_train_model_on_shard(sisa_instance):
     model_1 = shard_models["shard_0"]["slice_1"]
     assert id(model_0) == id(model_1)  # Same model instance, updated incrementally
 
+@pytest.mark.sisa
 def test_train_all_models(sisa_instance):
     """Test if all models are trained correctly"""
     sisa_instance.process_data()
@@ -92,6 +98,7 @@ def test_train_all_models(sisa_instance):
         assert f"shard_{shard_id}" in shard_models
         assert len(shard_models[f"shard_{shard_id}"]) == 2  # n_slices
 
+@pytest.mark.sisa
 def test_predict(sisa_instance):
     """Test if prediction works correctly"""
     sisa_instance.process_data()
@@ -105,6 +112,7 @@ def test_predict(sisa_instance):
     assert all(isinstance(pred, (np.int64, int)) for pred in predictions)
     assert all(0 <= pred <= 1 for pred in predictions)  # n_classes - 1
 
+@pytest.mark.sisa
 def test_find_slice_for_datapoint(sisa_instance):
     """Test if datapoint location is found correctly"""
     sisa_instance.process_data()
@@ -118,6 +126,7 @@ def test_find_slice_for_datapoint(sisa_instance):
     assert shard_id == 0
     assert slice_idx == 0
 
+@pytest.mark.sisa
 def test_forget_datapoint(sisa_instance):
     """Test if forgetting works correctly"""
     sisa_instance.process_data()
@@ -144,6 +153,7 @@ def test_forget_datapoint(sisa_instance):
     assert shard_id is None
     assert slice_idx is None
 
+@pytest.mark.sisa
 def test_forget_invalid_datapoint(sisa_instance):
     """Test if forgetting invalid datapoint raises error"""
     sisa_instance.process_data()
