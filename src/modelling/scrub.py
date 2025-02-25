@@ -120,6 +120,7 @@ class ScrubR:
 
             err = self.calculate_error(self.model, forget_dataloader)
             forget_errors.append(err.item())
+            os.makedirs('weights/tmp', exist_ok=True)
             torch.save(self.model.state_dict(), f'weights/tmp/scrub+r_epoch{i+1}.pth')
 
         err_threshold = self.calculate_error(self.model, validate_err_dataloader)
@@ -130,6 +131,7 @@ class ScrubR:
             print("Sometimes an index error is thrown here which is fucking weird :). It happens randomly and it's because a shape changes.")
             pdb.set_trace()
 
+        os.makedirs('weights/scrub+r', exist_ok=True)
         best_ckpt = f'weights/tmp/scrub+r_epoch{best_epoch.item()}.pth'
         sd = torch.load(best_ckpt, weights_only=False)
 
