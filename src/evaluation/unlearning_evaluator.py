@@ -29,7 +29,7 @@ class UnlearningEvaluator:
                 preds_c.append(comparison_model.inference(x)['logits'])
 
                 # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
-                if not dataloader.dataset.onehot_labels:
+                if hasattr(dataloader, 'dataset') and hasattr(dataloader.dataset, 'onehot_labels') and not dataloader.dataset.onehot_labels:
                     y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes)
                 ys.append(y)
 
@@ -78,16 +78,38 @@ class UnlearningEvaluator:
         return estimate.item()
     
     def avg_norm_pred_diff(self, preds_u, preds_c):
-        return (torch.linalg.norm(self.softmax(preds_u) - self.softmax(preds_c), dim=1, ord=2).sum() / (preds_u.size(0) * preds_u.size(1))).item()
+        p_u = self.softmax(preds_u)
+        p_c = self.softmax(preds_c)
+        return (torch.linalg.norm(p_u - p_c, dim=1, ord=1).sum() / (2 * preds_u.size(0))).item()
 
+    """
+    This introduces many errors (6 falied)
+    """
     def KL_divergence(self, preds_u, preds_c):
-        return F.kl_div(self.log_softmax(preds_u), self.softmax(preds_c), reduction='batchmean').item()
+        """
+        @param preds_u: The predictions of the unlearned model.
+        @param preds_c: The predictions of the comparison model. This is either the original or retrained model.
+        
+        If we denote P = preds_c and Q = preds_u the formula then becomes: KL[P || Q] = Σ P(x) * log(P(x) / Q(x))
+        """
+        
+        # NOTE The below 3 implementations are equivalent.
+        # kl_ls = F.kl_div(self.log_softmax(preds_u), self.softmax(preds_c), reduction='batchmean').item()
+        # kl = F.kl_div(torch.log(self.softmax(preds_u)), self.softmax(preds_c), reduction='batchmean').item()
+        
+        # kl_manual = (self.softmax(preds_c) * torch.log(self.softmax(preds_c) / self.softmax(preds_u))).sum(dim=-1).mean()
+        
+        log_probs_u = self.log_softmax(preds_u)
+        probs_c = torch.clamp(self.softmax(preds_c), min=1e-8) # avoid numeric issues
+        kl = F.kl_div(log_probs_u, probs_c, reduction='batchmean').item()
+        return kl
     
-    def JS_divergence(self, preds_u, preds_c):
+    def JS_divergence(self, preds_u, preds_c, log_base: float = 2.0):
         preds_m = (preds_u + preds_c) / 2
-        estimate_u = F.kl_div(self.log_softmax(preds_u), self.softmax(preds_m), reduction='batchmean')
-        estimate_c = F.kl_div(self.log_softmax(preds_c), self.softmax(preds_m), reduction='batchmean')
+        estimate_u = self.KL_divergence(preds_m, preds_u)
+        estimate_c = self.KL_divergence(preds_m, preds_c)
         estimate = (estimate_u + estimate_c) / 2
-        return estimate.item()
 
-    
+        if log_base == 2.0:
+            estimate = (estimate/torch.log(torch.tensor(2.))).item()
+        return estimate
