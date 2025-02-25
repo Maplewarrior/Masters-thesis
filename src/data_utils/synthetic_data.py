@@ -165,9 +165,9 @@ class DataGenerator:
         X_outliers = self.X.copy()
 
         # Distribute outliers among selected classes
-        outliers_per_class = n_outliers if class_idx is not None else n_outliers // len(target_classes)
-
-        # Outliers for each class. It should sum to n_outliers
+        outliers_per_class = n_outliers // len(target_classes)
+        
+        # Distribute remaining outliers
         n_outliers_per_class_list = [outliers_per_class] * len(target_classes)
         remaining = n_outliers - sum(n_outliers_per_class_list)
         for i in range(remaining):
@@ -287,7 +287,7 @@ class DataGenerator:
 
         return self.train_idx, self.val_idx, self.test_idx
 
-    def draw_forget_set(self, n_points, class_idx=None, ood_ratio=0.0):
+    def draw_forget_set(self, n_points, class_idx=None, ood_ratio=0.0, random_state=None):
         """
         Selects a mix of in-distribution (ID) and out-of-distribution (OOD) points for forgetting.
 
@@ -295,16 +295,24 @@ class DataGenerator:
         - n_points (int): Total number of points to forget.
         - class_idx (int, optional): If provided, selects ID and OOD points from this class only.
         - ood_ratio (float, optional): Fraction (0-1) of forget set that should be OOD.
+        - random_state (int, optional): Random seed for reproducible forget set selection.
 
         Returns:
         - forget_X (ndarray): The forgotten points.
         - forget_y (ndarray): Their labels.
         - retain_X (ndarray): The retained points.
         - retain_y (ndarray): Their labels.
-
-        Raises:
-        - ValueError: If data or outliers are missing.
         """
+        # Set random state for reproducibility
+        rng = np.random.RandomState(random_state) if random_state is not None else np.random
+
+        # Reset forget and retain sets
+        self.forget_X = None
+        self.forget_y = None
+        self.retain_X = None
+        self.retain_y = None
+        self.forget_idx_in_train = None
+        self.retain_idx_in_train = None
 
         if self.X is None or self.y is None:
             raise ValueError("Data not generated yet. Call generate_data() first.")
@@ -362,11 +370,11 @@ class DataGenerator:
         print(f" Available OOD points: {len(available_ood_indices)}")
 
 
-        # Select random ID points
-        forget_id_idx = np.random.choice(available_id_indices, size=n_id, replace=False)
+        # Select random ID points using the controlled random state
+        forget_id_idx = rng.choice(available_id_indices, size=n_id, replace=False)
 
-        # Select OOD points (from the same class if applicable)
-        forget_ood_idx = np.random.choice(available_ood_indices, size=n_ood, replace=False)
+        # Select OOD points using the controlled random state
+        forget_ood_idx = rng.choice(available_ood_indices, size=n_ood, replace=False)
 
         # Combine ID and OOD forget indices
         forget_idx = np.concatenate([forget_id_idx, forget_ood_idx])
@@ -391,42 +399,46 @@ class DataGenerator:
 
 
 if __name__ == "__main__":
+    # Initialize data generator and create base dataset
     data_generator = DataGenerator(random_state=42)
     data_generator.generate_data(n_samples=1000, n_features=2, 
-                                 n_informative=2, n_redundant=0, 
-                                 n_outliers=50, outlier_scale=4.0, 
-                                 outlier_variance=0.4, outlier_class=None)
+                               n_informative=2, n_redundant=0, 
+                               n_outliers=50, outlier_scale=4.0, 
+                               outlier_variance=0.4, outlier_class=None)
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5)
-    # data_generator.plot_data()
 
-    dataloaders = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+    print("\n=== First forget set (random_state=42) ===")
+    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5, random_state=42)
+    data_generator.plot_data()  # Visualize first forget set
 
-    # Iterate over full dataset
-    for batch in dataloaders["train_full_loader"]:
-        X_batch, y_batch = batch
-        print("Full Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
-        break 
+    # Create and check first set of dataloaders
+    dataloaders_1 = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+    print(f"First forget set size: {len(dataloaders_1['train_forget_loader'].dataset)}")
+    print(f"First retain set size: {len(dataloaders_1['train_retain_loader'].dataset)}")
 
-    for batch in dataloaders["val_loader"]:
-        X_batch, y_batch = batch
-        print("Full Val Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
-        break 
+    print("\n=== Second forget set (random_state=43) ===")
+    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5, random_state=43)
+    data_generator.plot_data()  # Visualize second forget set
 
-    for batch in dataloaders["test_loader"]:
-        X_batch, y_batch = batch
-        print("Full Test Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
-        break 
+    # Create and check second set of dataloaders
+    dataloaders_2 = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+    print(f"Second forget set size: {len(dataloaders_2['train_forget_loader'].dataset)}")
+    print(f"Second retain set size: {len(dataloaders_2['train_retain_loader'].dataset)}")
 
-    for batch in dataloaders["train_retain_loader"]:
-        X_batch, y_batch = batch
-        print("Retain Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
-        break 
+    print("\n=== Third forget set (random_state=42 again) ===")
+    data_generator.draw_forget_set(n_points=20, class_idx=1, ood_ratio=0.5, random_state=42)
+    data_generator.plot_data()  # Visualize third forget set (should match first)
 
-    for batch in dataloaders["train_forget_loader"]:
-        X_batch, y_batch = batch
-        print("Forget Dataset - Batch X:", X_batch.shape, "Batch y:", y_batch.shape)
-        break 
+    # Create and check third set of dataloaders (should match first)
+    dataloaders_3 = create_dataloaders(data_generator, batch_size=32, onehot_labels=True)
+    print(f"Third forget set size: {len(dataloaders_3['train_forget_loader'].dataset)}")
+    print(f"Third retain set size: {len(dataloaders_3['train_retain_loader'].dataset)}")
+
+    # Verify that first and third forget sets are identical (same random_state)
+    forget_indices_1 = dataloaders_1['forget_idx_in_train']
+    forget_indices_3 = dataloaders_3['forget_idx_in_train']
+    print("\n=== Verification ===")
+    print(f"First and third forget sets are identical: {np.array_equal(forget_indices_1, forget_indices_3)}")
 
 
 

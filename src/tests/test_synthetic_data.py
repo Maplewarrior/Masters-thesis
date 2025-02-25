@@ -76,7 +76,6 @@ class TestDataGenerator(unittest.TestCase):
         # check if outliers are only from class 1
         self.assertTrue(all(self.data_generator.y[outlier_idx] == 1))
 
-
     def test_split_data(self):
         self.data_generator.generate_data(n_samples=1000)
         train_idx, val_idx, test_idx = self.data_generator.split_data(0.8, 0.1, 0.1)
@@ -138,6 +137,64 @@ class TestDataGenerator(unittest.TestCase):
         self.assertEqual(len(test_X), n_test)
         self.assertEqual(len(test_y), n_test)
 
+    def test_multiple_forget_sets(self):
+        """Test that we can draw multiple different forget sets from the same data."""
+        n_samples = 1000
+        self.data_generator.generate_data(n_samples=n_samples)
+        self.data_generator.split_data(0.8, 0.1, 0.1)
+        n_forget = 20
+
+        # Draw first forget set
+        forget_X1, forget_y1, retain_X1, retain_y1, _, _, _, _ = \
+            self.data_generator.draw_forget_set(n_points=n_forget, class_idx=1, ood_ratio=0.5, random_state=42)
+        
+        # Store indices for comparison
+        forget_idx1 = self.data_generator.forget_idx_in_train.copy()
+        retain_idx1 = self.data_generator.retain_idx_in_train.copy()
+
+        # Draw second forget set
+        forget_X2, forget_y2, retain_X2, retain_y2, _, _, _, _ = \
+            self.data_generator.draw_forget_set(n_points=n_forget, class_idx=1, ood_ratio=0.5, random_state=43)
+        
+        forget_idx2 = self.data_generator.forget_idx_in_train.copy()
+        retain_idx2 = self.data_generator.retain_idx_in_train.copy()
+
+        # Verify different random states produce different forget sets
+        self.assertFalse(np.array_equal(forget_idx1, forget_idx2))
+        self.assertFalse(np.array_equal(retain_idx1, retain_idx2))
+
+        # Verify sizes remain consistent
+        self.assertEqual(len(forget_X1), len(forget_X2))
+        self.assertEqual(len(retain_X1), len(retain_X2))
+
+    def test_forget_set_random_state(self):
+        """Test that the same random state produces identical forget sets."""
+        n_samples = 1000
+        self.data_generator.generate_data(n_samples=n_samples)
+        self.data_generator.split_data(0.8, 0.1, 0.1)
+        n_forget = 20
+
+        # Draw first forget set with random_state=42
+        forget_X1, forget_y1, retain_X1, retain_y1, _, _, _, _ = \
+            self.data_generator.draw_forget_set(n_points=n_forget, class_idx=1, ood_ratio=0.5, random_state=42)
+        
+        forget_idx1 = self.data_generator.forget_idx_in_train.copy()
+        retain_idx1 = self.data_generator.retain_idx_in_train.copy()
+
+        # Draw second forget set with same random_state=42
+        forget_X2, forget_y2, retain_X2, retain_y2, _, _, _, _ = \
+            self.data_generator.draw_forget_set(n_points=n_forget, class_idx=1, ood_ratio=0.5, random_state=42)
+        
+        forget_idx2 = self.data_generator.forget_idx_in_train.copy()
+        retain_idx2 = self.data_generator.retain_idx_in_train.copy()
+
+        # Verify same random state produces identical forget sets
+        self.assertTrue(np.array_equal(forget_idx1, forget_idx2))
+        self.assertTrue(np.array_equal(retain_idx1, retain_idx2))
+        self.assertTrue(np.array_equal(forget_X1, forget_X2))
+        self.assertTrue(np.array_equal(forget_y1, forget_y2))
+        self.assertTrue(np.array_equal(retain_X1, retain_X2))
+        self.assertTrue(np.array_equal(retain_y1, retain_y2))
 
 class TestDataLoaders(unittest.TestCase):
     def setUp(self):
