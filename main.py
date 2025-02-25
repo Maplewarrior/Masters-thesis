@@ -318,7 +318,20 @@ def run_experiment(args):
     info_panel = Panel("Starting experiments...", title="Current Status")
     
     # Create progress bars for both loops
-    with Live(info_panel, refresh_per_second=4) as live:
+    live = Live(info_panel, refresh_per_second=4)
+    
+    # Set up exception handler to clean up Live display
+    def handle_pdb(*args):
+        live.stop()  # Stop live display before pdb
+        result = original_trace(*args)  # Run pdb
+        live.start()  # Restart live display after pdb
+        return result
+    
+    original_trace = pdb.set_trace
+    pdb.set_trace = handle_pdb
+    
+    try:
+        live.start()
         for forget_trial in tqdm(range(n_forget_trials), desc="Forget trials", position=0):
             # Create new forget/retain split
             dataloaders = create_forget_retain_split(data_generator, args)
@@ -374,19 +387,21 @@ JS divergence (validation): {results['unlearned vs. retrained']['validation']['J
                 
                 live.refresh()
 
-    # Wrap in a top-level dict keyed by unlearn type
-    final_results = {args.unlearn_type: aggregated_results}
-
-    # Save to file
-    os.makedirs("experiments/results", exist_ok=True)
-    output_file = f"experiments/results/{args.unlearn_type}_results.json"
-    with open(output_file, "w") as f:
-        json.dump(final_results, f)
-    console.print(f"[bold green]Results saved to {output_file}.")
-
-    # Print LaTeX table for immediate reference
-    results_table = create_latex_table(final_results)
-    console.print(Panel(results_table, title="LaTeX Results Table"))
+        # Save results and print final output
+        os.makedirs("experiments/results", exist_ok=True)
+        output_file = f"experiments/results/{args.unlearn_type}_results.json"
+        with open(output_file, "w") as f:
+            json.dump(aggregated_results, f)
+        
+        live.stop()
+        
+        console.print(f"[bold green]Results saved to {output_file}.")
+        
+        
+    finally:
+        # Restore original pdb.set_trace and ensure Live display is stopped
+        pdb.set_trace = original_trace
+        live.stop()
 
 
 def get_latex_results():
@@ -414,7 +429,6 @@ def main():
         get_latex_results()
     else:
         print("Visualization mode not implemented in this refactoring.")
-
 
 if __name__ == "__main__":
     main()
