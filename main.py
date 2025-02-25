@@ -28,7 +28,7 @@ if __name__ == '__main__':
     if args.mode == 'experiment':
         ### set constants
         ## for the experiment:
-        n_repeats = 2
+        n_repeats = 10
         n_epochs = 20
         ## for the dataset:
         n_features = 25
@@ -64,19 +64,45 @@ if __name__ == '__main__':
 
         for i in range(n_repeats):
             # TODO Shouldn't we draw a new dataset or at least a new forget set for each repeat??
+            # ======================== Standard unlearning methods ========================
             if args.unlearn_type in ['Scrub+R', 'SSD']:
+                # ------------- Define unlearned model -------------
                 # define and train unlearned model on the full dataset
                 unlearned_model = NeuralNet(n_features, n_classes)
                 unlearned_trainer = Trainer(unlearned_model, train_dataloader=dataloaders['train_full_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
                 unlearned_trainer.train()
                 unlearned_trainer.eval()
+
+                # ------------- Define retrained model -------------
                 # define and train retrained model on the retain dataset
                 retrained_model = NeuralNet(n_features, n_classes)
                 retrained_trainer = Trainer(retrained_model, train_dataloader=dataloaders['train_retain_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
                 retrained_trainer.train()
                 retrained_trainer.eval()
-            
+
+                # ------------- Copy original model and set model types -------------
+                original_model = copy.deepcopy(unlearned_model)
+                original_model.model_type = 'pre_forget'
+                unlearned_model.model_type = 'post_forget'
+
+                # ------------- Define scrub+R or SSD -------------
+                if args.unlearn_type == 'Scrub+R':
+                    alpha = 1.
+                    gamma = 1.
+                    scrub = ScrubR(unlearned_model, original_model, alpha=alpha, gamma=gamma)
+                    scrub(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'], dataloaders['val_loader'], n_rounds=6)
+                
+                elif args.unlearn_type == 'SSD':
+                    alpha=7.5
+                    _lambda = 0.5
+                    criterion = nn.CrossEntropyLoss()
+                    SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
+                    SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
+                
+
+            # ======================== SISA ========================
             elif args.unlearn_type == 'SISA':
+                # ------------- Define unlearned model -------------
                 unlearned_model = SISA(dataloader=dataloaders['train_full_loader'],
                                        n_shards=10, n_slices=10, n_features=n_features,
                                        n_classes=n_classes, n_epochs=n_epochs,
@@ -85,15 +111,26 @@ if __name__ == '__main__':
                 original_shards_dict = unlearned_shards_dict
                 unlearned_model.train_all_models()
 
+                # ------------- Define retrained model -------------
                 retrained_model = SISA(dataloader=dataloaders['train_retain_loader'], 
                                        n_shards=10, n_slices=10, n_features=n_features,
                                        n_classes=n_classes, n_epochs=n_epochs,
                                        save_dir='./experiments/checkpoints/SISA/retrained_model')
                 retrained_model.process_data()
                 retrained_model.train_all_models()
-            
+
+                # ------------- Copy original model and set model types -------------
+                original_model = copy.deepcopy(unlearned_model)
+                original_model.model_type = 'pre_forget'
+                unlearned_model.model_type = 'post_forget'
+
+                # ------------- Forget datapoints in train set -------------
+                unlearned_model.forget_datapoints(datapoint_idxs=dataloaders['forget_idx_in_train'])#.forget_datapoint(datapoint_idx=0)
+
+            # ======================== Amnesiac ========================
             elif args.unlearn_type == 'amnesiac':
 
+                # ------------- Define unlearned model and trainer -------------
                 unlearned_model = NeuralNet(n_features, n_classes)
                 trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=args.device, cache_gradients=True)
 
@@ -104,59 +141,49 @@ if __name__ == '__main__':
                 forget_loader = dataloaders['train_forget_loader']
                 indices_to_forget = dataloaders['forget_idx_in_train']
 
+                # ------------- Define unlearned model -------------
                 # training on full dataset while storing gradients for sensitive batches/points to forget later
                 trainer.train(train_full_loader, 
                               epochs=n_epochs, 
                               indices_to_forget=indices_to_forget, 
                               save_accuracy_to_file=False)
                 
-                # define and train retrained model on the retain dataset
+                # ------------- Define retrained model -------------
                 retrained_model = NeuralNet(n_features, n_classes)
                 retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=args.device, cache_gradients=True)
                 retrained_trainer.train(retain_loader, repair=True)            
             
-            original_model = copy.deepcopy(unlearned_model)
-            original_model.model_type = 'pre_forget'
-            unlearned_model.model_type = 'post_forget'
-            
-            if args.unlearn_type == 'Scrub+R':
-                alpha = 1.
-                gamma = 1.
-                scrub = ScrubR(unlearned_model, original_model, alpha=alpha, gamma=gamma)
-                scrub(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'], dataloaders['val_loader'], n_rounds=6)
-            
-            elif args.unlearn_type == 'SSD':
-                alpha=7.5
-                _lambda = 0.5
-                criterion = nn.CrossEntropyLoss()
-                SSD = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
-                SSD(full_dataloader=dataloaders['train_full_loader'], forget_dataloader=dataloaders['train_forget_loader'])
-            
-            elif args.unlearn_type == 'SISA':
-                unlearned_model.forget_datapoints(datapoint_idxs=dataloaders['forget_idx_in_train'])#.forget_datapoint(datapoint_idx=0)
 
-            elif args.unlearn_type == 'SAE':
-                _lambda = 1.0 # regularization strength
-                layer_num = 4 # which layer to apply the SAE
-                m_multiple = 4 # how many times larger m should be than d
-                d = unlearned_model.net[layer_num-2].out_features # dimensionality of the SAE input activation (assuming neural network has a bias term)
-                sae = SAE(d=d, 
-                        m=d * m_multiple,
-                        _lambda=_lambda)
-                
-                sae_unlearner = SAEUnlearner(unlearned_model, sae, layer_num)
-                sd_before = sae_unlearner.model.state_dict()
-                sae_trainer = Trainer(sae_unlearner, train_dataloader=dataloaders['train_full_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
-                sae_trainer.train_sae()
-                sd_after = sae_unlearner.model.state_dict()
+                # ------------- Copy original model and set model types -------------
+                original_model = copy.deepcopy(unlearned_model)
+                original_model.model_type = 'pre_forget'
+                unlearned_model.model_type = 'post_forget'
 
-            elif args.unlearn_type == 'amnesiac':
+                # ------------- Forget all sensitive batches -------------
                 trainer.forget(indices_to_forget=None) # Set to None to forget all sensitive batches, used when storing only gradients for sensitive batches
 
                 # repair phase, hardcoded to 10 epochs
                 trainer.train(train_full_loader, epochs=10, 
                             save_accuracy_to_file=False, 
                             repair=True)
+            
+            # ======================== SAE ========================
+            elif args.unlearn_type == 'SAE':
+                raise NotImplementedError("SAE is not implemented yet")
+                # _lambda = 1.0 # regularization strength
+                # layer_num = 4 # which layer to apply the SAE
+                # m_multiple = 4 # how many times larger m should be than d
+                # d = unlearned_model.net[layer_num-2].out_features # dimensionality of the SAE input activation (assuming neural network has a bias term)
+                # sae = SAE(d=d, 
+                #         m=d * m_multiple,
+                #         _lambda=_lambda)
+                
+                # sae_unlearner = SAEUnlearner(unlearned_model, sae, layer_num)
+                # sd_before = sae_unlearner.model.state_dict()
+                # sae_trainer = Trainer(sae_unlearner, train_dataloader=dataloaders['train_full_loader'], val_dataloader=dataloaders['val_loader'], n_epochs=n_epochs)
+                # sae_trainer.train_sae()
+                # sd_after = sae_unlearner.model.state_dict()
+
                 
             # Model evaluation
             unlearning_evaluator = UnlearningEvaluator()
