@@ -26,8 +26,10 @@ class SyntheticDataset(Dataset):
 
         self.onehot_labels = onehot_labels
 
+        self.n_classes = n_classes
+
         if self.onehot_labels:
-            self.y = self.onehot_encode_labels(self.y, n_classes)
+            self.y = self.onehot_encode_labels(self.y, self.n_classes)
 
     def __len__(self):
         return len(self.X)

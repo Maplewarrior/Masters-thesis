@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
 import pdb
+from torch.utils.data import DataLoader
+from src.data_utils.synthetic_data import SyntheticDataset
+
 class UnlearningEvaluator:
     def __init__(self) -> None:
         
@@ -16,15 +19,20 @@ class UnlearningEvaluator:
 
     def get_model_predictions(self, unlearned_model, 
                                     comparison_model,
-                                    dataloader):
+                                    dataloader: DataLoader[SyntheticDataset]):
         preds_u = []
         preds_c = []
         ys = []
         if unlearned_model != None and comparison_model != None:
-            for (x, y) in dataloader:
+            for (x, y, *extra) in dataloader:                
                 preds_u.append(unlearned_model.inference(x)['logits'])
                 preds_c.append(comparison_model.inference(x)['logits'])
+
+                # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
+                if not dataloader.dataset.onehot_labels:
+                    y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes)
                 ys.append(y)
+
             preds_u = torch.cat(preds_u)
             preds_c = torch.cat(preds_c)
             ys = torch.cat(ys)
@@ -34,7 +42,7 @@ class UnlearningEvaluator:
                  unlearned_model, 
                  comparison_model, 
                  metrics: list[str], 
-                 dataloader):
+                 dataloader: DataLoader[SyntheticDataset]):
         result = {}
         preds_u, preds_c, y_values = self.get_model_predictions(unlearned_model, comparison_model, dataloader)
 
