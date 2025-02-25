@@ -49,7 +49,7 @@ def parse_arguments():
 
 def generate_data(args, n_features=25, n_classes=4, random_state=42):
     """
-    Generates and splits the synthetic data. Returns a data generator and associated dataloaders.
+    Generates and splits the synthetic data. Returns a data generator without drawing forget set.
     """
     data_generator = DataGenerator(random_state=random_state)
     data_generator.generate_data(
@@ -64,21 +64,35 @@ def generate_data(args, n_features=25, n_classes=4, random_state=42):
         outlier_class=1
     )
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-    data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
+    return data_generator
+
+
+def create_forget_retain_split(data_generator, args, n_points=50, class_idx=None, ood_ratio=0.5):
+    """
+    Creates a new forget/retain split for existing data and returns associated dataloaders.
+    
+    Args:
+        data_generator: Existing DataGenerator instance with data already generated
+        args: Command line arguments
+        n_points: Number of points to include in forget set
+        class_idx: Specific class to draw forget points from (None for random)
+        ood_ratio: Ratio of out-of-distribution points in forget set
+    """
+    data_generator.draw_forget_set(n_points=n_points, class_idx=class_idx, ood_ratio=ood_ratio)
+    
+    batch_size = 32
 
     # For amnesiac, we need indices, so batch_size differs:
     if args.unlearn_type == "amnesiac":
-        batch_size = 1
         dataloaders = create_dataloaders(
             data_generator, batch_size=batch_size, use_indices=True, device=args.device
         )
     else:
-        batch_size = 32
         dataloaders = create_dataloaders(
             data_generator, batch_size=batch_size, onehot_labels=True, device=args.device
         )
-
-    return data_generator, dataloaders
+    
+    return dataloaders
 
 
 def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
@@ -275,57 +289,57 @@ def evaluate_models(unlearned_model, retrained_model, original_model, dataloader
 
 def run_experiment(args):
     """
-    Main experiment flow:
-    1) Generate data
-    2) For each unlearning method, repeatedly run unlearning & evaluation
-    3) Save results to JSON
-    4) Print LaTeX table
+    Main experiment flow with multiple forget set trials
     """
     n_repeats = 10
     n_epochs = 20
     n_features = 25
     n_classes = 4
+    n_forget_trials = 5  # Number of different forget sets to try
 
-    data_generator, dataloaders = generate_data(args, n_features, n_classes, random_state=42)
+    # Generate data once
+    data_generator = generate_data(args, n_features, n_classes, random_state=42)
 
-    # Prepare structure to store aggregated results over repeats
+    # Prepare structure to store aggregated results over repeats and forget trials
     aggregated_results = {
         "unlearned vs. original": {"retain": [], "forget": [], "validation": []},
         "unlearned vs. retrained": {"retain": [], "forget": [], "validation": []},
     }
 
-    # Dictionary dispatch for different unlearning methods
-    unlearning_dispatch = {
-        "SSD": apply_unlearning_scrub_r_SSD,
-        "Scrub+R": apply_unlearning_scrub_r_SSD,
-        "SISA": apply_unlearning_sisa,
-        "amnesiac": apply_unlearning_amnesiac,
-        "SAE": apply_unlearning_sae,
-    }
+    # For each forget trial
+    for forget_trial in range(n_forget_trials):
+        # Create new forget/retain split
+        dataloaders = create_forget_retain_split(data_generator, args)
+        
+        # Rest of your experiment code...
+        for i in range(n_repeats):
+            if args.unlearn_type in ["SSD", "Scrub+R"]:
+                unlearned_model, retrained_model, original_model = apply_unlearning_scrub_r_SSD(
+                    args.unlearn_type,
+                    dataloaders,
+                    n_features,
+                    n_classes,
+                    n_epochs,
+                    device=args.device
+                )
+            else:
+                unlearned_model, retrained_model, original_model = apply_unlearning_scrub_r_SSD(
+                    args.unlearn_type,
+                    dataloaders,
+                    n_features,
+                    n_classes,
+                    n_epochs,
+                    device=args.device
+                )
 
-    for i in range(n_repeats):
-        if args.unlearn_type in ["SSD", "Scrub+R"]:
-            unlearned_model, retrained_model, original_model = unlearning_dispatch[args.unlearn_type](
-                args.unlearn_type,
-                dataloaders,
-                n_features,
-                n_classes,
-                n_epochs,
-                device=args.device
-            )
-        else:
-            unlearned_model, retrained_model, original_model = unlearning_dispatch[args.unlearn_type](
-                dataloaders, n_features, n_classes, n_epochs, device=args.device
-            )
+            # Evaluate
+            results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
 
-        # Evaluate
-        results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
-
-        # Aggregate
-        for comp_type in aggregated_results.keys():
-            for subset in aggregated_results[comp_type].keys():
-                aggregated_results[comp_type][subset].append(results[comp_type][subset])
-
+            # Aggregate
+            for comp_type in aggregated_results.keys():
+                for subset in aggregated_results[comp_type].keys():
+                    aggregated_results[comp_type][subset].append(results[comp_type][subset])
+        break
     # Wrap in a top-level dict keyed by unlearn type
     final_results = {args.unlearn_type: aggregated_results}
 
