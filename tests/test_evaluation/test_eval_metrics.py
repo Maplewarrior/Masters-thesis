@@ -189,8 +189,8 @@ def test_numerical_stability():
     kl_div = evaluator.KL_divergence(small_diff_1, small_diff_2)
     js_div = evaluator.JS_divergence(small_diff_1, small_diff_2)
     
-    assert kl_div >= 0, "KL divergence should handle small differences"
-    assert js_div >= 0, "JS divergence should handle small differences"
+    assert np.isclose(kl_div, 0, atol=1e-5), "KL divergence should handle small differences"
+    assert np.isclose(js_div, 0, atol=1e-5), "JS divergence should handle small differences"
 
 @pytest.mark.parametrize("metric", [
     "Hamming PD",

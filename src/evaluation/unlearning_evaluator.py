@@ -1,6 +1,6 @@
 import torch
+
 import torch.nn.functional as F
-import pdb
 from torch.utils.data import DataLoader
 from src.data_utils.synthetic_data import SyntheticDataset
 
@@ -55,6 +55,8 @@ class UnlearningEvaluator:
                 result[metric] = self.metricname2function[metric](preds_u, preds_c, y_values)
             else:
                 result[metric] = self.metricname2function[metric](preds_u, preds_c)
+        
+
         return result
     
     
@@ -92,24 +94,31 @@ class UnlearningEvaluator:
         
         If we denote P = preds_c and Q = preds_u the formula then becomes: KL[P || Q] = Σ P(x) * log(P(x) / Q(x))
         """
-        
-        # NOTE The below 3 implementations are equivalent.
+        # NOTE The below 3 implementations have been tested and appear to be equivalent...
         # kl_ls = F.kl_div(self.log_softmax(preds_u), self.softmax(preds_c), reduction='batchmean').item()
         # kl = F.kl_div(torch.log(self.softmax(preds_u)), self.softmax(preds_c), reduction='batchmean').item()
-        
         # kl_manual = (self.softmax(preds_c) * torch.log(self.softmax(preds_c) / self.softmax(preds_u))).sum(dim=-1).mean()
         
-        log_probs_u = self.log_softmax(preds_u)
+        log_probs_u = torch.clamp(self.softmax(preds_u), min=1e-8).log()
         probs_c = torch.clamp(self.softmax(preds_c), min=1e-8) # avoid numeric issues
-        kl = F.kl_div(log_probs_u, probs_c, reduction='batchmean').item()
-        return kl
+        return F.kl_div(log_probs_u, probs_c, reduction='batchmean').item()
+
     
     def JS_divergence(self, preds_u, preds_c, log_base: float = 2.0):
-        preds_m = (preds_u + preds_c) / 2
-        estimate_u = self.KL_divergence(preds_m, preds_u)
-        estimate_c = self.KL_divergence(preds_m, preds_c)
+        tolerance = 1e-6
+        probs_u = self.softmax(preds_u)
+        probs_c = self.softmax(preds_c)
+        log_probs_m = (torch.clamp((probs_u + probs_c) / 2, min=1e-8)).log()
+
+        estimate_u = F.kl_div(log_probs_m, probs_u, reduction='batchmean') # self.KL_divergence(preds_m, preds_u)
+        estimate_c = F.kl_div(log_probs_m, probs_c, reduction='batchmean')
         estimate = (estimate_u + estimate_c) / 2
 
         if log_base == 2.0:
-            estimate = (estimate/torch.log(torch.tensor(2.))).item()
-        return estimate
+            estimate = (estimate/torch.log(torch.tensor(2.)))
+        
+        if estimate.item() < 0 - tolerance or estimate.item() > 1 + tolerance:
+            print("JS Divergence out of bounds!")
+            # pdb.set_trace()
+        
+        return estimate.item()
