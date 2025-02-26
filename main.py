@@ -18,6 +18,11 @@ from src.modelling.SAE import SAE
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from src.evaluation.results_table import create_latex_table
 from src.modelling.amnesiac import AmnesiacTrainer
+from tqdm.auto import tqdm
+from rich.console import Console
+from rich.panel import Panel
+from rich.live import Live
+from rich.layout import Layout
 
 
 def parse_arguments():
@@ -49,7 +54,7 @@ def parse_arguments():
 
 def generate_data(args, n_features=25, n_classes=4, random_state=42):
     """
-    Generates and splits the synthetic data. Returns a data generator and associated dataloaders.
+    Generates and splits the synthetic data. Returns a data generator without drawing forget set.
     """
     data_generator = DataGenerator(random_state=random_state)
     data_generator.generate_data(
@@ -64,21 +69,35 @@ def generate_data(args, n_features=25, n_classes=4, random_state=42):
         outlier_class=1
     )
     data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-    data_generator.draw_forget_set(n_points=50, class_idx=None, ood_ratio=0.5)
+    return data_generator
+
+
+def create_forget_retain_split(data_generator, args, n_points=50, class_idx=None, ood_ratio=0.5):
+    """
+    Creates a new forget/retain split for existing data and returns associated dataloaders.
+    
+    Args:
+        data_generator: Existing DataGenerator instance with data already generated
+        args: Command line arguments
+        n_points: Number of points to include in forget set
+        class_idx: Specific class to draw forget points from (None for random)
+        ood_ratio: Ratio of out-of-distribution points in forget set
+    """
+    data_generator.draw_forget_set(n_points=n_points, class_idx=class_idx, ood_ratio=ood_ratio)
+    
+    batch_size = 32
 
     # For amnesiac, we need indices, so batch_size differs:
     if args.unlearn_type == "amnesiac":
-        batch_size = 1
         dataloaders = create_dataloaders(
             data_generator, batch_size=batch_size, use_indices=True, device=args.device
         )
     else:
-        batch_size = 32
         dataloaders = create_dataloaders(
             data_generator, batch_size=batch_size, onehot_labels=True, device=args.device
         )
-
-    return data_generator, dataloaders
+    
+    return dataloaders
 
 
 def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
@@ -86,7 +105,7 @@ def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, dev
     Trains and returns a NeuralNet model using the provided dataloader.
     """
     model = NeuralNet(n_features, n_classes)
-    trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device)
+    trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device, disable_tqdm=True)
     trainer.train()
     trainer.eval()
     return model
@@ -154,6 +173,7 @@ def apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, device="
         n_classes=n_classes,
         n_epochs=n_epochs,
         save_dir="./experiments/checkpoints/SISA/original_model",
+        disable_tqdm=True
     )
     unlearned_shards_dict = unlearned_model.process_data()
     original_shards_dict = unlearned_shards_dict  # in case you need it
@@ -168,6 +188,7 @@ def apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, device="
         n_classes=n_classes,
         n_epochs=n_epochs,
         save_dir="./experiments/checkpoints/SISA/retrained_model",
+        disable_tqdm=True
     )
     retrained_model.process_data()
     retrained_model.train_all_models()
@@ -189,7 +210,7 @@ def apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, devi
     Returns the unlearned model, retrained model, and original model.
     """
     unlearned_model = NeuralNet(n_features, n_classes)
-    trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=device, cache_gradients=True)
+    trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
 
     # Train on full data, storing gradients for sensitive batches
     indices_to_forget = dataloaders["forget_idx_in_train"]
@@ -202,7 +223,7 @@ def apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, devi
 
     # Retrained model
     retrained_model = NeuralNet(n_features, n_classes)
-    retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=device, cache_gradients=True)
+    retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
     retrained_trainer.train(dataloaders["train_retain_loader"], repair=True)
 
     # Original model
@@ -275,71 +296,112 @@ def evaluate_models(unlearned_model, retrained_model, original_model, dataloader
 
 def run_experiment(args):
     """
-    Main experiment flow:
-    1) Generate data
-    2) For each unlearning method, repeatedly run unlearning & evaluation
-    3) Save results to JSON
-    4) Print LaTeX table
+    Main experiment flow with multiple forget set trials
     """
+    console = Console()
     n_repeats = 10
     n_epochs = 20
     n_features = 25
     n_classes = 4
+    n_forget_trials = 5  # Number of different forget sets to try
 
-    data_generator, dataloaders = generate_data(args, n_features, n_classes, random_state=42)
+    # Generate data once
+    data_generator = generate_data(args, n_features, n_classes, random_state=42)
 
-    # Prepare structure to store aggregated results over repeats
+    # Prepare structure to store aggregated results
     aggregated_results = {
         "unlearned vs. original": {"retain": [], "forget": [], "validation": []},
         "unlearned vs. retrained": {"retain": [], "forget": [], "validation": []},
     }
 
-    # Dictionary dispatch for different unlearning methods
-    unlearning_dispatch = {
-        "SSD": apply_unlearning_scrub_r_SSD,
-        "Scrub+R": apply_unlearning_scrub_r_SSD,
-        "SISA": apply_unlearning_sisa,
-        "amnesiac": apply_unlearning_amnesiac,
-        "SAE": apply_unlearning_sae,
-    }
+    # Create a panel for live updates
+    info_panel = Panel("Starting experiments...", title="Current Status")
+    
+    # Create progress bars for both loops
+    live = Live(info_panel, refresh_per_second=4)
+    
+    # Set up exception handler to clean up Live display
+    def handle_pdb(*args):
+        live.stop()  # Stop live display before pdb
+        result = original_trace(*args)  # Run pdb
+        live.start()  # Restart live display after pdb
+        return result
+    
+    original_trace = pdb.set_trace
+    pdb.set_trace = handle_pdb
+    
+    try:
+        live.start()
+        for forget_trial in tqdm(range(n_forget_trials), desc="Forget trials", position=0):
+            # Create new forget/retain split
+            dataloaders = create_forget_retain_split(data_generator, args)
+            
+            for i in tqdm(range(n_repeats), desc="Repeats", position=1, leave=False):
+                # Update the panel with current status
+                info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{n_forget_trials}, Iteration {i + 1}/{n_repeats}"
+                info_panel.subtitle = f"[bold]Unlearning type:[/bold] {args.unlearn_type}"
+                
+                # Call the appropriate unlearning function based on the type
+                if args.unlearn_type in ["SSD", "Scrub+R"]:
+                    unlearned_model, retrained_model, original_model = apply_unlearning_scrub_r_SSD(
+                        args.unlearn_type,
+                        dataloaders,
+                        n_features,
+                        n_classes,
+                        n_epochs,
+                        device=args.device
+                    )
+                elif args.unlearn_type == "amnesiac":
+                    unlearned_model, retrained_model, original_model = apply_unlearning_amnesiac(
+                        dataloaders,
+                        n_features,
+                        n_classes,
+                        n_epochs,
+                        device=args.device
+                    )
+                elif args.unlearn_type == "SISA":
+                    unlearned_model, retrained_model, original_model = apply_unlearning_sisa(
+                        dataloaders,
+                        n_features,
+                        n_classes,
+                        n_epochs,
+                        device=args.device
+                    )
+                elif args.unlearn_type == "SAE":
+                    unlearned_model, retrained_model, original_model = apply_unlearning_sae()
+                else:
+                    raise ValueError(f"Unknown unlearning type: {args.unlearn_type}")
 
-    for i in range(n_repeats):
-        if args.unlearn_type in ["SSD", "Scrub+R"]:
-            unlearned_model, retrained_model, original_model = unlearning_dispatch[args.unlearn_type](
-                args.unlearn_type,
-                dataloaders,
-                n_features,
-                n_classes,
-                n_epochs,
-                device=args.device
-            )
-        else:
-            unlearned_model, retrained_model, original_model = unlearning_dispatch[args.unlearn_type](
-                dataloaders, n_features, n_classes, n_epochs, device=args.device
-            )
+                # Evaluate
+                results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
 
-        # Evaluate
-        results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
+                # Aggregate results
+                for comp_type in aggregated_results.keys():
+                    for subset in aggregated_results[comp_type].keys():
+                        aggregated_results[comp_type][subset].append(results[comp_type][subset])
+                
+                # Update the panel content with latest metrics
+                info_panel.renderable = f"""[green]Key metrics for this iteration:[/green]
+Hamming PD (validation): {results['unlearned vs. retrained']['validation']['Hamming PD']:.4f}
+JS divergence (validation): {results['unlearned vs. retrained']['validation']['JS divergence']:.4f}"""
+                
+                live.refresh()
 
-        # Aggregate
-        for comp_type in aggregated_results.keys():
-            for subset in aggregated_results[comp_type].keys():
-                aggregated_results[comp_type][subset].append(results[comp_type][subset])
-
-    # Wrap in a top-level dict keyed by unlearn type
-    final_results = {args.unlearn_type: aggregated_results}
-
-    # Save to file
-    os.makedirs("experiments/results", exist_ok=True)
-    output_file = f"experiments/results/{args.unlearn_type}_results.json"
-    with open(output_file, "w") as f:
-        json.dump(final_results, f)
-    print(f"Results saved to {output_file}.")
-
-    # Print LaTeX table for immediate reference
-    results_table = create_latex_table(final_results)
-    print(results_table)
-    pdb.set_trace()
+        # Save results and print final output
+        os.makedirs("experiments/results", exist_ok=True)
+        output_file = f"experiments/results/{args.unlearn_type}_results.json"
+        with open(output_file, "w") as f:
+            json.dump(aggregated_results, f)
+        
+        live.stop()
+        
+        console.print(f"[bold green]Results saved to {output_file}.")
+        
+        
+    finally:
+        # Restore original pdb.set_trace and ensure Live display is stopped
+        pdb.set_trace = original_trace
+        live.stop()
 
 
 def get_latex_results():
@@ -367,7 +429,6 @@ def main():
         get_latex_results()
     else:
         print("Visualization mode not implemented in this refactoring.")
-
 
 if __name__ == "__main__":
     main()

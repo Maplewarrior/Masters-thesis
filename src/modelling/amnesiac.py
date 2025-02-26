@@ -53,7 +53,8 @@ class AmnesiacTrainer:
                  criterion: nn.Module = None,
                   optimizer: optim.Optimizer = None,
                   device: str=None, 
-                  cache_gradients: bool = True):
+                  cache_gradients: bool = True,
+                  disable_tqdm: bool = False):
         
         self.device = "cpu" if device is None else device
         self.model = model.to(self.device)
@@ -68,6 +69,8 @@ class AmnesiacTrainer:
             print(f"Caching gradients. This could take a lot of memory. Download some more RAM if you run out.")
         else:
             print(f"Save gradients to file. This will save memory. Not storage space though :'(")
+
+        self.disable_tqdm = disable_tqdm
     
     def train(self, 
               train_loader, 
@@ -105,15 +108,11 @@ class AmnesiacTrainer:
         accuracies_forget = []
         accuracies_retain = []
 
-        with tqdm(range(epochs)) as pbar:
+        with tqdm(range(epochs), disable=self.disable_tqdm) as pbar:
             for epoch in pbar:
                 self.model.train()
                 total_loss = 0.0
 
-
-                forget_accuracy = []
-                retain_accuracy = []
-                
                 for batch_idx, (x, y, indices) in enumerate(train_loader):
                     x, y = x.float(), y.long()
                     x = x.to(self.device)
@@ -180,9 +179,8 @@ class AmnesiacTrainer:
             accuracies_dict["forget"] = accuracies_forget
         if retain_loader is not None:
             accuracies_dict["retain"] = accuracies_retain
-
         # save accuracies to json file
-        if save_accuracy_to_file is not None:
+        if save_accuracy_to_file:
 
             if save_accuracy_to_file_name is not None:
                 file_name = f"results/amnesiac/accuracy/{save_accuracy_to_file_name}_accuracies.json"
@@ -277,11 +275,7 @@ class AmnesiacTrainer:
         return val_loss / len(loader), correct / total
     
     def forget(self, indices_to_forget=None):
-        """Unlearn specific training examples by reverting their parameter updates.
-
-        Args:
-            indices_to_forget (list): List of data indices to forget. If None, all sensitive batches stored are reverted. Be sure to specifiy while training which should be sensitive batches.
-        """
+        """Unlearn specific training examples by reverting their parameter updates."""
         batches = {}
         
         for epoch in self.batch_mapping:
@@ -311,13 +305,8 @@ class AmnesiacTrainer:
         print("Forgetting complete.")
     
     def test(self, test_loader, dname=None, save_to_file_name=None):
-        """Evaluate the model on test data.
-
-        Args:
-            test_loader (DataLoader): DataLoader for test data
-        """
+        """Evaluate the model on test data."""
         _, test_acc = self.evaluate(test_loader)
-
 
         if dname is not None:
             print(f"{dname}: {test_acc*100:.2f}%")

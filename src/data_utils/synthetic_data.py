@@ -46,7 +46,7 @@ class SyntheticDataset(Dataset):
             return self.X[idx], self.y[idx]
         
     
-def create_dataloaders(data_generator, batch_size=32, onehot_labels=False, use_indices=False, device="cpu"):
+def create_dataloaders(data_generator, batch_size=32, onehot_labels=False, use_indices=False, device="cpu", shuffle=True):
     """
     Create PyTorch DataLoaders for the full dataset, retain set, and forget set.
 
@@ -68,9 +68,9 @@ def create_dataloaders(data_generator, batch_size=32, onehot_labels=False, use_i
     print(f"  Full val dataset size: {len(full_val_dataset)}")
     print(f"  Full test dataset size: {len(full_test_dataset)}")
 
-    full_train_loader = DataLoader(full_train_dataset, batch_size=batch_size, shuffle=True)
-    full_val_loader = DataLoader(full_val_dataset, batch_size=batch_size, shuffle=True)
-    full_test_loader = DataLoader(full_test_dataset, batch_size=batch_size, shuffle=True)
+    full_train_loader = DataLoader(full_train_dataset, batch_size=batch_size, shuffle=shuffle)
+    full_val_loader = DataLoader(full_val_dataset, batch_size=batch_size, shuffle=shuffle)
+    full_test_loader = DataLoader(full_test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     # Retain set
     if data_generator.retain_X is not None and data_generator.retain_y is not None:

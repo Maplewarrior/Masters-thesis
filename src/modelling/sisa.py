@@ -27,7 +27,10 @@ class SISA:
                  n_shards: int = 10, n_slices: int = 10,
                  n_features: int = 2, n_classes: int = 2,
                  n_epochs: int = 10,
-                 save_dir: str = './experiments/checkpoints/SISA'):
+                 save_dir: str = './experiments/checkpoints/SISA',
+                 disable_tqdm: bool = False):
+        
+        self.disable_tqdm = disable_tqdm
         
         self.dataloader = dataloader
 
@@ -181,7 +184,7 @@ class SISA:
         
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
-        for slice_id, _ in tqdm(enumerate(shard_slices)):
+        for slice_id, _ in tqdm(enumerate(shard_slices),disable=self.disable_tqdm):
             # Below looks wierd because we need to handle different slice sizes.
             # We flatten the slices and concatenate them.
             slice_indices = np.concatenate([np.asarray(slice_arr).flatten() for slice_arr in shard_slices[:slice_id+1]])
@@ -228,7 +231,7 @@ class SISA:
         shard_outputs = np.zeros((self.n_shards, len(X), self.n_classes))
 
         # Get probability outputs from each shard's final model
-        for idx, shard_id in tqdm(enumerate(range(self.n_shards))):
+        for idx, shard_id in tqdm(enumerate(range(self.n_shards)), disable=self.disable_tqdm):
             last_model = self.load_model(shard_id, self.n_slices - 1) # Assumes that there are models for all slices
             # Modify your NeuralNetwork class to return probabilities instead of argmax
             probs = last_model.predict_proba(X)  # This should return softmax outputs
@@ -258,7 +261,7 @@ class SISA:
         """
         
         all_model_logits = []
-        for idx, shard_id in tqdm(enumerate(range(self.n_shards))):
+        for idx, shard_id in tqdm(enumerate(range(self.n_shards)),disable=self.disable_tqdm):
             # Load most recent model, assumes that there are models for all slices
             if hasattr(self, 'model_type'):
                 last_model = self.load_post_forget_model(shard_id).eval() if self.model_type == 'post_forget' else self.load_pre_forget_model(shard_id).eval()
