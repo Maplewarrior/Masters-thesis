@@ -9,10 +9,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v3
     
-    - name: Set up Python
+    - name: Set up Python 3.10
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
@@ -20,33 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install pytest
         pip install -r requirements.txt
-        pip install pytest pytest-github-actions-annotate-failures
         
-    - name: Get all pytest markers
-      id: get-markers
+    - name: Run tests
       run: |
-        MARKERS=$(pytest --markers | grep @pytest.mark | cut -d' ' -f2)
-        echo "markers=$MARKERS" >> $GITHUB_OUTPUT
-        
-    - name: Run Tests by Marker
-      run: |
-        mkdir -p test-results
-        for marker in ${{ steps.get-markers.outputs.markers }}; do
-          echo "::group::Running tests with marker: $marker"
-          pytest -v -m "$marker" --junitxml=test-results/$marker.xml
-          echo "::endgroup::"
-        done
-
-    - name: Generate Test Summary
-      if: always()
-      run: |
-        echo "::group::Test Summary"
-        echo "Test Results by Marker:"
-        for xml in test-results/*.xml; do
-          marker=$(basename "$xml" .xml)
-          echo "- $marker:"
-          grep -A1 "testsuite " "$xml" | tail -n1 | \
-            awk '{printf "  Tests: %d, Failures: %d, Errors: %d, Skipped: %d\n", $3, $4, $5, $6}'
-        done
-        echo "::endgroup::" 
+        pytest
