@@ -128,3 +128,5 @@ def test_onehot_encode_labels():
 
     assert dataset.y.shape == (n_samples, n_classes)
     assert torch.all(torch.sum(dataset.y, dim=1) == 1)
+
+# TODO: Add tests for plotting each layer's splines

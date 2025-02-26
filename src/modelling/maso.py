@@ -12,8 +12,6 @@ Assumptions:
 from src.modelling.neural_network import NeuralNet
 import torch.nn as nn
 import torch
-from src.data_utils.synthetic_data import create_dataloaders
-from src.data_utils.synthetic_data import DataGenerator
 from src.modelling.trainer import Trainer
 import matplotlib.pyplot as plt
 import pdb
@@ -76,7 +74,7 @@ class MASO:
         W = W_L @ W_L.T
         reg_term = torch.sum(torch.abs(W - torch.diag(torch.diag(W))))
         return fit_term + self._lambda * reg_term
-    
+
     def print_layerwise_parameters(self):
         for name, param in self.model.named_parameters():
             print(f"Layer: {name}, Shape: {param.shape}")
@@ -127,7 +125,7 @@ class MASO:
             current_activation = activation_fn(torch.tensor(current_activation, dtype=torch.float32)).numpy()
             
             # Reshape for plotting
-            Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
+            Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1).numpy()
             
             # If this is not the final layer, plot in grey
             if layer < layer_idx - 1:
@@ -197,16 +195,17 @@ class MASO:
             distance += 1 - (self.partition_map[layer_idx][x1] == self.partition_map[layer_idx][x2])
         return distance / len(self.partition_map)
 
-    def plot_combined_visualization(self, layer_idx: int, activation_fn: nn.Module, x_interval=(-10, 10), y_interval=(-10, 10)):
+    def plot_combined_visualization(self, layer_idx: int, activation_fn: nn.Module, x_interval=(-10, 10), y_interval=(-10, 10), save_path: str = None):
         """
         Plot both the decision boundary and input space partitions in a single plot.
         layer_idx represents how many layers to include for partitions.
         """
         # Create a grid of points
-        x_min, x_max = x_interval
-        y_min, y_max = y_interval
-        xx, yy = torch.meshgrid(torch.linspace(x_min, x_max, 1000),
-                            torch.linspace(y_min, y_max, 1000))
+        x = torch.linspace(x_interval[0], x_interval[1], 1000)
+        y = torch.linspace(y_interval[0], y_interval[1], 1000)
+        xx, yy = torch.meshgrid(x, y, indexing='xy')
+
+        grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
         
         # Create figure
         plt.figure(figsize=(10, 10))
@@ -228,18 +227,15 @@ class MASO:
                       alpha=0.2, cmap=custom_cmap, shading='auto')
 
         # Plot splines for each layer
-        grid_points = np.vstack([xx.ravel(), yy.ravel()]).T
-        current_activation = grid_points
+        current_activation = grid
         
         # Plot each layer's splines
         for layer in range(layer_idx):
             W, b = self.maso_params[layer]
             # Linear transformation
             current_activation = np.dot(current_activation, W.T) + b
-            # Apply activation
+
             current_activation = activation_fn(torch.tensor(current_activation, dtype=torch.float32)).numpy()
-            
-            # Reshape for plotting
             Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
             
             # If this is not the final layer, plot in grey
@@ -249,8 +245,18 @@ class MASO:
             else:
                 color = 'red'
                 alpha = 0.5
+
+                if Z.shape[-1] > 2:  # multiclass case
+                    # Get regions where each class has maximum logit
+                    max_indices = np.argmax(Z, axis=2)
+                    for i in range(Z.shape[-1]):
+                        class_region = (max_indices == i)
+                        plt.contour(xx, yy, class_region, colors=colors[i], linewidths=2, zorder=10)
+                else:  # binary case
+                    decision_boundary = Z[:,:,0] - Z[:,:,1]
+                    plt.contour(xx, yy, decision_boundary, levels=[0], 
+                              colors=color, alpha=alpha, linewidths=2, zorder=10)
                 
-            # Plot the splines for each neuron
             for i in range(Z.shape[-1]):
                 plt.contour(xx, yy, Z[:,:,i], levels=[0], colors=color, alpha=alpha, linewidths=1)
         
@@ -258,7 +264,10 @@ class MASO:
         for class_idx, color in zip(classes, colors):
             plt.scatter(self.X[y == class_idx, 0], self.X[y == class_idx, 1], 
                        color=color, s=20, label=f"Class {class_idx}", alpha=0.6)
-        
+            
+        # Plot point on 0,-7.3
+        plt.scatter(-0.4, -7, color='black', s=30, label='Point (-0.4, -7)')
+
         plt.colorbar(label='Class')
         plt.xlabel('Feature 1')
         plt.ylabel('Feature 2')
@@ -266,7 +275,10 @@ class MASO:
                  f'(Previous layers shown in grey)\nActivation Function: {activation_fn.__name__}')
         plt.legend()
         plt.grid(True, alpha=0.2)
-        plt.show()
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
 
 def maso_dataset(n_samples: int, n_features: int, n_classes: int):
     """
@@ -286,11 +298,16 @@ def maso_dataset(n_samples: int, n_features: int, n_classes: int):
     # Initialize arrays
     X = np.zeros((n_samples, n_features))
     y = np.zeros((n_samples, n_classes))
-    samples_per_class = n_samples // n_classes
     
+    # Calculate base samples per class and remaining samples
+    base_samples_per_class = n_samples // n_classes
+    remaining_samples = n_samples % n_classes
+    
+    current_idx = 0
     for class_idx in range(n_classes):
-        start_idx = class_idx * samples_per_class
-        end_idx = start_idx + samples_per_class
+        # Add one extra sample to this class if there are remaining samples
+        samples_this_class = base_samples_per_class + (1 if class_idx < remaining_samples else 0)
+        end_idx = current_idx + samples_this_class
         
         # Randomly choose pattern type for this class
         pattern_type = np.random.choice(['circular', 'semicircular', 'gaussian'])
@@ -298,39 +315,40 @@ def maso_dataset(n_samples: int, n_features: int, n_classes: int):
         if pattern_type == 'gaussian':
             # Random center point for the gaussian
             center = np.random.uniform(-5, 5, 2)
-            X[start_idx:end_idx] = np.random.multivariate_normal(
+            X[current_idx:end_idx] = np.random.multivariate_normal(
                 mean=center,
                 cov=[[0.5, 0], [0, 0.5]],
-                size=samples_per_class
+                size=samples_this_class
             )
         else:
             # Generate radius and angles
             radius = 2 * (class_idx + 1)  # Increasing radii for each class
             
             if pattern_type == 'circular':
-                theta = np.random.uniform(0, 2*np.pi, samples_per_class)
+                theta = np.random.uniform(0, 2*np.pi, samples_this_class)
             else:  # semicircular
                 # Random starting angle for the semicircle
                 start_angle = np.random.uniform(0, np.pi)
                 theta = np.random.uniform(
                     start_angle, 
                     start_angle + np.pi, 
-                    samples_per_class
+                    samples_this_class
                 )
             
             # Add some noise to radius
-            radius = np.random.normal(radius, 0.2, samples_per_class)
+            radius = np.random.normal(radius, 0.2, samples_this_class)
             
             # Convert to Cartesian coordinates
-            X[start_idx:end_idx, 0] = radius * np.cos(theta)
-            X[start_idx:end_idx, 1] = radius * np.sin(theta)
+            X[current_idx:end_idx, 0] = radius * np.cos(theta)
+            X[current_idx:end_idx, 1] = radius * np.sin(theta)
             
             # Add small random offset to center
             center_offset = np.random.uniform(-2, 2, 2)
-            X[start_idx:end_idx] += center_offset
+            X[current_idx:end_idx] += center_offset
         
         # Add one-hot encoded labels
-        y[start_idx:end_idx, class_idx] = 1
+        y[current_idx:end_idx, class_idx] = 1
+        current_idx = end_idx
     
     return X, y
 
@@ -343,22 +361,6 @@ if __name__ == "__main__":
     n_classes = 4
 
     np.random.seed(42)
-    # ==============================
-    # Generate data
-    # ==============================
-    # data_generator = DataGenerator(random_state=42)
-    # # generate data
-    # data_generator.generate_data(n_samples=n_samples, 
-    #                              n_features=n_features, 
-    #                              n_classes=n_classes)
-    # data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-
-    # # create dataloader
-    # dataloader = create_dataloaders(data_generator, batch_size=16, use_indices=False, device='cpu', onehot_labels=True)
-
-    # train_loader = dataloader["train_full_loader"]
-    # val_loader = dataloader["val_loader"]
-    # test_loader = dataloader["test_loader"]
 
     X, y = maso_dataset(n_samples=n_samples, 
                        n_features=n_features, 
@@ -383,10 +385,14 @@ if __name__ == "__main__":
     # ==============================
     model = NeuralNet(M=n_features, n_classes=n_classes)
 
+    # Load model
+    model.load_state_dict(torch.load("src/modelling/maso_model/model.pth"))
+
+    maso = MASO(model, train_loader, _lambda=0.3)
+
     # ==============================
     # Train model
     # ==============================
-    maso = MASO(model, train_loader, _lambda=0.3)
     trainer = Trainer(model, 
                      train_dataloader=train_loader, 
                      val_dataloader=val_loader, 
@@ -394,25 +400,29 @@ if __name__ == "__main__":
                      device='cpu',
                      loss=maso.loss)
     
-    trainer.train(n_epochs=40)
+    # trainer.train(n_epochs=40)
+    # trainer.eval()
 
-    maso.plot_combined_visualization(layer_idx=3, 
-                                   activation_fn=nn.functional.gelu,
-                                   x_interval=(-10, 10),
-                                   y_interval=(-10, 10))
-    # evaluate model
-    trainer.eval()
-
-
-    # Compute distance matrix for all points in train_loader
-    # n_samples = len(train_loader.dataset)
-    # distance_matrix = np.zeros((n_samples, n_samples))
-    # for i in range(n_samples):
-    #     for j in range(i+1, n_samples):
-    #         distance_matrix[i, j] = maso.distance(i, j)
-    #         distance_matrix[j, i] = distance_matrix[i, j]
+    # Save model
+    # torch.save(model.state_dict(), "src/modelling/maso_model/model.pth")
     
-    # # Plot distance matrix
-    # plt.imshow(distance_matrix, cmap='viridis')
-    # plt.colorbar()
-    # plt.show()
+    # ==============================
+    # We tamper with the model to see effects on the splines
+    # ==============================
+    # weight_x_idx = 0
+    # weight_y_idx = 0
+    # layer_idx = 0
+    # weight_perturbation = 1.5
+    # save_path = f"src/modelling/maso_model/weight_perturbed_{layer_idx}_{weight_x_idx}_{weight_y_idx}_{weight_perturbation}.png"
+
+    # model.net[layer_idx].weight.data[weight_x_idx, weight_y_idx] *= weight_perturbation
+    save_path = "src/modelling/maso_model/original_model.png"
+
+    # ==============================
+    # Plot results
+    # ==============================
+    maso.plot_combined_visualization(layer_idx=3, 
+                                   activation_fn=nn.functional.relu,
+                                   x_interval=(-10, 10),
+                                   y_interval=(-10, 10),
+                                   save_path=save_path)
