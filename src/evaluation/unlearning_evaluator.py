@@ -1,7 +1,6 @@
 import torch
 
 import torch.nn.functional as F
-import pdb
 from torch.utils.data import DataLoader
 from src.data_utils.synthetic_data import SyntheticDataset
 
@@ -57,7 +56,6 @@ class UnlearningEvaluator:
             else:
                 result[metric] = self.metricname2function[metric](preds_u, preds_c)
         
-        pdb.set_trace()
 
         return result
     
