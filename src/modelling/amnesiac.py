@@ -113,10 +113,6 @@ class AmnesiacTrainer:
                 self.model.train()
                 total_loss = 0.0
 
-
-                forget_accuracy = []
-                retain_accuracy = []
-                
                 for batch_idx, (x, y, indices) in enumerate(train_loader):
                     x, y = x.float(), y.long()
                     x = x.to(self.device)
@@ -183,9 +179,8 @@ class AmnesiacTrainer:
             accuracies_dict["forget"] = accuracies_forget
         if retain_loader is not None:
             accuracies_dict["retain"] = accuracies_retain
-
         # save accuracies to json file
-        if save_accuracy_to_file is not None:
+        if save_accuracy_to_file:
 
             if save_accuracy_to_file_name is not None:
                 file_name = f"results/amnesiac/accuracy/{save_accuracy_to_file_name}_accuracies.json"
