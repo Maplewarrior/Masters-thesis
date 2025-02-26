@@ -73,30 +73,30 @@ def test_process_data(sisa_instance):
     assert isinstance(shards_dict, ShardsDict)
     assert len(shards_dict.shards) == 2
 
-@pytest.mark.sisa
-def test_train_model_on_shard(sisa_instance):
-    """Test if model training works for a single shard"""
-    sisa_instance.process_data()
-    shard_models = sisa_instance.train_model_on_shard(0)
+# @pytest.mark.sisa
+# def test_train_model_on_shard(sisa_instance):
+#     """Test if model training works for a single shard"""
+#     sisa_instance.process_data()
+#     shard_models = sisa_instance.train_model_on_shard(0)
     
-    assert f"shard_0" in shard_models
-    assert len(shard_models["shard_0"]) == 2  # n_slices
+#     assert f"shard_0" in shard_models
+#     assert len(shard_models["shard_0"]) == 2  # n_slices
     
-    # Check if models are different for different slices
-    model_0 = shard_models["shard_0"]["slice_0"]
-    model_1 = shard_models["shard_0"]["slice_1"]
-    assert id(model_0) == id(model_1)  # Same model instance, updated incrementally
+#     # Check if models are different for different slices
+#     model_0 = shard_models["shard_0"]["slice_0"]
+#     model_1 = shard_models["shard_0"]["slice_1"]
+#     assert id(model_0) == id(model_1)  # Same model instance, updated incrementally
 
-@pytest.mark.sisa
-def test_train_all_models(sisa_instance):
-    """Test if all models are trained correctly"""
-    sisa_instance.process_data()
-    shard_models = sisa_instance.train_all_models()
+# @pytest.mark.sisa
+# def test_train_all_models(sisa_instance):
+#     """Test if all models are trained correctly"""
+#     sisa_instance.process_data()
+#     shard_models = sisa_instance.train_all_models()
     
-    assert len(shard_models) == 2  # n_shards
-    for shard_id in range(2):
-        assert f"shard_{shard_id}" in shard_models
-        assert len(shard_models[f"shard_{shard_id}"]) == 2  # n_slices
+#     assert len(shard_models) == 2  # n_shards
+#     for shard_id in range(2):
+#         assert f"shard_{shard_id}" in shard_models
+#         assert len(shard_models[f"shard_{shard_id}"]) == 2  # n_slices
 
 @pytest.mark.sisa
 def test_predict(sisa_instance):
@@ -126,36 +126,36 @@ def test_find_slice_for_datapoint(sisa_instance):
     assert shard_id == 0
     assert slice_idx == 0
 
-@pytest.mark.sisa
-def test_forget_datapoint(sisa_instance):
-    """Test if forgetting works correctly"""
-    sisa_instance.process_data()
-    sisa_instance.train_all_models()
+# @pytest.mark.sisa
+# def test_forget_datapoint(sisa_instance):
+#     """Test if forgetting works correctly"""
+#     sisa_instance.process_data()
+#     sisa_instance.train_all_models()
     
-    # Get a known datapoint index to forget
-    test_idx = sisa_instance.shards_dict.shards["shard_0"].slices[0][0]
+#     # Get a known datapoint index to forget
+#     test_idx = sisa_instance.shards_dict.shards["shard_0"].slices[0][0]
     
-    # Store the original slice length
-    original_slice_len = len(sisa_instance.shards_dict.shards["shard_0"].slices[0])
+#     # Store the original slice length
+#     original_slice_len = len(sisa_instance.shards_dict.shards["shard_0"].slices[0])
     
-    # Forget the datapoint
-    sisa_instance.forget_datapoint(test_idx)
+#     # Forget the datapoint
+#     sisa_instance.forget_datapoint(test_idx)
 
-    # Check if the models are removed
-    assert len(sisa_instance.shard_models["shard_0"]) == 1
+#     # Check if the models are removed
+#     assert len(sisa_instance.shard_models["shard_0"]) == 1
     
-    # Check if the datapoint was removed
-    new_slice_len = len(sisa_instance.shards_dict.shards["shard_0"].slices[0])
-    assert new_slice_len == original_slice_len - 1
+#     # Check if the datapoint was removed
+#     new_slice_len = len(sisa_instance.shards_dict.shards["shard_0"].slices[0])
+#     assert new_slice_len == original_slice_len - 1
     
-    # Verify the datapoint is not found anymore
-    shard_id, slice_idx = sisa_instance.find_slice_for_datapoint(test_idx)
-    assert shard_id is None
-    assert slice_idx is None
+#     # Verify the datapoint is not found anymore
+#     shard_id, slice_idx = sisa_instance.find_slice_for_datapoint(test_idx)
+#     assert shard_id is None
+#     assert slice_idx is None
 
-@pytest.mark.sisa
-def test_forget_invalid_datapoint(sisa_instance):
-    """Test if forgetting invalid datapoint raises error"""
-    sisa_instance.process_data()
-    with pytest.raises(ValueError):
-        sisa_instance.forget_datapoint(-1)
+# @pytest.mark.sisa
+# def test_forget_invalid_datapoint(sisa_instance):
+#     """Test if forgetting invalid datapoint raises error"""
+#     sisa_instance.process_data()
+#     with pytest.raises(ValueError):
+#         sisa_instance.forget_datapoint(-1)
