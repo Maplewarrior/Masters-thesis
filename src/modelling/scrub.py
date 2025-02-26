@@ -124,15 +124,20 @@ class ScrubR:
             torch.save(self.model.state_dict(), f'weights/tmp/scrub+r_epoch{i+1}.pth')
 
         err_threshold = self.calculate_error(self.model, validate_err_dataloader)
+        
         # choose best epoch as the latest one where the error was below threshold
-        try:
-            best_epoch = torch.where(torch.tensor(forget_errors) < err_threshold)[0][-1] + 1
-        except Exception as e:
-            print("Sometimes an index error is thrown here which is fucking weird :). It happens randomly and it's because a shape changes.")
-            pdb.set_trace()
+        best_epoch = torch.where(torch.tensor(forget_errors) < err_threshold)[0]
+        if len(best_epoch):
+            best_epoch = (best_epoch[-1] + 1).item()
+        else: # err_threshold lower than all elements in forget_errors
+            best_epoch = 1
+        
+        # except Exception as e:
+        #     print("Sometimes an index error is thrown here which is fucking weird :). It happens randomly and it's because a shape changes.")
+        #     pdb.set_trace()
 
         os.makedirs('weights/scrub+r', exist_ok=True)
-        best_ckpt = f'weights/tmp/scrub+r_epoch{best_epoch.item()}.pth'
+        best_ckpt = f'weights/tmp/scrub+r_epoch{best_epoch}.pth'
         sd = torch.load(best_ckpt, weights_only=False)
 
         self.model.load_state_dict(sd)
