@@ -4,6 +4,7 @@ import numpy as np
 from src.modelling.maso import MASO, MasoDataset, maso_dataset
 from src.modelling.neural_network import NeuralNet
 import torch.nn as nn
+from src.evaluation.decision_boundary import DecisionBoundaryCreator
 
 @pytest.fixture
 def sample_data():
@@ -129,4 +130,24 @@ def test_onehot_encode_labels():
     assert dataset.y.shape == (n_samples, n_classes)
     assert torch.all(torch.sum(dataset.y, dim=1) == 1)
 
-# TODO: Add tests for plotting each layer's splines
+def test_grid_points():
+    # We test the points are the some when made in plot_combined_visualization and 
+    # decision_boundary_creator.create_decision_boundary
+    x_interval = (-10, 10)
+    y_interval = (-10, 10)
+    x = torch.linspace(x_interval[0], x_interval[1], 1000)
+    y = torch.linspace(y_interval[0], y_interval[1], 1000)
+    xx, yy = torch.meshgrid(x, y, indexing='xy')
+
+    grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
+
+    # ! This is a hack way, but i could not use the decision boundary model since
+    # ! I got the error: model does not have eval mode
+    x = torch.linspace(x_interval[0], x_interval[1], 1000)
+    y = torch.linspace(y_interval[0], y_interval[1], 1000)
+    xx, yy = torch.meshgrid(x, y, indexing='xy')
+        
+    # Reshape the grid into a 2D array of points
+    grid_points = torch.stack([xx.flatten(), yy.flatten()], dim=1)
+
+    assert torch.allclose(grid, grid_points)
