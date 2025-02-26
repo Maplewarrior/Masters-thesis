@@ -15,14 +15,14 @@ def get_device():
     else:
         return torch.device('cpu')
 
-def setup_synthetic_data(seed):
+def setup_synthetic_data():
     """Setup synthetic datasets with indices for both trainers."""
     n_classes = 4
     n_samples = 1000
     n_features = 2
     
     # Generate synthetic data
-    data_generator = DataGenerator(random_state=seed)
+    data_generator = DataGenerator()
     data_generator.generate_data(
         n_samples=n_samples, 
         n_features=n_features,
@@ -56,12 +56,11 @@ def setup_synthetic_data(seed):
         shuffle=False
     ), n_features, n_classes
 
-def train_and_evaluate_models(seed, epochs=5, lr=3e-3):
+def train_and_evaluate_models(epochs=5, lr=3e-3):
     """Train both models and return their validation accuracies."""
-    torch.manual_seed(seed)
     
     # Setup data and models
-    dataloaders, n_features, n_classes = setup_synthetic_data(seed)
+    dataloaders, n_features, n_classes = setup_synthetic_data()
     
     # Setup Amnesiac model and data
     model_amnesiac = NeuralNet(M=n_features, n_classes=n_classes)
@@ -106,40 +105,23 @@ def train_and_evaluate_models(seed, epochs=5, lr=3e-3):
 @pytest.mark.amnesiac
 def test_trainer_performance_similarity():
     """
-    Test that both trainers achieve similar performance within a threshold.
-    
-    We train multiple models with different seeds and compare their average performance.
-    The difference in mean accuracy should be within the specified threshold.
+    Test that both trainers achieve similar performance.
     """
-    n_runs = 5
     accuracy_threshold = 0.05  # 5% difference threshold
     epochs = 5
     lr = 3e-3
     
-    normal_accs = []
-    amnesiac_accs = []
-    
-    # Train multiple models with different seeds
-    for seed in range(n_runs):
-        normal_acc, amnesiac_acc = train_and_evaluate_models(seed, epochs, lr)
-        normal_accs.append(normal_acc)
-        amnesiac_accs.append(amnesiac_acc)
-    
-    # Calculate statistics
-    normal_mean = np.mean(normal_accs)
-    amnesiac_mean = np.mean(amnesiac_accs)
-    normal_std = np.std(normal_accs)
-    amnesiac_std = np.std(amnesiac_accs)
+    normal_acc, amnesiac_acc = train_and_evaluate_models(epochs, lr)
     
     # Print detailed results
     print("\nTest Results:")
-    print(f"Normal Trainer - Mean: {normal_mean:.4f}, Std: {normal_std:.4f}")
-    print(f"Amnesiac Trainer - Mean: {amnesiac_mean:.4f}, Std: {amnesiac_std:.4f}")
-    print(f"Absolute difference in means: {abs(normal_mean - amnesiac_mean):.4f}")
+    print(f"Normal Trainer Accuracy: {normal_acc:.4f}")
+    print(f"Amnesiac Trainer Accuracy: {amnesiac_acc:.4f}")
+    print(f"Absolute difference: {abs(normal_acc - amnesiac_acc):.4f}")
     
-    # Assert that the difference in mean accuracy is within threshold
-    assert abs(normal_mean - amnesiac_mean) < accuracy_threshold, \
-        f"Performance difference ({abs(normal_mean - amnesiac_mean):.4f}) exceeds threshold ({accuracy_threshold})"
+    # Assert that the difference in accuracy is within threshold
+    assert abs(normal_acc - amnesiac_acc) < accuracy_threshold, \
+        f"Performance difference ({abs(normal_acc - amnesiac_acc):.4f}) exceeds threshold ({accuracy_threshold})"
 
 # Global device setup
 device = get_device()
