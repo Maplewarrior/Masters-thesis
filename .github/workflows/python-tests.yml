@@ -3,6 +3,8 @@ name: Python Tests
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
@@ -21,55 +23,30 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-github-actions-annotate-failures
         
-    - name: Run Synthetic Data Tests
+    - name: Get all pytest markers
+      id: get-markers
       run: |
-        echo "::group::Synthetic Dataset Tests"
-        pytest -v -m synthetic_dataset
-        echo "::endgroup::"
+        MARKERS=$(pytest --markers | grep @pytest.mark | cut -d' ' -f2)
+        echo "markers=$MARKERS" >> $GITHUB_OUTPUT
         
-        echo "::group::Data Generator Tests"
-        pytest -v -m data_generator
-        echo "::endgroup::"
-        
-        echo "::group::Outlier Tests"
-        pytest -v -m outliers
-        echo "::endgroup::"
-        
-        echo "::group::Forget Set Tests"
-        pytest -v -m forget_set
-        echo "::endgroup::"
-        
-        echo "::group::Dataloader Tests"
-        pytest -v -m dataloaders
-        echo "::endgroup::"
-
-    - name: Run SISA Tests
+    - name: Run Tests by Marker
       run: |
-        echo "::group::SISA Tests"
-        pytest -v -m sisa
-        echo "::endgroup::"
+        mkdir -p test-results
+        for marker in ${{ steps.get-markers.outputs.markers }}; do
+          echo "::group::Running tests with marker: $marker"
+          pytest -v -m "$marker" --junitxml=test-results/$marker.xml
+          echo "::endgroup::"
+        done
 
-    - name: Run Amnesiac Tests
-      run: |
-        echo "::group::Amnesiac Training Tests"
-        pytest -v -m "amnesiac and training"
-        echo "::endgroup::"
-        
-        echo "::group::Amnesiac Unlearning Tests"
-        pytest -v -m "amnesiac and unlearning"
-        echo "::endgroup::"
-        
-        echo "::group::Amnesiac Repair Tests"
-        pytest -v -m "amnesiac and repair"
-        echo "::endgroup::"
-        
-        echo "::group::Amnesiac Checkpointing Tests"
-        pytest -v -m "amnesiac and checkpointing"
-        echo "::endgroup::"
-
-    - name: Test Summary
+    - name: Generate Test Summary
       if: always()
       run: |
-        echo "::group::Full Test Summary"
-        pytest -v --durations=0 -ra
+        echo "::group::Test Summary"
+        echo "Test Results by Marker:"
+        for xml in test-results/*.xml; do
+          marker=$(basename "$xml" .xml)
+          echo "- $marker:"
+          grep -A1 "testsuite " "$xml" | tail -n1 | \
+            awk '{printf "  Tests: %d, Failures: %d, Errors: %d, Skipped: %d\n", $3, $4, $5, $6}'
+        done
         echo "::endgroup::" 
