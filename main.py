@@ -71,11 +71,24 @@ def parse_arguments():
     data_group.add_argument("--val-ratio", type=float, default=0.1)
     data_group.add_argument("--test-ratio", type=float, default=0.1)
 
-    experiment_group = parser.add_argument_group('experiment')
-    experiment_group.add_argument("--n-repeats", type=int, default=30)
-    experiment_group.add_argument("--n-epochs", type=int, default=50)
-    experiment_group.add_argument("--n-forget-trials", type=int, default=10)
-    
+    # Experiment arguments
+    exp_group = parser.add_argument_group('experiment')
+    exp_group.add_argument("--n-repeats", type=int, default=5,
+                          help="Number of experiment repeats")
+    exp_group.add_argument("--n-epochs", type=int, default=20,
+                          help="Number of training epochs")
+    exp_group.add_argument("--n-forget-trials", type=int, default=2,
+                          help="Number of different forget sets to try")
+
+    # Forget set arguments
+    forget_group = parser.add_argument_group('forget')
+    forget_group.add_argument("--forget-n-points", type=int, default=50,
+                            help="Number of points to include in forget set")
+    forget_group.add_argument("--forget-class-idx", type=int, default=None,
+                            help="Specific class to draw forget points from")
+    forget_group.add_argument("--forget-ood-ratio", type=float, default=0.5,
+                            help="Ratio of out-of-distribution points in forget set")
+
     # System arguments
     sys_group = parser.add_argument_group('system')
     sys_group.add_argument(
@@ -152,10 +165,11 @@ def create_forget_retain_split(data_generator, config: Config):
 
 
 class UnlearningManager:
-    def __init__(self, config: Config, device: str = "cpu"):
+    def __init__(self, config: Config, device: str = "cpu", wandb=None):
         self.config = config
         self.device = device
         self.unlearn_type = None
+        self.wandb = wandb
 
     def apply_unlearning(self, unlearn_type: str, dataloaders: Dict, config: Config) -> Tuple[nn.Module, nn.Module, nn.Module]:
         """
@@ -179,12 +193,26 @@ class UnlearningManager:
         else:
             raise ValueError(f"Unknown unlearning type: {self.unlearn_type}")
 
-    def _train_standard_model(self, dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
+    def _train_standard_model(self, 
+                              dataloader, 
+                              val_dataloader, 
+                              n_features, 
+                              n_classes, 
+                              n_epochs, 
+                              dataset_name,
+                              device="cpu"):
         """
         Trains and returns a NeuralNet model using the provided dataloader.
         """
         model = NeuralNet(n_features, n_classes)
-        trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device, disable_tqdm=True)
+        trainer = Trainer(model, 
+                        train_dataloader=dataloader, 
+                        val_dataloader=val_dataloader, 
+                        n_epochs=n_epochs, 
+                        device=device, 
+                        disable_tqdm=True,
+                        wandb=self.wandb,
+                        dataset_name=dataset_name)
         trainer.train()
         trainer.eval()
         return model
@@ -199,6 +227,7 @@ class UnlearningManager:
                                     n_features=n_features, 
                                     n_classes=n_classes, 
                                     n_epochs=n_epochs, 
+                                    dataset_name="original",
                                     device=device)
 
         # 2) Train retrained model on retain dataset
@@ -207,6 +236,7 @@ class UnlearningManager:
                                     n_features=n_features, 
                                     n_classes=n_classes, 
                                     n_epochs=n_epochs, 
+                                    dataset_name="retrained",
                                     device=device)
 
         # 3) Copy the original model (before unlearning)
@@ -286,7 +316,13 @@ class UnlearningManager:
         Returns the unlearned model, retrained model, and original model.
         """
         unlearned_model = NeuralNet(n_features, n_classes)
-        trainer = AmnesiacTrainer(unlearned_model, lr=3e-3, device=device, cache_gradients=True, disable_tqdm=True)
+        trainer = AmnesiacTrainer(unlearned_model, 
+                                  lr=3e-3, 
+                                  device=device, 
+                                  cache_gradients=True, 
+                                  disable_tqdm=True, 
+                                  wandb=self.wandb,
+                                  dataset_name="original")
 
         # Train on full data, storing gradients for sensitive batches
         indices_to_forget = dataloaders["forget_idx_in_train"]
@@ -299,7 +335,12 @@ class UnlearningManager:
 
         # Retrained model
         retrained_model = NeuralNet(n_features, n_classes)
-        retrained_trainer = AmnesiacTrainer(retrained_model, lr=3e-3, device=device, cache_gradients=True, disable_tqdm=True)
+        retrained_trainer = AmnesiacTrainer(retrained_model, 
+                                            lr=3e-3, 
+                                            device=device, 
+                                            cache_gradients=True, 
+                                            disable_tqdm=True,
+                                            dataset_name="retrained")
         retrained_trainer.train(dataloaders["train_retain_loader"], repair=True)
 
         # Original model
@@ -437,7 +478,8 @@ def run_experiment(config: Config):
                 info_panel.subtitle = f"[bold]Unlearning type:[/bold] {config.experiment.unlearn_type}"
                 
                 # Train models
-                unlearning_manager = UnlearningManager(config.system, config.system.device)
+                unlearning_manager = UnlearningManager(config.system, config.system.device, 
+                                                         wandb=wandb if config.wandb.enabled else None)
                 unlearned_model, retrained_model, original_model = unlearning_manager.apply_unlearning(
                     config.experiment.unlearn_type,
                     dataloaders,
@@ -448,25 +490,34 @@ def run_experiment(config: Config):
                 results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
                 
                 if config.wandb.enabled:
-                    # Log metrics for this run
+                    # Log metrics for this run using "/" for nesting
                     wandb.log({
-                        "original_model": {
-                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_comparison_model"]
-                        },
-                        "unlearned_model": {
-                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"]
-                        },
-                        "retrained_model": {
-                            "accuracy": results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"]
-                        },
-                        "metrics": {
-                            "hamming_pd": results["unlearned vs. original"]["validation"]["Hamming PD"],
-                            "js_divergence": results["unlearned vs. original"]["validation"]["JS divergence"]
-                        },
-                        "metadata": {
-                            "trial": forget_trial,
-                            "repeat": repeat
-                        }
+                        "validation/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["validation"]["Hamming PD"],
+                        "validation/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["validation"]["JS divergence"],
+                        "validation/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["validation"]["Hamming PD"],
+                        "validation/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["validation"]["JS divergence"],
+                        "validation/accuracy/unlearned": results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"],
+                        "validation/accuracy/retrained": results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"],
+                        "validation/accuracy/original": results["unlearned vs. original"]["validation"]["accuracy_comparison_model"],
+                        
+                        "retain/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["retain"]["Hamming PD"],
+                        "retain/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["retain"]["JS divergence"],
+                        "retain/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["retain"]["Hamming PD"],
+                        "retain/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["retain"]["JS divergence"],
+                        "retain/accuracy/unlearned": results["unlearned vs. original"]["retain"]["accuracy_unlearned_model"],
+                        "retain/accuracy/retrained": results["unlearned vs. retrained"]["retain"]["accuracy_comparison_model"],
+                        "retain/accuracy/original": results["unlearned vs. original"]["retain"]["accuracy_comparison_model"],
+
+                        "forget/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["forget"]["Hamming PD"],
+                        "forget/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["forget"]["JS divergence"],
+                        "forget/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["forget"]["Hamming PD"],
+                        "forget/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["forget"]["JS divergence"],
+                        "forget/accuracy/unlearned": results["unlearned vs. original"]["forget"]["accuracy_unlearned_model"],
+                        "forget/accuracy/retrained": results["unlearned vs. retrained"]["forget"]["accuracy_comparison_model"],
+                        "forget/accuracy/original": results["unlearned vs. original"]["forget"]["accuracy_comparison_model"],
+
+                        "metadata/trial": forget_trial,
+                        "metadata/repeat": repeat
                     })
                     run.finish()
                 

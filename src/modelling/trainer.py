@@ -12,7 +12,9 @@ class Trainer:
                  lr=3e-3, 
                  device='cpu',
                  loss: nn.Module = nn.CrossEntropyLoss(),
-                 disable_tqdm=False
+                 disable_tqdm=False,
+                 wandb=None,
+                 dataset_name=None,
                  ) -> None:
         ### initialization
         self.model = model
@@ -25,6 +27,12 @@ class Trainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = loss
         self.disable_tqdm = disable_tqdm
+        self.wandb = wandb
+        self.dataset_name = dataset_name
+
+        if self.wandb and self.dataset_name is None:
+            raise ValueError("dataset_name must be provided if wandb is True. Set it to either original or retrained.")
+
     def train_sae(self):
         losses = []
         self.model.train()
@@ -94,6 +102,17 @@ class Trainer:
                 avg_epoch_loss = epoch_loss / len(self.train_dataloader)
                 epoch_accuracy = epoch_acc / n_samples
                 
+                # log validation loss and accuracy
+                val_loss, val_acc = self.eval()
+                if self.wandb:
+                    self.wandb.log({
+                        f"train/loss/{self.dataset_name}": avg_epoch_loss,
+                        f"train/accuracy/{self.dataset_name}": epoch_accuracy,
+                        f"validation/loss/{self.dataset_name}": val_loss,
+                        f"validation/accuracy/{self.dataset_name}": val_acc,
+                        "epoch": epoch
+                    })
+
                 # Update progress bar
                 epoch_pbar.set_description(
                     f"epoch={epoch+1}/{n_epochs}, "
@@ -127,8 +146,5 @@ class Trainer:
         
         avg_loss = total_loss / len(self.val_dataloader)
         accuracy = total_correct / total_samples
-        
-        print(f'Eval loss: {avg_loss:.3f}')
-        print(f'Eval accuracy: {accuracy:.3f}')
         
         return avg_loss, accuracy
