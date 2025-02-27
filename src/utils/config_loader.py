@@ -13,7 +13,7 @@ class DataConfig(BaseModel):
     outlier_scale: float = Field(default=4.0, description="Scale factor for outliers")
     outlier_variance: float = Field(default=0.4, description="Variance of outliers")
     outlier_class: int = Field(default=1, description="Class index for outliers")
-    random_state: int = Field(default=42, description="Random seed")
+    random_state: int = Field(default=None, description="Random seed")
     train_ratio: float = Field(default=0.8, description="Ratio of training data")
     val_ratio: float = Field(default=0.1, description="Ratio of validation data")
     test_ratio: float = Field(default=0.1, description="Ratio of test data")
@@ -31,7 +31,7 @@ class WandBConfig(BaseModel):
 
 class SystemConfig(BaseModel):
     device: str = Field(default="cpu", description="Device to use (cpu/cuda/mps)")
-    seed: int = Field(default=42, description="Global random seed")
+    seed: Optional[int] = Field(default=None, description="Global random seed")
 
 class ExperimentConfig(BaseModel):
     mode: str = Field(default="experiment", description="Operation mode (experiment/visualize/get_latex_results)")
