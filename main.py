@@ -6,6 +6,12 @@ import torch.nn as nn
 import copy
 import json
 import os
+from pydantic import BaseModel, Field
+from typing import Dict, Any
+import wandb
+import yaml
+from torch.utils.data import DataLoader
+import numpy as np
 
 from src.modelling.trainer import Trainer
 from src.modelling.neural_network import NeuralNet
@@ -13,88 +19,146 @@ from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
 from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
 from src.modelling.scrub import ScrubR
 from src.modelling.sisa import SISA
-from src.modelling.sae_unlearner import SAEUnlearner
-from src.modelling.SAE import SAE
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from src.evaluation.results_table import create_latex_table
 from src.modelling.amnesiac import AmnesiacTrainer
+from src.utils.config_loader import Config, load_config
+
 from tqdm.auto import tqdm
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
-from rich.layout import Layout
 
 
 def parse_arguments():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser()
+    # Core arguments
     parser.add_argument(
         "mode",
-        type=str,
+        type=str.lower,
         default="experiment",
         choices=["experiment", "visualize", "get_latex_results"],
-        help="What to do when running the script (default: %(default)s)",
+        help="What to do when running the script",
     )
     parser.add_argument(
         "--unlearn-type",
-        type=str,
-        default="SSD",
-        choices=["SSD", "Scrub+R", "SISA", "amnesiac", "SAE"],
-        help="What type of unlearning algorithm to apply.",
+        type=str.lower,
+        default="ssd",
+        choices=["ssd", "scrub+r", "sisa", "amnesiac", "sae"],
+        help="What type of unlearning algorithm to apply",
     )
     parser.add_argument(
-        "--device",
+        "--config",
         type=str,
+        default="configs/default.yaml",
+        help="Path to experiment configuration file",
+    )
+    
+    # Data generation arguments
+    data_group = parser.add_argument_group('data generation')
+    data_group.add_argument("--n-samples", type=int, default=1000)
+    data_group.add_argument("--n-features", type=int, default=25)
+    data_group.add_argument("--n-classes", type=int, default=4)
+    data_group.add_argument("--n-informative", type=int, default=25)
+    data_group.add_argument("--n-redundant", type=int, default=0)
+    data_group.add_argument("--n-outliers", type=int, default=50)
+    data_group.add_argument("--outlier-scale", type=float, default=4.0)
+    data_group.add_argument("--outlier-variance", type=float, default=0.4)
+    data_group.add_argument("--outlier-class", type=int, default=1)
+    data_group.add_argument("--random-state", type=int, default=42)
+    data_group.add_argument("--train-ratio", type=float, default=0.8)
+    data_group.add_argument("--val-ratio", type=float, default=0.1)
+    data_group.add_argument("--test-ratio", type=float, default=0.1)
+
+    # Experiment arguments
+    exp_group = parser.add_argument_group('experiment')
+    exp_group.add_argument("--n-repeats", type=int, default=5,
+                          help="Number of experiment repeats")
+    exp_group.add_argument("--n-epochs", type=int, default=20,
+                          help="Number of training epochs")
+    exp_group.add_argument("--n-forget-trials", type=int, default=2,
+                          help="Number of different forget sets to try")
+
+    # Forget set arguments
+    forget_group = parser.add_argument_group('forget')
+    forget_group.add_argument("--forget-n-points", type=int, default=50,
+                            help="Number of points to include in forget set")
+    forget_group.add_argument("--forget-class-idx", type=int, default=None,
+                            help="Specific class to draw forget points from")
+    forget_group.add_argument("--forget-ood-ratio", type=float, default=0.5,
+                            help="Ratio of out-of-distribution points in forget set")
+
+    # System arguments
+    sys_group = parser.add_argument_group('system')
+    sys_group.add_argument(
+        "--device",
+        type=str.lower,
         default="cpu",
         choices=["cpu", "cuda", "mps"],
-        help="Torch device (default: %(default)s)",
     )
-    return parser.parse_args()
+    sys_group.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases logging",
+    )
+    
+    args = parser.parse_args()
+    config = load_config(args.config, vars(args))
+    
+    return args, config
 
 
-def generate_data(args, n_features=25, n_classes=4, random_state=42):
+def generate_data(args) -> DataGenerator:
     """
-    Generates and splits the synthetic data. Returns a data generator without drawing forget set.
+    Generates and splits the synthetic data using arguments from argparse.
+    
+    Args:
+        args: Parsed command line arguments containing data generation parameters
     """
-    data_generator = DataGenerator(random_state=random_state)
+    data_generator = DataGenerator(random_state=args.random_state)
     data_generator.generate_data(
-        n_samples=1000,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_informative=2,
-        n_redundant=0,
-        n_outliers=50,
-        outlier_scale=4.0,
-        outlier_variance=0.4,
-        outlier_class=1
+        n_samples=args.n_samples,
+        n_features=args.n_features,
+        n_classes=args.n_classes,
+        n_informative=args.n_informative,
+        n_redundant=args.n_redundant,
+        n_outliers=args.n_outliers,
+        outlier_scale=args.outlier_scale,
+        outlier_variance=args.outlier_variance,
+        outlier_class=args.outlier_class
     )
-    data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
+    data_generator.split_data(
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio
+    )
+
     return data_generator
 
 
-def create_forget_retain_split(data_generator, args, n_points=50, class_idx=None, ood_ratio=0.5):
-    """
-    Creates a new forget/retain split for existing data and returns associated dataloaders.
+def create_forget_retain_split(data_generator, config: Config):
+    """Creates a new forget/retain split for existing data and returns associated dataloaders."""
+    data_generator.draw_forget_set(
+        n_points=config.forget.n_points, 
+        class_idx=config.forget.class_idx, 
+        ood_ratio=config.forget.ood_ratio
+    )
     
-    Args:
-        data_generator: Existing DataGenerator instance with data already generated
-        args: Command line arguments
-        n_points: Number of points to include in forget set
-        class_idx: Specific class to draw forget points from (None for random)
-        ood_ratio: Ratio of out-of-distribution points in forget set
-    """
-    data_generator.draw_forget_set(n_points=n_points, class_idx=class_idx, ood_ratio=ood_ratio)
-    
-    batch_size = 32
-
     # For amnesiac, we need indices, so batch_size differs:
-    if args.unlearn_type == "amnesiac":
+    if config.experiment.unlearn_type == "amnesiac":
         dataloaders = create_dataloaders(
-            data_generator, batch_size=batch_size, use_indices=True, device=args.device
+            data_generator, 
+            batch_size=32, 
+            use_indices=True, 
+            device=config.system.device
         )
     else:
         dataloaders = create_dataloaders(
-            data_generator, batch_size=batch_size, onehot_labels=True, device=args.device
+            data_generator, 
+            batch_size=32, 
+            onehot_labels=True, 
+            device=config.system.device
         )
     
     return dataloaders
@@ -110,141 +174,166 @@ def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, dev
     trainer.eval()
     return model
 
+class UnlearningManager:
+    def __init__(self, args: argparse.Namespace, config: Config, device: str = "cpu"):
+        self.args = args
+        self.config = config
+        self.device = device
+        self.unlearn_type = None
 
-def apply_unlearning_scrub_r_SSD(unlearn_type, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies either Scrub+R or SSD to the given data. Returns the unlearned model, retrained model, and original model.
-    """
-    # 1) Train model on full dataset
-    unlearned_model = train_model(dataloader=dataloaders["train_full_loader"], 
-                                  val_dataloader=dataloaders["val_loader"], 
-                                  n_features=n_features, 
-                                  n_classes=n_classes, 
-                                  n_epochs=n_epochs, 
-                                  device=device)
+    def apply_unlearning(self, 
+                         unlearn_type: str, 
+                         dataloaders: Dict[str, DataLoader], 
+                         n_features: int, 
+                         n_classes: int, 
+                         n_epochs: int):
+        """
+        Applies the unlearning method specified by the unlearn_type.
+        """
+        self.unlearn_type = unlearn_type
 
-    # 2) Train retrained model on retain dataset
-    retrained_model = train_model(dataloader=dataloaders["train_retain_loader"], 
-                                  val_dataloader=dataloaders["val_loader"], 
-                                  n_features=n_features, 
-                                  n_classes=n_classes, 
-                                  n_epochs=n_epochs, 
-                                  device=device)
+        if self.unlearn_type == "sisa":
+            return self._apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, self.device)
+        elif self.unlearn_type == "amnesiac":
+            return self._apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, self.device)
+        elif self.unlearn_type == "sae":
+            return self._apply_unlearning_sae(dataloaders, n_features, n_classes, n_epochs, self.device)
+        elif self.unlearn_type == "scrub_r" or self.unlearn_type == "ssd":
+            return self._apply_unlearning(dataloaders, n_features, n_classes, n_epochs, self.device)
+        else:
+            raise ValueError(f"Unknown unlearning type: {self.unlearn_type}")
 
-    # 3) Copy the original model (before unlearning)
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
+    def _apply_unlearning(self, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
+        """
+        Applies either Scrub+R or SSD to the given data. Returns the unlearned model, retrained model, and original model.
+        """
+        # 1) Train model on full dataset
+        unlearned_model = train_model(dataloader=dataloaders["train_full_loader"], 
+                                    val_dataloader=dataloaders["val_loader"], 
+                                    n_features=n_features, 
+                                    n_classes=n_classes, 
+                                    n_epochs=n_epochs, 
+                                    device=device)
 
-    # 4) Perform unlearning
-    if unlearn_type == "Scrub+R":
-        alpha = 1.0
-        gamma = 1.0
-        scrub = ScrubR(unlearned_model, original_model, alpha=alpha, gamma=gamma)
-        scrub(
-            dataloaders["train_retain_loader"],
-            dataloaders["train_forget_loader"],
-            dataloaders["val_loader"],
-            n_rounds=6,
+        # 2) Train retrained model on retain dataset
+        retrained_model = train_model(dataloader=dataloaders["train_retain_loader"], 
+                                    val_dataloader=dataloaders["val_loader"], 
+                                    n_features=n_features, 
+                                    n_classes=n_classes, 
+                                    n_epochs=n_epochs, 
+                                    device=device)
+
+        # 3) Copy the original model (before unlearning)
+        original_model = copy.deepcopy(unlearned_model)
+        original_model.model_type = "pre_forget"
+        unlearned_model.model_type = "post_forget"
+
+        # 4) Perform unlearning
+        if self.unlearn_type == "scrub+r":
+            alpha = 1.0
+            gamma = 1.0
+            scrub = ScrubR(unlearned_model, original_model, alpha=alpha, gamma=gamma)
+            scrub(
+                dataloaders["train_retain_loader"],
+                dataloaders["train_forget_loader"],
+                dataloaders["val_loader"],
+                n_rounds=6,
+            )
+        elif self.unlearn_type == "ssd":
+            alpha = 7.5
+            _lambda = 0.5
+            criterion = nn.CrossEntropyLoss()
+            ssd = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
+            ssd(
+                full_dataloader=dataloaders["train_full_loader"],
+                forget_dataloader=dataloaders["train_forget_loader"],
+            )
+
+        return unlearned_model, retrained_model, original_model
+
+    def _apply_unlearning_sisa(self, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
+        """
+        Applies SISA unlearning. Returns the unlearned model, retrained model, and original model.
+        """
+        # Unlearned model
+        unlearned_model = SISA(
+            dataloader=dataloaders["train_full_loader"],
+            n_shards=10,
+            n_slices=10,
+            n_features=n_features,
+            n_classes=n_classes,
+            n_epochs=n_epochs,
+            save_dir="./experiments/checkpoints/SISA/original_model",
+            disable_tqdm=True
         )
-    elif unlearn_type == "SSD":
-        alpha = 7.5
-        _lambda = 0.5
-        criterion = nn.CrossEntropyLoss()
-        ssd = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
-        ssd(
-            full_dataloader=dataloaders["train_full_loader"],
-            forget_dataloader=dataloaders["train_forget_loader"],
+        unlearned_shards_dict = unlearned_model.process_data()
+        original_shards_dict = unlearned_shards_dict  # in case you need it
+        unlearned_model.train_all_models()
+
+        # Retrained model
+        retrained_model = SISA(
+            dataloader=dataloaders["train_retain_loader"],
+            n_shards=10,
+            n_slices=10,
+            n_features=n_features,
+            n_classes=n_classes,
+            n_epochs=n_epochs,
+            save_dir="./experiments/checkpoints/SISA/retrained_model",
+            disable_tqdm=True
+        )
+        retrained_model.process_data()
+        retrained_model.train_all_models()
+
+        # Original model (copy before unlearning)
+        original_model = copy.deepcopy(unlearned_model)
+        original_model.model_type = "pre_forget"
+        unlearned_model.model_type = "post_forget"
+
+        # Forget the datapoints
+        unlearned_model.forget_datapoints(datapoint_idxs=dataloaders["forget_idx_in_train"])
+
+        return unlearned_model, retrained_model, original_model
+
+    def _apply_unlearning_amnesiac(self, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
+        """
+        Applies the amnesiac unlearning method.
+        Returns the unlearned model, retrained model, and original model.
+        """
+        unlearned_model = NeuralNet(n_features, n_classes)
+        trainer = AmnesiacTrainer(unlearned_model, lr=3e-3, device=device, cache_gradients=True, disable_tqdm=True)
+
+        # Train on full data, storing gradients for sensitive batches
+        indices_to_forget = dataloaders["forget_idx_in_train"]
+        trainer.train(
+            dataloaders["train_full_loader"], 
+            epochs=n_epochs,
+            indices_to_forget=indices_to_forget,
+            save_accuracy_to_file=False
         )
 
-    return unlearned_model, retrained_model, original_model
+        # Retrained model
+        retrained_model = NeuralNet(n_features, n_classes)
+        retrained_trainer = AmnesiacTrainer(retrained_model, lr=3e-3, device=device, cache_gradients=True, disable_tqdm=True)
+        retrained_trainer.train(dataloaders["train_retain_loader"], repair=True)
 
+        # Original model
+        original_model = copy.deepcopy(unlearned_model)
+        original_model.model_type = "pre_forget"
+        unlearned_model.model_type = "post_forget"
 
-def apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies SISA unlearning. Returns the unlearned model, retrained model, and original model.
-    """
-    # Unlearned model
-    unlearned_model = SISA(
-        dataloader=dataloaders["train_full_loader"],
-        n_shards=10,
-        n_slices=10,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_epochs=n_epochs,
-        save_dir="./experiments/checkpoints/SISA/original_model",
-        disable_tqdm=True
-    )
-    unlearned_shards_dict = unlearned_model.process_data()
-    original_shards_dict = unlearned_shards_dict  # in case you need it
-    unlearned_model.train_all_models()
+        # Forget all sensitive batches
+        trainer.forget(indices_to_forget=None)
 
-    # Retrained model
-    retrained_model = SISA(
-        dataloader=dataloaders["train_retain_loader"],
-        n_shards=10,
-        n_slices=10,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_epochs=n_epochs,
-        save_dir="./experiments/checkpoints/SISA/retrained_model",
-        disable_tqdm=True
-    )
-    retrained_model.process_data()
-    retrained_model.train_all_models()
+        # Repair phase
+        trainer.train(dataloaders["train_full_loader"], epochs=10, save_accuracy_to_file=False, repair=True)
 
-    # Original model (copy before unlearning)
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
+        return unlearned_model, retrained_model, original_model
 
-    # Forget the datapoints
-    unlearned_model.forget_datapoints(datapoint_idxs=dataloaders["forget_idx_in_train"])
-
-    return unlearned_model, retrained_model, original_model
-
-
-def apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies the amnesiac unlearning method.
-    Returns the unlearned model, retrained model, and original model.
-    """
-    unlearned_model = NeuralNet(n_features, n_classes)
-    trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
-
-    # Train on full data, storing gradients for sensitive batches
-    indices_to_forget = dataloaders["forget_idx_in_train"]
-    trainer.train(
-        dataloaders["train_full_loader"], 
-        epochs=n_epochs,
-        indices_to_forget=indices_to_forget,
-        save_accuracy_to_file=False
-    )
-
-    # Retrained model
-    retrained_model = NeuralNet(n_features, n_classes)
-    retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
-    retrained_trainer.train(dataloaders["train_retain_loader"], repair=True)
-
-    # Original model
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
-
-    # Forget all sensitive batches
-    trainer.forget(indices_to_forget=None)
-
-    # Repair phase
-    trainer.train(dataloaders["train_full_loader"], epochs=10, save_accuracy_to_file=False, repair=True)
-
-    return unlearned_model, retrained_model, original_model
-
-
-def apply_unlearning_sae():
-    """
-    Placeholder function for SAE unlearning since it's not yet implemented.
-    """
-    raise NotImplementedError("SAE is not implemented yet.")
+    def _apply_unlearning_sae(self):
+        """
+        Placeholder function for SAE unlearning since it's not yet implemented.
+        """
+        raise NotImplementedError("SAE is not implemented yet.")
 
 
 def evaluate_models(unlearned_model, retrained_model, original_model, dataloaders):
@@ -294,19 +383,31 @@ def evaluate_models(unlearned_model, retrained_model, original_model, dataloader
     return results
 
 
-def run_experiment(args):
+def run_experiment(config: Config):
     """
     Main experiment flow with multiple forget set trials
     """
+
     console = Console()
-    n_repeats = 10
-    n_epochs = 20
-    n_features = 25
-    n_classes = 4
-    n_forget_trials = 5  # Number of different forget sets to try
+    n_repeats = config.experiment.n_repeats
+    n_epochs = config.experiment.n_epochs
+    n_features = config.data.n_features
+    n_classes = config.data.n_classes
+    n_forget_trials = config.experiment.n_forget_trials
+
+    # start wandb logging
+    if config.wandb.enabled:
+        os.makedirs(config.wandb.dir, exist_ok=True)
+        wandb.init(
+            project=config.wandb.project,
+            mode=config.wandb.mode,
+            dir=config.wandb.dir)
+
+        # Set all experiment parameters
+        # TODO: add all experiment parameters to wandb
 
     # Generate data once
-    data_generator = generate_data(args, n_features, n_classes, random_state=42)
+    data_generator = generate_data(config.data)
 
     # Prepare structure to store aggregated results
     aggregated_results = {
@@ -330,47 +431,27 @@ def run_experiment(args):
     original_trace = pdb.set_trace
     pdb.set_trace = handle_pdb
     
+    unlearning_manager = UnlearningManager(config.system, config.system.device)
+
     try:
         live.start()
         for forget_trial in tqdm(range(n_forget_trials), desc="Forget trials", position=0):
             # Create new forget/retain split
-            dataloaders = create_forget_retain_split(data_generator, args)
+            dataloaders = create_forget_retain_split(data_generator, config)
             
             for i in tqdm(range(n_repeats), desc="Repeats", position=1, leave=False):
                 # Update the panel with current status
                 info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{n_forget_trials}, Iteration {i + 1}/{n_repeats}"
-                info_panel.subtitle = f"[bold]Unlearning type:[/bold] {args.unlearn_type}"
+                info_panel.subtitle = f"[bold]Unlearning type:[/bold] {config.experiment.unlearn_type}"
                 
                 # Call the appropriate unlearning function based on the type
-                if args.unlearn_type in ["SSD", "Scrub+R"]:
-                    unlearned_model, retrained_model, original_model = apply_unlearning_scrub_r_SSD(
-                        args.unlearn_type,
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "amnesiac":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_amnesiac(
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "SISA":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_sisa(
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "SAE":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_sae()
-                else:
-                    raise ValueError(f"Unknown unlearning type: {args.unlearn_type}")
+                unlearned_model, retrained_model, original_model = unlearning_manager.apply_unlearning(
+                    config.experiment.unlearn_type,
+                    dataloaders,
+                    n_features,
+                    n_classes,
+                    n_epochs
+                )
 
                 # Evaluate
                 results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
@@ -389,13 +470,46 @@ JS divergence (validation): {results['unlearned vs. retrained']['validation']['J
 
         # Save results and print final output
         os.makedirs("experiments/results", exist_ok=True)
-        output_file = f"experiments/results/{args.unlearn_type}_results.json"
+        output_file = f"experiments/results/{config.experiment.unlearn_type}_results.json"
         with open(output_file, "w") as f:
             json.dump(aggregated_results, f)
         
         live.stop()
         
         console.print(f"[bold green]Results saved to {output_file}.")
+
+        with open(f'experiments/{config.experiment.unlearn_type}_results.json', 'w') as f:
+            json.dump(results, f)
+
+
+        results_dict = results
+
+        def calculate_averages(results_dict):
+            averages = {}
+            
+            for comparison in results_dict:  # 'unlearned vs. original', 'unlearned vs. retrained'
+                averages[comparison] = {}
+                
+                # Get all metrics from the first split to use as keys
+                metrics = list(next(iter(results_dict[comparison].values())).keys())
+                
+                # Calculate average for each metric
+                for metric in metrics:
+                    values = [results_dict[comparison][split][metric] 
+                            for split in ['retain', 'forget', 'validation']]
+                    averages[comparison][metric] = sum(values) / len(values)
+            
+            return averages
+
+        # Example usage:
+        averages = calculate_averages(results_dict)
+
+        # Pretty print the results
+        for comparison, metrics in averages.items():
+            print(f"\n{comparison}:")
+            for metric, value in metrics.items():
+                print(f"  {metric}: {value:.4f}")
+        
         
         
     finally:
@@ -421,11 +535,11 @@ def get_latex_results():
 
 
 def main():
-    args = parse_arguments()
-
-    if args.mode == "experiment":
-        run_experiment(args)
-    elif args.mode == "get_latex_results":
+    args, config = parse_arguments()
+    
+    if config.experiment.mode == "experiment":
+        run_experiment(config)
+    elif config.experiment.mode == "get_latex_results":
         get_latex_results()
     else:
         print("Visualization mode not implemented in this refactoring.")
