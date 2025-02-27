@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 import yaml
 from typing import Dict, Any, Optional
 from pathlib import Path
+import uuid
 
 class DataConfig(BaseModel):
     n_samples: int = Field(default=1000, description="Number of samples to generate")
@@ -25,23 +26,31 @@ class ForgetConfig(BaseModel):
 
 class WandBConfig(BaseModel):
     enabled: bool = Field(default=False, description="Enable wandb logging")
-    mode: str = Field(default="offline", description="Wandb mode: online/offline/disabled")
-    project: str = Field(default="unlearning-experiments", description="WandB project name")
-    dir: str = Field(default="./experiments/wandb", description="Local directory for wandb files")
+    mode: str = Field(default="offline", description="Wandb mode (online/offline)")
+    project: str = Field(default="unlearning-experiments", description="Wandb project name")
+    dir: str = Field(default="./experiments/wandb", description="Directory for wandb files")
 
 class SystemConfig(BaseModel):
     device: str = Field(default="cpu", description="Device to use (cpu/cuda/mps)")
     seed: Optional[int] = Field(default=None, description="Global random seed")
 
 class ExperimentConfig(BaseModel):
-    mode: str = Field(default="experiment", description="Operation mode (experiment/visualize/get_latex_results)")
-    unlearn_type: str = Field(default="ssd", description="Unlearning method to use")
-    n_repeats: int = Field(default=5, description="Number of experiment repeats")
+    mode: str = Field(default="experiment", description="Mode of operation")
+    unlearn_type: str = Field(default="ssd", description="Type of unlearning to use")
+    n_repeats: int = Field(default=30, description="Number of experiment repeats")
+    n_epochs: int = Field(default=50, description="Number of training epochs")
+    n_forget_trials: int = Field(default=10, description="Number of forget set trials")
+    experiment_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description="Unique experiment identifier")
+    experiment_group: str = Field(default="default_group", description="Group name for the experiment")
+
+class ModelConfig(BaseModel):
+    n_features: int = Field(default=25, description="Number of input features")
+    n_classes: int = Field(default=4, description="Number of output classes")
     n_epochs: int = Field(default=20, description="Number of training epochs")
-    n_forget_trials: int = Field(default=2, description="Number of different forget sets to try")
 
 class Config(BaseModel):
     data: DataConfig = Field(default_factory=DataConfig)
+    model: ModelConfig = Field(default_factory=ModelConfig)
     forget: ForgetConfig = Field(default_factory=ForgetConfig)
     wandb: WandBConfig = Field(default_factory=WandBConfig)
     system: SystemConfig = Field(default_factory=SystemConfig)
@@ -107,6 +116,11 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
                 'forget_n_points': ('forget', 'n_points'),
                 'forget_class_idx': ('forget', 'class_idx'),
                 'forget_ood_ratio': ('forget', 'ood_ratio'),
+                
+                # Model arguments
+                'model_n_features': ('model', 'n_features'),
+                'model_n_classes': ('model', 'n_classes'),
+                'model_n_epochs': ('model', 'n_epochs'),
                 
                 # WandB arguments
                 'wandb': ('wandb', 'enabled')

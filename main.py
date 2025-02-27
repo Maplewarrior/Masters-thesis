@@ -7,7 +7,7 @@ import copy
 import json
 import os
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import wandb
 import yaml
 from torch.utils.data import DataLoader
@@ -71,24 +71,11 @@ def parse_arguments():
     data_group.add_argument("--val-ratio", type=float, default=0.1)
     data_group.add_argument("--test-ratio", type=float, default=0.1)
 
-    # Experiment arguments
-    exp_group = parser.add_argument_group('experiment')
-    exp_group.add_argument("--n-repeats", type=int, default=5,
-                          help="Number of experiment repeats")
-    exp_group.add_argument("--n-epochs", type=int, default=20,
-                          help="Number of training epochs")
-    exp_group.add_argument("--n-forget-trials", type=int, default=2,
-                          help="Number of different forget sets to try")
-
-    # Forget set arguments
-    forget_group = parser.add_argument_group('forget')
-    forget_group.add_argument("--forget-n-points", type=int, default=50,
-                            help="Number of points to include in forget set")
-    forget_group.add_argument("--forget-class-idx", type=int, default=None,
-                            help="Specific class to draw forget points from")
-    forget_group.add_argument("--forget-ood-ratio", type=float, default=0.5,
-                            help="Ratio of out-of-distribution points in forget set")
-
+    experiment_group = parser.add_argument_group('experiment')
+    experiment_group.add_argument("--n-repeats", type=int, default=30)
+    experiment_group.add_argument("--n-epochs", type=int, default=50)
+    experiment_group.add_argument("--n-forget-trials", type=int, default=10)
+    
     # System arguments
     sys_group = parser.add_argument_group('system')
     sys_group.add_argument(
@@ -164,51 +151,50 @@ def create_forget_retain_split(data_generator, config: Config):
     return dataloaders
 
 
-def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Trains and returns a NeuralNet model using the provided dataloader.
-    """
-    model = NeuralNet(n_features, n_classes)
-    trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device, disable_tqdm=True)
-    trainer.train()
-    trainer.eval()
-    return model
-
 class UnlearningManager:
-    def __init__(self, args: argparse.Namespace, config: Config, device: str = "cpu"):
-        self.args = args
+    def __init__(self, config: Config, device: str = "cpu"):
         self.config = config
         self.device = device
         self.unlearn_type = None
 
-    def apply_unlearning(self, 
-                         unlearn_type: str, 
-                         dataloaders: Dict[str, DataLoader], 
-                         n_features: int, 
-                         n_classes: int, 
-                         n_epochs: int):
+    def apply_unlearning(self, unlearn_type: str, dataloaders: Dict, config: Config) -> Tuple[nn.Module, nn.Module, nn.Module]:
         """
-        Applies the unlearning method specified by the unlearn_type.
+        Applies the specified unlearning method and returns the unlearned, retrained, and original models.
+        
+        Args:
+            unlearn_type: Type of unlearning to apply
+            dataloaders: Dictionary containing the data loaders
+            config: Configuration object containing all parameters
         """
         self.unlearn_type = unlearn_type
 
         if self.unlearn_type == "sisa":
-            return self._apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, self.device)
+            return self._apply_unlearning_sisa(dataloaders, config.model.n_features, config.model.n_classes, config.model.n_epochs, self.device)
         elif self.unlearn_type == "amnesiac":
-            return self._apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, self.device)
+            return self._apply_unlearning_amnesiac(dataloaders, config.model.n_features, config.model.n_classes, config.model.n_epochs, self.device)
         elif self.unlearn_type == "sae":
-            return self._apply_unlearning_sae(dataloaders, n_features, n_classes, n_epochs, self.device)
-        elif self.unlearn_type == "scrub_r" or self.unlearn_type == "ssd":
-            return self._apply_unlearning(dataloaders, n_features, n_classes, n_epochs, self.device)
+            return self._apply_unlearning_sae(dataloaders, config.model.n_features, config.model.n_classes, config.model.n_epochs, self.device)
+        elif self.unlearn_type == "scrub+r" or self.unlearn_type == "ssd":
+            return self._apply_unlearning(dataloaders, config.model.n_features, config.model.n_classes, config.model.n_epochs, self.device)
         else:
             raise ValueError(f"Unknown unlearning type: {self.unlearn_type}")
+
+    def _train_standard_model(self, dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
+        """
+        Trains and returns a NeuralNet model using the provided dataloader.
+        """
+        model = NeuralNet(n_features, n_classes)
+        trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device, disable_tqdm=True)
+        trainer.train()
+        trainer.eval()
+        return model
 
     def _apply_unlearning(self, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
         """
         Applies either Scrub+R or SSD to the given data. Returns the unlearned model, retrained model, and original model.
         """
         # 1) Train model on full dataset
-        unlearned_model = train_model(dataloader=dataloaders["train_full_loader"], 
+        unlearned_model = self._train_standard_model(dataloader=dataloaders["train_full_loader"], 
                                     val_dataloader=dataloaders["val_loader"], 
                                     n_features=n_features, 
                                     n_classes=n_classes, 
@@ -216,7 +202,7 @@ class UnlearningManager:
                                     device=device)
 
         # 2) Train retrained model on retain dataset
-        retrained_model = train_model(dataloader=dataloaders["train_retain_loader"], 
+        retrained_model = self._train_standard_model(dataloader=dataloaders["train_retain_loader"], 
                                     val_dataloader=dataloaders["val_loader"], 
                                     n_features=n_features, 
                                     n_classes=n_classes, 
@@ -383,83 +369,106 @@ def evaluate_models(unlearned_model, retrained_model, original_model, dataloader
     return results
 
 
-def run_experiment(config: Config):
-    """
-    Main experiment flow with multiple forget set trials
-    """
-
-    console = Console()
-    n_repeats = config.experiment.n_repeats
-    n_epochs = config.experiment.n_epochs
-    n_features = config.data.n_features
-    n_classes = config.data.n_classes
-    n_forget_trials = config.experiment.n_forget_trials
-
-    # start wandb logging
-    if config.wandb.enabled:
-        os.makedirs(config.wandb.dir, exist_ok=True)
-        wandb.init(
-            project=config.wandb.project,
-            mode=config.wandb.mode,
-            dir=config.wandb.dir)
-
-        # Set all experiment parameters
-        # TODO: add all experiment parameters to wandb
-
-    # Generate data once
-    data_generator = generate_data(config.data)
-
-    # Prepare structure to store aggregated results
-    aggregated_results = {
-        "unlearned vs. original": {"retain": [], "forget": [], "validation": []},
-        "unlearned vs. retrained": {"retain": [], "forget": [], "validation": []},
+def create_trial_metrics(trial: int, repeat: int, results: dict) -> dict:
+    """Creates a nested dictionary of metrics for a trial and repeat."""
+    return {
+        "trials": {
+            trial: {
+                "repeats": {
+                    repeat: {
+                        "original_model": {
+                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_comparison_model"]
+                        },
+                        "unlearned_model": {
+                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"]
+                        },
+                        "retrained_model": {
+                            "accuracy": results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"]
+                        },
+                        "metrics": {
+                            "hamming_pd": results["unlearned vs. original"]["validation"]["Hamming PD"],
+                            "js_divergence": results["unlearned vs. original"]["validation"]["JS divergence"]
+                        }
+                    }
+                }
+            }
+        }
     }
 
+def run_experiment(config: Config):
+    """Main experiment flow with multiple forget set trials"""
+    console = Console()
+    
+    # Generate data once
+    data_generator = generate_data(config.data)
+    
     # Create a panel for live updates
     info_panel = Panel("Starting experiments...", title="Current Status")
-    
-    # Create progress bars for both loops
     live = Live(info_panel, refresh_per_second=4)
     
-    # Set up exception handler to clean up Live display
-    def handle_pdb(*args):
-        live.stop()  # Stop live display before pdb
-        result = original_trace(*args)  # Run pdb
-        live.start()  # Restart live display after pdb
-        return result
-    
-    original_trace = pdb.set_trace
-    pdb.set_trace = handle_pdb
-    
-    unlearning_manager = UnlearningManager(config.system, config.system.device)
-
     try:
         live.start()
-        for forget_trial in tqdm(range(n_forget_trials), desc="Forget trials", position=0):
-            # Create new forget/retain split
+        for forget_trial in tqdm(range(config.experiment.n_forget_trials), desc="Forget trials", position=0):
             dataloaders = create_forget_retain_split(data_generator, config)
             
-            for i in tqdm(range(n_repeats), desc="Repeats", position=1, leave=False):
+            for repeat in tqdm(range(config.experiment.n_repeats), desc="Repeats", position=1, leave=False):
+                if config.wandb.enabled:
+                    # Reset wandb mode for this run
+                    if hasattr(wandb, "run") and wandb.run is not None:
+                        wandb.finish()
+                    
+                    os.environ["WANDB_MODE"] = config.wandb.mode
+                    wandb.setup(settings=wandb.Settings(mode=config.wandb.mode))
+                    
+                    # Individual run for each trial/repeat
+                    run = wandb.init(
+                        project=config.wandb.project,
+                        name=f"trial_{forget_trial}_repeat_{repeat}",
+                        group=config.experiment.experiment_group,  # Use experiment_group from config
+                        config=config.model_dump(),
+                        mode=config.wandb.mode,
+                        dir=config.wandb.dir,
+                        tags=[config.experiment.experiment_id],  # Add experiment_id as a tag
+                        reinit=True
+                    )
+                
                 # Update the panel with current status
-                info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{n_forget_trials}, Iteration {i + 1}/{n_repeats}"
+                info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{config.experiment.n_forget_trials}, Iteration {repeat + 1}/{config.experiment.n_repeats}"
                 info_panel.subtitle = f"[bold]Unlearning type:[/bold] {config.experiment.unlearn_type}"
                 
-                # Call the appropriate unlearning function based on the type
+                # Train models
+                unlearning_manager = UnlearningManager(config.system, config.system.device)
                 unlearned_model, retrained_model, original_model = unlearning_manager.apply_unlearning(
                     config.experiment.unlearn_type,
                     dataloaders,
-                    n_features,
-                    n_classes,
-                    n_epochs
+                    config
                 )
-
+                
                 # Evaluate
                 results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
-
-                # Aggregate results
-                for comp_type in aggregated_results.keys():
-                    for subset in aggregated_results[comp_type].keys():
-                        aggregated_results[comp_type][subset].append(results[comp_type][subset])
+                
+                if config.wandb.enabled:
+                    # Log metrics for this run
+                    wandb.log({
+                        "original_model": {
+                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_comparison_model"]
+                        },
+                        "unlearned_model": {
+                            "accuracy": results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"]
+                        },
+                        "retrained_model": {
+                            "accuracy": results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"]
+                        },
+                        "metrics": {
+                            "hamming_pd": results["unlearned vs. original"]["validation"]["Hamming PD"],
+                            "js_divergence": results["unlearned vs. original"]["validation"]["JS divergence"]
+                        },
+                        "metadata": {
+                            "trial": forget_trial,
+                            "repeat": repeat
+                        }
+                    })
+                    run.finish()
                 
                 # Update the panel content with latest metrics
                 info_panel.renderable = f"""[green]Key metrics for this iteration:[/green]
@@ -467,54 +476,11 @@ Hamming PD (validation): {results['unlearned vs. retrained']['validation']['Hamm
 JS divergence (validation): {results['unlearned vs. retrained']['validation']['JS divergence']:.4f}"""
                 
                 live.refresh()
-
-        # Save results and print final output
-        os.makedirs("experiments/results", exist_ok=True)
-        output_file = f"experiments/results/{config.experiment.unlearn_type}_results.json"
-        with open(output_file, "w") as f:
-            json.dump(aggregated_results, f)
         
-        live.stop()
-        
-        console.print(f"[bold green]Results saved to {output_file}.")
-
-        with open(f'experiments/{config.experiment.unlearn_type}_results.json', 'w') as f:
-            json.dump(results, f)
-
-
-        results_dict = results
-
-        def calculate_averages(results_dict):
-            averages = {}
-            
-            for comparison in results_dict:  # 'unlearned vs. original', 'unlearned vs. retrained'
-                averages[comparison] = {}
-                
-                # Get all metrics from the first split to use as keys
-                metrics = list(next(iter(results_dict[comparison].values())).keys())
-                
-                # Calculate average for each metric
-                for metric in metrics:
-                    values = [results_dict[comparison][split][metric] 
-                            for split in ['retain', 'forget', 'validation']]
-                    averages[comparison][metric] = sum(values) / len(values)
-            
-            return averages
-
-        # Example usage:
-        averages = calculate_averages(results_dict)
-
-        # Pretty print the results
-        for comparison, metrics in averages.items():
-            print(f"\n{comparison}:")
-            for metric, value in metrics.items():
-                print(f"  {metric}: {value:.4f}")
-        
-        
+        # Print completion message
+        console.print("\n[bold green]Experiment completed![/bold green]")
         
     finally:
-        # Restore original pdb.set_trace and ensure Live display is stopped
-        pdb.set_trace = original_trace
         live.stop()
 
 
