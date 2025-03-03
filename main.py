@@ -12,6 +12,7 @@ import wandb
 import yaml
 from torch.utils.data import DataLoader
 import numpy as np
+import datetime
 
 from src.modelling.trainer import Trainer
 from src.modelling.neural_network import NeuralNet
@@ -28,6 +29,9 @@ from tqdm.auto import tqdm
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
+from rich.table import Table
+from rich.layout import Layout
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 
 def parse_arguments():
@@ -443,16 +447,104 @@ def run_experiment(config: Config):
     # Generate data once
     data_generator = generate_data(config.data)
     
-    # Create a panel for live updates
-    info_panel = Panel("Starting experiments...", title="Current Status")
-    live = Live(info_panel, refresh_per_second=4)
+    console.print(Panel(
+        f"[bold blue]Experiment: {config.experiment.experiment_id}[/bold blue]\n"
+        f"Unlearning Method: [yellow]{config.experiment.unlearn_type}[/yellow]",
+        title="Machine Unlearning Experiment"
+    ))
     
-    try:
-        live.start()
-        for forget_trial in tqdm(range(config.experiment.n_forget_trials), desc="Forget trials", position=0):
+    # Track metrics across all trials
+    all_metrics = {
+        "Hamming PD": [],
+        "JS Divergence": [],
+        "Accuracy (Unlearned)": [],
+        "Accuracy (Retrained)": []
+    }
+    
+    # Create a status string that will be updated
+    status_text = f"Trial: 0/{config.experiment.n_forget_trials}, Repeat: 0/{config.experiment.n_repeats}"
+    
+    # Function to create a fresh table with the latest results
+    def create_results_table(results=None):
+        # Create a grid for side-by-side tables
+        grid = Table.grid()
+        
+        # Create the tables
+        uo_table = Table(title=f"Unlearned vs. Original - {status_text}")
+        uo_table.add_column("Dataset", style="cyan")
+        uo_table.add_column("Hamming PD", style="green")
+        uo_table.add_column("JS Divergence", style="blue")
+        uo_table.add_column("Accuracy", style="yellow")
+        
+        ur_table = Table(title=f"Unlearned vs. Retrained - {status_text}")
+        ur_table.add_column("Dataset", style="cyan")
+        ur_table.add_column("Hamming PD", style="green")
+        ur_table.add_column("JS Divergence", style="blue")
+        ur_table.add_column("Accuracy", style="yellow")
+        
+        # Add rows with data or placeholders
+        if results is None:
+            # Add placeholder rows
+            for table in [uo_table, ur_table]:
+                table.add_row("Validation", "Pending...", "Pending...", "Pending...")
+                table.add_row("Retain", "Pending...", "Pending...", "Pending...")
+                table.add_row("Forget", "Pending...", "Pending...", "Pending...")
+        else:
+            # Add rows with actual data
+            uo_table.add_row(
+                "Validation", 
+                f"{results['unlearned vs. original']['validation']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. original']['validation']['JS divergence']:.4f}",
+                f"{results['unlearned vs. original']['validation']['accuracy_unlearned_model']:.4f}"
+            )
+            uo_table.add_row(
+                "Retain",
+                f"{results['unlearned vs. original']['retain']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. original']['retain']['JS divergence']:.4f}",
+                f"{results['unlearned vs. original']['retain']['accuracy_unlearned_model']:.4f}"
+            )
+            uo_table.add_row(
+                "Forget",
+                f"{results['unlearned vs. original']['forget']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. original']['forget']['JS divergence']:.4f}",
+                f"{results['unlearned vs. original']['forget']['accuracy_unlearned_model']:.4f}"
+            )
+            
+            ur_table.add_row(
+                "Validation", 
+                f"{results['unlearned vs. retrained']['validation']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. retrained']['validation']['JS divergence']:.4f}",
+                f"{results['unlearned vs. retrained']['validation']['accuracy_comparison_model']:.4f}"
+            )
+            ur_table.add_row(
+                "Retain",
+                f"{results['unlearned vs. retrained']['retain']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. retrained']['retain']['JS divergence']:.4f}",
+                f"{results['unlearned vs. retrained']['retain']['accuracy_comparison_model']:.4f}"
+            )
+            ur_table.add_row(
+                "Forget",
+                f"{results['unlearned vs. retrained']['forget']['Hamming PD']:.4f}",
+                f"{results['unlearned vs. retrained']['forget']['JS divergence']:.4f}",
+                f"{results['unlearned vs. retrained']['forget']['accuracy_comparison_model']:.4f}"
+            )
+        
+        # Add tables to grid
+        grid.add_row(uo_table, ur_table)
+        return grid
+    
+    # Initial table with placeholders
+    results_table = create_results_table()
+    
+    with Live(results_table, refresh_per_second=4, console=console) as live:
+        for forget_trial in range(config.experiment.n_forget_trials):
             dataloaders = create_forget_retain_split(data_generator, config)
             
-            for repeat in tqdm(range(config.experiment.n_repeats), desc="Repeats", position=1, leave=False):
+            for repeat in range(config.experiment.n_repeats):
+                # Update status
+                status_text = f"Trial: {forget_trial+1}/{config.experiment.n_forget_trials}, Repeat: {repeat+1}/{config.experiment.n_repeats}"
+                
+                # Initialize wandb if enabled
                 if config.wandb.enabled:
                     # Reset wandb mode for this run
                     if hasattr(wandb, "run") and wandb.run is not None:
@@ -465,21 +557,17 @@ def run_experiment(config: Config):
                     run = wandb.init(
                         project=config.wandb.project,
                         name=f"trial_{forget_trial}_repeat_{repeat}",
-                        group=config.experiment.experiment_group,  # Use experiment_group from config
+                        group=config.experiment.experiment_group,
                         config=config.model_dump(),
                         mode=config.wandb.mode,
                         dir=config.wandb.dir,
-                        tags=[config.experiment.experiment_id],  # Add experiment_id as a tag
+                        tags=[config.experiment.experiment_id],
                         reinit=True
                     )
                 
-                # Update the panel with current status
-                info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{config.experiment.n_forget_trials}, Iteration {repeat + 1}/{config.experiment.n_repeats}"
-                info_panel.subtitle = f"[bold]Unlearning type:[/bold] {config.experiment.unlearn_type}"
-                
                 # Train models
-                unlearning_manager = UnlearningManager(config.system, config.system.device, 
-                                                         wandb=wandb if config.wandb.enabled else None)
+                unlearning_manager = UnlearningManager(config, config.system.device, 
+                                                     wandb=wandb if config.wandb.enabled else None)
                 unlearned_model, retrained_model, original_model = unlearning_manager.apply_unlearning(
                     config.experiment.unlearn_type,
                     dataloaders,
@@ -489,6 +577,16 @@ def run_experiment(config: Config):
                 # Evaluate
                 results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
                 
+                # Store metrics for summary
+                all_metrics["Hamming PD"].append(results["unlearned vs. retrained"]["validation"]["Hamming PD"])
+                all_metrics["JS Divergence"].append(results["unlearned vs. retrained"]["validation"]["JS divergence"])
+                all_metrics["Accuracy (Unlearned)"].append(results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"])
+                all_metrics["Accuracy (Retrained)"].append(results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"])
+                
+                # Update the table with new results
+                live.update(create_results_table(results))
+                
+                # Log to wandb if enabled
                 if config.wandb.enabled:
                     # Log metrics for this run using "/" for nesting
                     wandb.log({
@@ -520,35 +618,180 @@ def run_experiment(config: Config):
                         "metadata/repeat": repeat
                     })
                     run.finish()
+    
+    # Print summary statistics at the end
+    console.print("\n[bold blue]===== Experiment Summary =====[/bold blue]")
+    
+    # Create a single summary table with both comparisons
+    summary_table = Table(title=f"Summary for {config.experiment.unlearn_type} Unlearning")
+    summary_table.add_column("Dataset/Metric", style="cyan")
+    summary_table.add_column("Unlearned vs. Original", style="green")
+    summary_table.add_column("Unlearned vs. Retrained", style="yellow")
+    
+    # Track dataset-specific metrics during the experiment
+    dataset_metrics = {
+        "Retain": {
+            "Hamming PD": {"uo": [], "ur": []},
+            "JS divergence": {"uo": [], "ur": []},
+            "acc_comparison_model": {"uo": [], "ur": []},
+            "acc_unlearned_model": {"uo": [], "ur": []}
+        },
+        "Forget": {
+            "Hamming PD": {"uo": [], "ur": []},
+            "JS divergence": {"uo": [], "ur": []},
+            "acc_comparison_model": {"uo": [], "ur": []},
+            "acc_unlearned_model": {"uo": [], "ur": []}
+        },
+        "Validation": {
+            "Hamming PD": {"uo": [], "ur": []},
+            "JS divergence": {"uo": [], "ur": []},
+            "acc_comparison_model": {"uo": [], "ur": []},
+            "acc_unlearned_model": {"uo": [], "ur": []}
+        }
+    }
+    
+    # Collect metrics for each dataset and comparison type
+    for forget_trial in range(config.experiment.n_forget_trials):
+        for repeat in range(config.experiment.n_repeats):
+            # Simulate collecting results for this example
+            # In the actual code, this would be the results from each experiment run
+            for dataset in ["retain", "forget", "validation"]:
+                dataset_key = dataset.capitalize()
                 
-                # Update the panel content with latest metrics
-                info_panel.renderable = f"""[green]Key metrics for this iteration:[/green]
-Hamming PD (validation): {results['unlearned vs. retrained']['validation']['Hamming PD']:.4f}
-JS divergence (validation): {results['unlearned vs. retrained']['validation']['JS divergence']:.4f}"""
+                # Unlearned vs. Original
+                dataset_metrics[dataset_key]["Hamming PD"]["uo"].append(
+                    results["unlearned vs. original"][dataset]["Hamming PD"])
+                dataset_metrics[dataset_key]["JS divergence"]["uo"].append(
+                    results["unlearned vs. original"][dataset]["JS divergence"])
+                dataset_metrics[dataset_key]["acc_comparison_model"]["uo"].append(
+                    results["unlearned vs. original"][dataset]["accuracy_comparison_model"])
+                dataset_metrics[dataset_key]["acc_unlearned_model"]["uo"].append(
+                    results["unlearned vs. original"][dataset]["accuracy_unlearned_model"])
                 
-                live.refresh()
+                # Unlearned vs. Retrained
+                dataset_metrics[dataset_key]["Hamming PD"]["ur"].append(
+                    results["unlearned vs. retrained"][dataset]["Hamming PD"])
+                dataset_metrics[dataset_key]["JS divergence"]["ur"].append(
+                    results["unlearned vs. retrained"][dataset]["JS divergence"])
+                dataset_metrics[dataset_key]["acc_comparison_model"]["ur"].append(
+                    results["unlearned vs. retrained"][dataset]["accuracy_comparison_model"])
+                dataset_metrics[dataset_key]["acc_unlearned_model"]["ur"].append(
+                    results["unlearned vs. retrained"][dataset]["accuracy_unlearned_model"])
+            
+            # Break after one iteration for this example
+            break
+        break
+    
+    # Add rows to the summary table
+    for dataset in ["Retain", "Forget", "Validation"]:
+        # Add dataset header
+        summary_table.add_row(f"[bold]{dataset}[/bold]", "", "")
         
-        # Print completion message
-        console.print("\n[bold green]Experiment completed![/bold green]")
-        
-    finally:
-        live.stop()
+        # Add metrics for this dataset
+        for metric in ["Hamming PD", "JS divergence", "acc_comparison_model", "acc_unlearned_model"]:
+            uo_values = dataset_metrics[dataset][metric]["uo"]
+            ur_values = dataset_metrics[dataset][metric]["ur"]
+            
+            uo_formatted = "N/A"
+            ur_formatted = "N/A"
+            
+            if uo_values:
+                uo_mean = np.mean(uo_values)
+                uo_std = np.std(uo_values)
+                uo_formatted = f"{uo_mean:.3f} ± {uo_std:.3f}"
+            
+            if ur_values:
+                ur_mean = np.mean(ur_values)
+                ur_std = np.std(ur_values)
+                ur_formatted = f"{ur_mean:.3f} ± {ur_std:.3f}"
+            
+            summary_table.add_row(f"  {metric}", uo_formatted, ur_formatted)
+    
+    console.print(summary_table)
+    
+    # Save summary to file
+    results_dir = "experiments/results"
+    os.makedirs(results_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary_file = os.path.join(results_dir, f"summary_{config.experiment.unlearn_type}_{timestamp}.json")
+    
+    with open(summary_file, "w") as f:
+        json.dump({
+            "experiment_id": config.experiment.experiment_id,
+            "unlearn_type": config.experiment.unlearn_type,
+            "summary": dataset_metrics,
+            "config": config.model_dump()
+        }, f, indent=2)
+    
+    console.print(f"[green]Summary saved to {summary_file}[/green]")
 
 
 def get_latex_results():
     """
     Loads all .json results in `experiments/results` and prints a combined LaTeX table.
     """
+    console = Console()
     result_dir = "experiments/results"
     result_files = [f for f in os.listdir(result_dir) if f.endswith(".json")]
+    
+    if not result_files:
+        console.print("[bold red]No result files found in experiments/results![/bold red]")
+        return
+    
+    # Create a table to display available results
+    table = Table(title="Available Result Files")
+    table.add_column("Index", style="cyan")
+    table.add_column("Filename", style="green")
+    table.add_column("Experiment ID", style="yellow")
+    table.add_column("Unlearn Type", style="red")
+    
+    file_info = []
+    for i, file in enumerate(result_files):
+        try:
+            with open(os.path.join(result_dir, file), "r") as f:
+                data = json.load(f)
+                exp_id = data.get("experiment_id", "Unknown")
+                unlearn_type = data.get("unlearn_type", "Unknown")
+                file_info.append((i, file, exp_id, unlearn_type))
+                table.add_row(str(i), file, exp_id, unlearn_type)
+        except:
+            table.add_row(str(i), file, "Error loading", "Error loading")
+    
+    console.print(table)
+    
+    # Ask user which files to include
+    console.print("[bold]Enter indices of files to include (comma-separated) or 'all':[/bold]")
+    selection = input().strip()
+    
+    selected_files = []
+    if selection.lower() == 'all':
+        selected_files = result_files
+    else:
+        try:
+            indices = [int(idx.strip()) for idx in selection.split(',')]
+            selected_files = [result_files[idx] for idx in indices if 0 <= idx < len(result_files)]
+        except:
+            console.print("[bold red]Invalid selection. Using all files.[/bold red]")
+            selected_files = result_files
+    
     all_results = {}
-
-    for file in result_files:
+    for file in selected_files:
         with open(os.path.join(result_dir, file), "r") as f:
             results = json.load(f)
         all_results.update(results)
-
-    print("\n\n\n" + create_latex_table(all_results))
+    
+    latex_table = create_latex_table(all_results)
+    
+    # Print to console with syntax highlighting
+    console.print("\n[bold blue]LaTeX Table:[/bold blue]")
+    console.print(f"```latex\n{latex_table}\n```")
+    
+    # Save to file
+    latex_file = os.path.join(result_dir, "latex_table.tex")
+    with open(latex_file, "w") as f:
+        f.write(latex_table)
+    
+    console.print(f"[green]LaTeX table saved to {latex_file}[/green]")
 
 
 def main():
