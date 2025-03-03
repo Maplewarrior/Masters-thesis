@@ -10,8 +10,9 @@ import json
 import datetime
 from rich.console import Console
 from rich.panel import Panel
-from rich.live import Live
+from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 import wandb
+import time
 
 def run_experiment(config: Config):
     """Main experiment flow with multiple forget set trials"""
@@ -33,9 +34,6 @@ def run_experiment(config: Config):
         "Accuracy (Unlearned)": [],
         "Accuracy (Retrained)": []
     }
-    
-    # Create a status string that will be updated
-    status_text = f"Trial: 0/{config.experiment.n_forget_trials}, Repeat: 0/{config.experiment.n_repeats}"
     
     # Track dataset-specific metrics during the experiment
     dataset_metrics = {
@@ -59,17 +57,26 @@ def run_experiment(config: Config):
         }
     }
     
-    # Initial table with placeholders
-    results_table = create_results_table(status_text=status_text)
-    
-    with Live(results_table, refresh_per_second=4, console=console) as live:
+    # Create progress display with Rich
+    with Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(bar_width=40, style="blue", complete_style="bright_blue"),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        expand=False
+    ) as progress:
+        forget_task = progress.add_task("[Forget Trials]", total=config.experiment.n_forget_trials)
+        repeat_task = progress.add_task("[Current Repeat]", total=config.experiment.n_repeats, visible=False)
+        
         for forget_trial in range(config.experiment.n_forget_trials):
             dataloaders = create_forget_retain_split(data_generator, config)
             
+            # Reset the repeats task for each new forget trial
+            progress.reset(repeat_task)
+            progress.update(repeat_task, description=f"[bold green]Repeat {forget_trial+1}/{config.experiment.n_forget_trials}", visible=True)
+            
             for repeat in range(config.experiment.n_repeats):
-                # Update status
-                status_text = f"Trial: {forget_trial+1}/{config.experiment.n_forget_trials}, Repeat: {repeat+1}/{config.experiment.n_repeats}"
-                
                 # Initialize wandb if enabled
                 if config.wandb.enabled:
                     # Reset wandb mode for this run
@@ -112,9 +119,6 @@ def run_experiment(config: Config):
                 # Collect metrics for detailed summary
                 dataset_metrics = collect_metrics(results, dataset_metrics)
                 
-                # Update the table with new results
-                live.update(create_results_table(results, status_text))
-                
                 # Log to wandb if enabled
                 if config.wandb.enabled:
                     # Log metrics for this run using "/" for nesting
@@ -147,6 +151,12 @@ def run_experiment(config: Config):
                         "metadata/repeat": repeat
                     })
                     run.finish()
+                
+                # Update the repeats progress
+                progress.update(repeat_task, advance=1)
+            
+            # Update the forget trials progress
+            progress.update(forget_task, advance=1)
     
     # Print summary statistics at the end
     console.print("\n[bold blue]===== Experiment Summary =====[/bold blue]")

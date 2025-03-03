@@ -40,8 +40,7 @@ system:
 # Experiment configuration
 experiment:
   mode: "experiment"  # "experiment", "visualize", or "get_latex_results"
-  unlearn_type: "ssd"  # Type of unlearning method to use
   n_repeats: 30
   n_epochs: 50
   n_forget_trials: 10
-  experiment_group: "default_group"
+  experiment_group: "sweep"

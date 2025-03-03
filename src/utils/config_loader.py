@@ -13,8 +13,8 @@ class DataConfig(BaseModel):
     n_outliers: int = Field(default=50, description="Number of outlier points")
     outlier_scale: float = Field(default=4.0, description="Scale factor for outliers")
     outlier_variance: float = Field(default=0.4, description="Variance of outliers")
-    outlier_class: int = Field(default=None, description="Class index for outliers")
-    random_state: int = Field(default=None, description="Random seed")
+    outlier_class: Optional[int] = Field(default=None, description="Class index for outliers")
+    random_state: Optional[int] = Field(default=None, description="Random seed")
     train_ratio: float = Field(default=0.8, description="Ratio of training data")
     val_ratio: float = Field(default=0.1, description="Ratio of validation data")
     test_ratio: float = Field(default=0.1, description="Ratio of test data")
@@ -83,6 +83,7 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
         
         # Update with command line arguments if provided
         if args_dict is not None:
+            # Convert config to dictionary for easier manipulation
             config_dict = config.model_dump()
             
             # Map command line args to config structure
@@ -104,6 +105,7 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
                 
                 # System arguments
                 'device': ('system', 'device'),
+                'seed': ('system', 'seed'),
                 
                 # Experiment arguments
                 'mode': ('experiment', 'mode'),
@@ -111,6 +113,7 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
                 'n_repeats': ('experiment', 'n_repeats'),
                 'n_epochs': ('experiment', 'n_epochs'),
                 'n_forget_trials': ('experiment', 'n_forget_trials'),
+                'experiment_group': ('experiment', 'experiment_group'),
                 
                 # Forget arguments
                 'forget_n_points': ('forget', 'n_points'),
@@ -123,17 +126,34 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
                 'model_n_epochs': ('model', 'n_epochs'),
                 
                 # WandB arguments
-                'wandb': ('wandb', 'enabled')
+                'wandb': ('wandb', 'enabled'),
+                'wandb_mode': ('wandb', 'mode'),
+                'wandb_project': ('wandb', 'project'),
+                'wandb_dir': ('wandb', 'dir')
             }
+            
+            # For debugging
+            print(f"Args dict: {args_dict}")
             
             # Update config with command line arguments
             for arg_name, value in args_dict.items():
                 if arg_name in arg_mapping and value is not None:
                     section, key = arg_mapping[arg_name]
+                    print(f"Updating {section}.{key} to {value}")
+                    
+                    # Ensure the section exists
+                    if section not in config_dict:
+                        config_dict[section] = {}
+                    
+                    # Update the value
                     config_dict[section][key] = value
             
             # Recreate config with updated values
             config = Config(**config_dict)
+            
+            # Verify the update worked
+            if 'unlearn_type' in args_dict:
+                print(f"Final unlearn_type: {config.experiment.unlearn_type}")
         
         return config
         

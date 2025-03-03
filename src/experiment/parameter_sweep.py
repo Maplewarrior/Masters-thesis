@@ -7,7 +7,7 @@ import numpy as np
 import subprocess
 import os
 
-def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="configs/sweep", models=None):
+def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="configs/sweep", models=None, experiment_group_prefix=None):
     """
     Run a parameter sweep by varying a single parameter across multiple values.
     
@@ -17,6 +17,7 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
         param_values: List of values to use for the parameter
         output_dir: Directory to store generated config files
         models: List of model types to run experiments for (if None, uses the model in base config)
+        experiment_group_prefix: Prefix for the experiment group name (if None, uses "sweep")
     """
     # Load base config
     with open(base_config_path, "r") as f:
@@ -32,6 +33,10 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
     if models is None:
         models = [base_config['experiment']['unlearn_type']]
     
+    # Set default experiment group prefix if not provided
+    if experiment_group_prefix is None:
+        experiment_group_prefix = "sweep"
+    
     # Run experiments for each parameter value and model
     for value in tqdm(param_values, desc=f"Sweeping {param_name}"):
         for model in models:
@@ -44,11 +49,9 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
                 current = current[key]
             current[param_path[-1]] = value
             
-            # Set the model type
-            config['experiment']['unlearn_type'] = model
             
             # Create a unique experiment group name based on the parameter and model
-            config['experiment']['experiment_group'] = f"sweep_{param_path[-1]}_{value}_{model}"
+            config['experiment']['experiment_group'] = f"{experiment_group_prefix}_{param_path[-1]}_{value}_{model}"
             
             # Save the config to a file
             config_filename = f"{output_dir}/{param_path[-1]}_{value}_{model}.yaml"
@@ -56,7 +59,7 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
                 yaml.dump(config, f, default_flow_style=False)
             
             # Run the experiment with this config
-            cmd = ["python", "main.py", "experiment", "--config", config_filename]
+            cmd = ["python", "main.py", "experiment", "--unlearn-type", model, "--config", config_filename]
 
             subprocess.run(cmd)
 
@@ -70,6 +73,8 @@ if __name__ == "__main__":
     parser.add_argument("--log_scale", action="store_true", help="Use logarithmic scale for values")
     parser.add_argument("--output_dir", type=str, default="configs/sweep", help="Directory for output configs")
     parser.add_argument("--models", type=str, nargs="+", help="List of model types to run experiments for")
+    parser.add_argument("--experiment_group", type=str, default=None, 
+                        help="Prefix for experiment group name (default: 'sweep')")
     
     args = parser.parse_args()
     
@@ -85,4 +90,4 @@ if __name__ == "__main__":
     else:
         param_values = [float(x) for x in param_values]
     
-    run_parameter_sweep(args.base_config, args.param, param_values, args.output_dir, args.models) 
+    run_parameter_sweep(args.base_config, args.param, param_values, args.output_dir, args.models, args.experiment_group) 

@@ -60,7 +60,7 @@ class Trainer:
                     epoch = int(step * self.n_epochs / num_steps) + 1
                     pbar.set_description(f"epoch={epoch}, step={step}, loss={torch.mean(torch.tensor(losses)):.1f}, acc={acc/((step+1)*self.train_dataloader.batch_size):.4f}")
 
-    def train(self, n_epochs=None, disable_tqdm=False):
+    def train(self, n_epochs=None):
         """
         Train the model for a specified number of epochs.
 
@@ -71,7 +71,7 @@ class Trainer:
         self.model.train()
         n_epochs = self.n_epochs if n_epochs is None else n_epochs
         
-        with tqdm(range(n_epochs), disable=disable_tqdm) as epoch_pbar:
+        with tqdm(range(n_epochs), disable=self.disable_tqdm) as epoch_pbar:
             for epoch in epoch_pbar:
                 epoch_loss = 0.0
                 epoch_acc = 0
