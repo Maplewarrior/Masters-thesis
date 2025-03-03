@@ -13,7 +13,7 @@ class DataConfig(BaseModel):
     n_outliers: int = Field(default=50, description="Number of outlier points")
     outlier_scale: float = Field(default=4.0, description="Scale factor for outliers")
     outlier_variance: float = Field(default=0.4, description="Variance of outliers")
-    outlier_class: int = Field(default=1, description="Class index for outliers")
+    outlier_class: int = Field(default=None, description="Class index for outliers")
     random_state: int = Field(default=None, description="Random seed")
     train_ratio: float = Field(default=0.8, description="Ratio of training data")
     val_ratio: float = Field(default=0.1, description="Ratio of validation data")
@@ -83,7 +83,7 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
         
         # Update with command line arguments if provided
         if args_dict is not None:
-            config_dict = config.dict()
+            config_dict = config.model_dump()
             
             # Map command line args to config structure
             arg_mapping = {

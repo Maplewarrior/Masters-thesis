@@ -1,0 +1,88 @@
+import argparse
+import yaml
+from pathlib import Path
+import copy
+from tqdm import tqdm
+import numpy as np
+import subprocess
+import os
+
+def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="configs/sweep", models=None):
+    """
+    Run a parameter sweep by varying a single parameter across multiple values.
+    
+    Args:
+        base_config_path: Path to the base config file
+        param_name: Parameter to vary (in dot notation, e.g., 'data.n_samples')
+        param_values: List of values to use for the parameter
+        output_dir: Directory to store generated config files
+        models: List of model types to run experiments for (if None, uses the model in base config)
+    """
+    # Load base config
+    with open(base_config_path, "r") as f:
+        base_config = yaml.safe_load(f)
+    
+    # Create output directory if it doesn't exist
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Parse parameter path (e.g., 'data.n_samples' -> ['data', 'n_samples'])
+    param_path = param_name.split('.')
+    
+    # If no models specified, use the one from base config
+    if models is None:
+        models = [base_config['experiment']['unlearn_type']]
+    
+    # Run experiments for each parameter value and model
+    for value in tqdm(param_values, desc=f"Sweeping {param_name}"):
+        for model in models:
+            # Create a copy of the base config
+            config = copy.deepcopy(base_config)
+            
+            # Update the parameter value
+            current = config
+            for key in param_path[:-1]:
+                current = current[key]
+            current[param_path[-1]] = value
+            
+            # Set the model type
+            config['experiment']['unlearn_type'] = model
+            
+            # Create a unique experiment group name based on the parameter and model
+            config['experiment']['experiment_group'] = f"sweep_{param_path[-1]}_{value}_{model}"
+            
+            # Save the config to a file
+            config_filename = f"{output_dir}/{param_path[-1]}_{value}_{model}.yaml"
+            with open(config_filename, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            # Run the experiment with this config
+            cmd = ["python", "main.py", "experiment", "--config", config_filename]
+
+            subprocess.run(cmd)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run parameter sweep experiments")
+    parser.add_argument("--base_config", type=str, required=True, help="Path to base config file")
+    parser.add_argument("--param", type=str, required=True, help="Parameter to vary (in dot notation)")
+    parser.add_argument("--min", type=float, required=True, help="Minimum parameter value")
+    parser.add_argument("--max", type=float, required=True, help="Maximum parameter value")
+    parser.add_argument("--steps", type=int, required=True, help="Number of steps between min and max")
+    parser.add_argument("--log_scale", action="store_true", help="Use logarithmic scale for values")
+    parser.add_argument("--output_dir", type=str, default="configs/sweep", help="Directory for output configs")
+    parser.add_argument("--models", type=str, nargs="+", help="List of model types to run experiments for")
+    
+    args = parser.parse_args()
+    
+    # Generate parameter values
+    if args.log_scale:
+        param_values = np.logspace(np.log10(args.min), np.log10(args.max), args.steps)
+    else:
+        param_values = np.linspace(args.min, args.max, args.steps)
+    
+    # Convert to appropriate type (int or float)
+    if all(float(x).is_integer() for x in param_values):
+        param_values = [int(x) for x in param_values]
+    else:
+        param_values = [float(x) for x in param_values]
+    
+    run_parameter_sweep(args.base_config, args.param, param_values, args.output_dir, args.models) 

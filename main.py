@@ -1,22 +1,11 @@
 import argparse
 import json
 import os
-import wandb
-import numpy as np
-import datetime
-
-from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
-
-from src.evaluation.unlearning_evaluator import UnlearningEvaluator
-from src.evaluation.results_table import create_latex_table
-from src.utils.config_loader import Config, load_config
-
-from tqdm.auto import tqdm
 from rich.console import Console
-from rich.panel import Panel
-from rich.live import Live
 from rich.table import Table
 
+from src.evaluation.results_table import create_latex_table
+from src.utils.config_loader import load_config
 from src.experiment.experiment_runner import run_experiment
 
 
