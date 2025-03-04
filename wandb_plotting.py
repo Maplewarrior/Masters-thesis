@@ -192,9 +192,9 @@ class WandbClient:
 
         return run_results
     
-    def group_runs_by_experiment_id(self, runs: List[Dict[str, Any]], sweep_metric: str = None, max_workers: int = 8) -> Dict[str, Dict[str, float]]:
+    def group_runs_by_experiment_id(self, runs: List[Dict[str, Any]], sweep_metric: str = None, max_workers: int = 8) -> Dict[str, Dict[str, Any]]:
         """
-        Group runs by experiment_id and calculate the mean of numeric metrics.
+        Group runs by experiment_id and calculate the mean and std of numeric metrics.
         
         Args:
             runs: List of run result dictionaries
@@ -202,10 +202,11 @@ class WandbClient:
             max_workers: Maximum number of parallel workers
             
         Returns:
-            Dictionary mapping experiment_ids to mean metrics
+            Dictionary mapping experiment_ids to metrics with mean and std
         """
         import concurrent.futures
         from tqdm import tqdm
+        import numpy as np
         
         # Define a worker function to process a single run
         def process_run(run):
@@ -254,11 +255,11 @@ class WandbClient:
                 except Exception as e:
                     print(f"Exception occurred while grouping runs: {e}")
         
-        # Calculate means for each group
-        experiment_means = {}
+        # Calculate means and stds for each group
+        experiment_stats = {}
         
         for experiment_id, group_runs in experiment_groups.items():
-            print(f"Calculating means for group: {experiment_id} ({len(group_runs)} runs)")
+            print(f"Calculating statistics for group: {experiment_id} ({len(group_runs)} runs)")
             
             # Initialize with metrics from the first run
             metrics = {}
@@ -274,21 +275,29 @@ class WandbClient:
                     if key in run and run[key] is not None and isinstance(run[key], (int, float)):
                         metrics[key].append(run[key])
             
-            # Calculate means
-            means = {}
+            # Calculate means and standard deviations
+            stats = {}
             for key, values in metrics.items():
                 if values:  # Only calculate if we have values
-                    means[key] = sum(values) / len(values)
+                    stats[key] = {
+                        'mean': np.mean(values),
+                        'std': np.std(values),
+                        'values': values  # Store all values for potential further analysis
+                    }
                 else:
-                    means[key] = None
+                    stats[key] = {
+                        'mean': None,
+                        'std': None,
+                        'values': []
+                    }
             
             # Add metadata
-            means['group_key'] = experiment_id
-            means['num_runs'] = len(group_runs)
+            stats['group_key'] = experiment_id
+            stats['num_runs'] = len(group_runs)
             
-            experiment_means[experiment_id] = means
+            experiment_stats[experiment_id] = stats
         
-        return experiment_means
+        return experiment_stats
     
     @staticmethod
     def get_projects(entity: str) -> List[str]:
@@ -317,7 +326,7 @@ class WandbClient:
         current_user = api.viewer
         return [current_user.entity]
 
-def plot_grid(results: Dict[str, Dict[str, float]], sweep_metric: str = "ood_ratio"):
+def plot_grid(results: Dict[str, Dict[str, Any]], sweep_metric: str = "ood_ratio"):
     """
     Plot a grid of metrics for each unlearn type.
     
@@ -325,6 +334,10 @@ def plot_grid(results: Dict[str, Dict[str, float]], sweep_metric: str = "ood_rat
         results: Dictionary mapping unlearn_type to experiment results
         sweep_metric: The metric used for the x-axis (default: "ood_ratio")
     """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.gridspec import GridSpec
+    
     # Collect all metrics across all unlearn types
     all_metrics = set()
     for unlearn_type, experiments in results.items():
@@ -371,6 +384,7 @@ def plot_grid(results: Dict[str, Dict[str, float]], sweep_metric: str = "ood_rat
         for unlearn_type, experiments in results.items():
             x_values = []
             y_values = []
+            y_errors = []
             
             # Extract x and y values
             for experiment_id, metrics in experiments.items():
@@ -378,18 +392,29 @@ def plot_grid(results: Dict[str, Dict[str, float]], sweep_metric: str = "ood_rat
                     try:
                         x_value = float(experiment_id)
                         x_values.append(x_value)
-                        y_values.append(metrics[metric])
-                    except ValueError:
-                        # Skip if experiment_id can't be converted to float
+                        y_values.append(metrics[metric]['mean'])
+                        y_errors.append(metrics[metric]['std'])
+                    except (ValueError, TypeError, KeyError):
+                        # Skip if experiment_id can't be converted to float or if mean/std is not available
                         pass
             
             # Sort by x values
             if x_values:
-                sorted_pairs = sorted(zip(x_values, y_values))
-                x_values, y_values = zip(*sorted_pairs)
+                sorted_data = sorted(zip(x_values, y_values, y_errors))
+                x_values, y_values, y_errors = zip(*sorted_data)
                 
-                # Plot the line
-                ax.plot(x_values, y_values, marker='o', label=unlearn_type)
+                # Plot the line with error bars
+                ax.errorbar(
+                    x_values, 
+                    y_values, 
+                    yerr=y_errors, 
+                    marker='o', 
+                    label=unlearn_type,
+                    capsize=3,  # Add caps to the error bars
+                    markersize=5,
+                    linewidth=1.5,
+                    elinewidth=1
+                )
         
         # Set labels and title
         ax.set_xlabel(sweep_metric)
@@ -419,33 +444,33 @@ def plot_grid(results: Dict[str, Dict[str, float]], sweep_metric: str = "ood_rat
     plt.show()
 
 if __name__ == "__main__":
-    # # Example usage of the WandbClient class
-    # unlearn_types = ["amnesiac"]
+    # Example usage of the WandbClient class
+    unlearn_types = ["amnesiac"]
 
-    # entity = "machine-unlearning-thesis"
-    # project = "unlearning-experiments"
+    entity = "machine-unlearning-thesis"
+    project = "unlearning-experiments"
 
-    # results = {}
-    # for unlearn_type in unlearn_types:
-    #     filters = {
-    #         "config.experiment.experiment_group": "sweep_forget_ood_ratio",
-    #         "config.experiment.unlearn_type": unlearn_type
-    #     }
+    results = {}
+    for unlearn_type in unlearn_types:
+        filters = {
+            "config.experiment.experiment_group": "sweep_forget_ood_ratio",
+            "config.experiment.unlearn_type": unlearn_type
+        }
         
-    #     client = WandbClient(entity=entity, project=project)
-    #     runs = client.get_runs(filters=filters)
+        client = WandbClient(entity=entity, project=project)
+        runs = client.get_runs(filters=filters)
 
-    #     experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
+        experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
 
-    #     results[unlearn_type] = experiment_means
-
-
-    #     print(experiment_means)
+        results[unlearn_type] = experiment_means
 
 
-    # # save results
-    # with open("results.json", "w") as f:
-    #     json.dump(results, f)
+        print(experiment_means)
+
+
+    # save results
+    with open("results.json", "w") as f:
+        json.dump(results, f)
 
 
     # load results
