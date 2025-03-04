@@ -83,7 +83,21 @@ def parse_arguments():
     )
     
     args = parser.parse_args()
-    config = load_config(args.config, vars(args))
+    
+    # First load the config file
+    config = load_config(args.config)
+    
+    # Only override config with explicitly provided command-line arguments
+    # (not using defaults from argparse)
+    arg_dict = vars(args)
+    provided_args = {k: v for k, v in arg_dict.items() 
+                    if k in parser._option_string_actions and 
+                    parser._option_string_actions[k].dest in arg_dict and
+                    arg_dict[parser._option_string_actions[k].dest] is not parser.get_default(parser._option_string_actions[k].dest)}
+     
+    # Update config with explicitly provided arguments
+    if provided_args:
+        config.update_from_dict(provided_args)
     
     return args, config
 
@@ -159,6 +173,9 @@ def get_latex_results():
 
 def main():
     args, config = parse_arguments()
+
+    # print the config that is being used
+    print(config)
     
     if config.experiment.mode == "experiment":
         run_experiment(config)
