@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 from rich.console import Console
 from rich.table import Table
 
@@ -81,6 +82,12 @@ def parse_arguments():
         action="store_true",
         help="Enable Weights & Biases logging",
     )
+
+    sys_group.add_argument(
+        "--track-performance",
+        action="store_true",
+        help="Enable performance tracking",
+    )
     
     args = parser.parse_args()
     
@@ -90,10 +97,36 @@ def parse_arguments():
     # Only override config with explicitly provided command-line arguments
     # (not using defaults from argparse)
     arg_dict = vars(args)
-    provided_args = {k: v for k, v in arg_dict.items() 
-                    if k in parser._option_string_actions and 
-                    parser._option_string_actions[k].dest in arg_dict and
-                    arg_dict[parser._option_string_actions[k].dest] is not parser.get_default(parser._option_string_actions[k].dest)}
+    
+    # Fix for action flags like --track-performance and --wandb
+    # These need special handling since they're boolean flags
+    if args.track_performance:
+        config.experiment.track_performance = True
+        
+    if args.wandb:
+        config.wandb.enabled = True
+        
+    # Special handling for mode and unlearn-type
+    # Check if mode was explicitly provided (not using default)
+    if 'mode' in sys.argv:
+        config.experiment.mode = args.mode
+        
+    # Check if unlearn-type was explicitly provided
+    if '--unlearn-type' in sys.argv:
+        config.experiment.unlearn_type = args.unlearn_type
+    
+    # Handle other arguments
+    provided_args = {}
+    for k, v in arg_dict.items():
+        # Skip the action flags and special args we handled above
+        if k in ['track_performance', 'wandb', 'mode', 'unlearn_type']:
+            continue
+            
+        # Check if this argument was explicitly provided
+        if k in parser._option_string_actions and \
+           parser._option_string_actions[k].dest in arg_dict and \
+           arg_dict[parser._option_string_actions[k].dest] is not parser.get_default(parser._option_string_actions[k].dest):
+            provided_args[k] = v
      
     # Update config with explicitly provided arguments
     if provided_args:

@@ -42,6 +42,7 @@ class ExperimentConfig(BaseModel):
     n_forget_trials: int = Field(default=10, description="Number of forget set trials")
     experiment_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description="Unique experiment identifier")
     experiment_group: str = Field(default="default_group", description="Group name for the experiment")
+    track_performance: bool = Field(default=False, description="Enable performance tracking")
 
 class ModelConfig(BaseModel):
     n_features: int = Field(default=25, description="Number of input features")
@@ -114,6 +115,7 @@ def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Di
                 'n_epochs': ('experiment', 'n_epochs'),
                 'n_forget_trials': ('experiment', 'n_forget_trials'),
                 'experiment_group': ('experiment', 'experiment_group'),
+                'track_performance': ('experiment', 'track_performance'),
                 
                 # Forget arguments
                 'forget_n_points': ('forget', 'n_points'),

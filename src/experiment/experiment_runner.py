@@ -100,7 +100,8 @@ def run_experiment(config: Config):
                 
                 # Train models
                 unlearning_manager = UnlearningManager(config, config.system.device, 
-                                                     wandb=wandb if config.wandb.enabled else None)
+                                                     wandb=wandb if config.wandb.enabled else None,
+                                                     track_performance=config.experiment.track_performance)
                 unlearned_model, retrained_model, original_model = unlearning_manager.apply_unlearning(
                     config.experiment.unlearn_type,
                     dataloaders,
