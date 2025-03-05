@@ -76,6 +76,7 @@ def create_summary_table(dataset_metrics, unlearn_type):
     summary_table.add_column("Dataset/Metric", style="cyan")
     summary_table.add_column("Unlearned vs. Original", style="green")
     summary_table.add_column("Unlearned vs. Retrained", style="yellow")
+    summary_table.add_column("Retrained vs. Original", style="blue")
     
     # Add rows to the summary table
     for dataset in ["Retain", "Forget", "Validation"]:
@@ -86,9 +87,10 @@ def create_summary_table(dataset_metrics, unlearn_type):
         for metric in ["Hamming PD", "JS divergence", "acc_comparison_model", "acc_unlearned_model"]:
             uo_values = dataset_metrics[dataset][metric]["uo"]
             ur_values = dataset_metrics[dataset][metric]["ur"]
-            
+            ro_values = dataset_metrics[dataset][metric]["ro"]
             uo_formatted = "N/A"
             ur_formatted = "N/A"
+            ro_formatted = "N/A"
             
             if uo_values:
                 uo_mean = np.mean(uo_values)
@@ -100,7 +102,12 @@ def create_summary_table(dataset_metrics, unlearn_type):
                 ur_std = np.std(ur_values)
                 ur_formatted = f"{ur_mean:.3f} ± {ur_std:.3f}"
             
-            summary_table.add_row(f"  {metric}", uo_formatted, ur_formatted)
+            if ro_values:
+                ro_mean = np.mean(ro_values)
+                ro_std = np.std(ro_values)
+                ro_formatted = f"{ro_mean:.3f} ± {ro_std:.3f}"
+            
+            summary_table.add_row(f"  {metric}", uo_formatted, ur_formatted, ro_formatted)
     
     return summary_table
 
@@ -118,6 +125,14 @@ def collect_metrics(results, dataset_metrics):
             results["unlearned vs. original"][dataset]["accuracy_comparison_model"])
         dataset_metrics[dataset_key]["acc_unlearned_model"]["uo"].append(
             results["unlearned vs. original"][dataset]["accuracy_unlearned_model"])
+        dataset_metrics[dataset_key]["Hamming PD"]["ro"].append(
+            results["retrained vs. original"][dataset]["Hamming PD"])
+        dataset_metrics[dataset_key]["JS divergence"]["ro"].append(
+            results["retrained vs. original"][dataset]["JS divergence"])
+        dataset_metrics[dataset_key]["acc_comparison_model"]["ro"].append(
+            results["retrained vs. original"][dataset]["accuracy_comparison_model"])
+        dataset_metrics[dataset_key]["acc_unlearned_model"]["ro"].append(
+            results["retrained vs. original"][dataset]["accuracy_unlearned_model"])
         
         # Unlearned vs. Retrained
         dataset_metrics[dataset_key]["Hamming PD"]["ur"].append(
@@ -127,6 +142,14 @@ def collect_metrics(results, dataset_metrics):
         dataset_metrics[dataset_key]["acc_comparison_model"]["ur"].append(
             results["unlearned vs. retrained"][dataset]["accuracy_comparison_model"])
         dataset_metrics[dataset_key]["acc_unlearned_model"]["ur"].append(
+            results["unlearned vs. retrained"][dataset]["accuracy_unlearned_model"])
+        dataset_metrics[dataset_key]["Hamming PD"]["ro"].append(
+            results["retrained vs. original"][dataset]["Hamming PD"])
+        dataset_metrics[dataset_key]["JS divergence"]["ro"].append(
+            results["unlearned vs. retrained"][dataset]["JS divergence"])
+        dataset_metrics[dataset_key]["acc_comparison_model"]["ro"].append(
+            results["unlearned vs. retrained"][dataset]["accuracy_comparison_model"])
+        dataset_metrics[dataset_key]["acc_unlearned_model"]["ro"].append(
             results["unlearned vs. retrained"][dataset]["accuracy_unlearned_model"])
     
     return dataset_metrics

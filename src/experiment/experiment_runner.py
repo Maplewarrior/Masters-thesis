@@ -38,22 +38,22 @@ def run_experiment(config: Config):
     # Track dataset-specific metrics during the experiment
     dataset_metrics = {
         "Retain": {
-            "Hamming PD": {"uo": [], "ur": []},
-            "JS divergence": {"uo": [], "ur": []},
-            "acc_comparison_model": {"uo": [], "ur": []},
-            "acc_unlearned_model": {"uo": [], "ur": []}
+            "Hamming PD": {"uo": [], "ur": [], "ro": []},
+            "JS divergence": {"uo": [], "ur": [], "ro": []},
+            "acc_comparison_model": {"uo": [], "ur": [], "ro": []},
+            "acc_unlearned_model": {"uo": [], "ur": [], "ro": []}
         },
         "Forget": {
-            "Hamming PD": {"uo": [], "ur": []},
-            "JS divergence": {"uo": [], "ur": []},
-            "acc_comparison_model": {"uo": [], "ur": []},
-            "acc_unlearned_model": {"uo": [], "ur": []}
+            "Hamming PD": {"uo": [], "ur": [], "ro": []},
+            "JS divergence": {"uo": [], "ur": [], "ro": []},
+            "acc_comparison_model": {"uo": [], "ur": [], "ro": []},
+            "acc_unlearned_model": {"uo": [], "ur": [], "ro": []}
         },
         "Validation": {
-            "Hamming PD": {"uo": [], "ur": []},
-            "JS divergence": {"uo": [], "ur": []},
-            "acc_comparison_model": {"uo": [], "ur": []},
-            "acc_unlearned_model": {"uo": [], "ur": []}
+            "Hamming PD": {"uo": [], "ur": [], "ro": []},
+            "JS divergence": {"uo": [], "ur": [], "ro": []},
+            "acc_comparison_model": {"uo": [], "ur": [], "ro": []},
+            "acc_unlearned_model": {"uo": [], "ur": [], "ro": []}
         }
     }
     
