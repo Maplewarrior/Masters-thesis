@@ -328,7 +328,7 @@ class WandbClient:
 
 def plot_grid(results: Dict[str, Dict[str, Any]], sweep_metric: str = "ood_ratio"):
     """
-    Plot a grid of metrics for each unlearn type.
+    Plot separate grids of metrics for validation, retain, and forget categories.
     
     Args:
         results: Dictionary mapping unlearn_type to experiment results
@@ -350,127 +350,148 @@ def plot_grid(results: Dict[str, Dict[str, Any]], sweep_metric: str = "ood_ratio
     # Remove None values
     all_metrics = [m for m in all_metrics if m is not None]
     
-    # Sort metrics by category
-    metric_categories = ["validation", "retain", "forget"]
-    metric_subcategories = ["unlearned_vs_original", "retrained_vs_original", "accuracy"]
+    # Group metrics by category
+    metric_categories = {
+        "validation": [],
+        "retain": [],
+        "forget": []
+    }
     
-    sorted_metrics = []
-    for category in metric_categories:
-        for subcategory in metric_subcategories:
-            for metric in sorted(all_metrics):
-                if f"{category}/{subcategory}" in metric:
-                    sorted_metrics.append(metric)
+    # Other metrics that don't fit into the main categories
+    other_metrics = []
     
-    # Add any remaining metrics
+    # Sort metrics into categories
     for metric in sorted(all_metrics):
-        if metric not in sorted_metrics:
-            sorted_metrics.append(metric)
-    
-    # Determine grid dimensions
-    n_metrics = len(sorted_metrics)
-    n_cols = 3  # You can adjust this
-    n_rows = (n_metrics + n_cols - 1) // n_cols
-    
-    # Create figure
-    fig = plt.figure(figsize=(n_cols * 5, n_rows * 4))
-    gs = GridSpec(n_rows, n_cols, figure=fig)
-    
-    # Plot each metric
-    for i, metric in enumerate(sorted_metrics):
-        row, col = i // n_cols, i % n_cols
-        ax = fig.add_subplot(gs[row, col])
+        categorized = False
+        for category in metric_categories.keys():
+            if metric.startswith(f"{category}/"):
+                metric_categories[category].append(metric)
+                categorized = True
+                break
         
-        # Plot data for each unlearn type
-        for unlearn_type, experiments in results.items():
-            x_values = []
-            y_values = []
-            y_errors = []
+        if not categorized:
+            other_metrics.append(metric)
+    
+    # Add other metrics to a separate category if needed
+    if other_metrics:
+        metric_categories["other"] = other_metrics
+    
+    # Create a separate plot grid for each category
+    for category, metrics in metric_categories.items():
+        if not metrics:
+            continue  # Skip empty categories
             
-            # Extract x and y values
-            for experiment_id, metrics in experiments.items():
-                if metric in metrics and metrics[metric] is not None:
-                    try:
-                        x_value = float(experiment_id)
-                        x_values.append(x_value)
-                        y_values.append(metrics[metric]['mean'])
-                        y_errors.append(metrics[metric]['std'])
-                    except (ValueError, TypeError, KeyError):
-                        # Skip if experiment_id can't be converted to float or if mean/std is not available
-                        pass
+        print(f"Creating plot grid for {category} metrics ({len(metrics)} metrics)")
+        
+        # Determine grid dimensions
+        n_metrics = len(metrics)
+        n_cols = min(3, n_metrics)  # Max 3 columns
+        n_rows = (n_metrics + n_cols - 1) // n_cols
+        
+        # Create figure
+        fig = plt.figure(figsize=(n_cols * 5, n_rows * 4))
+        fig.suptitle(f"{category.capitalize()} Metrics", fontsize=16)
+        gs = GridSpec(n_rows, n_cols, figure=fig)
+        
+        # Plot each metric
+        for i, metric in enumerate(metrics):
+            row, col = i // n_cols, i % n_cols
+            ax = fig.add_subplot(gs[row, col])
             
-            # Sort by x values
-            if x_values:
-                sorted_data = sorted(zip(x_values, y_values, y_errors))
-                x_values, y_values, y_errors = zip(*sorted_data)
+            # Plot data for each unlearn type
+            for unlearn_type, experiments in results.items():
+                x_values = []
+                y_values = []
+                y_errors = []
                 
-                # Plot the line with error bars
-                ax.errorbar(
-                    x_values, 
-                    y_values, 
-                    yerr=y_errors, 
-                    marker='o', 
-                    label=unlearn_type,
-                    capsize=3,  # Add caps to the error bars
-                    markersize=5,
-                    linewidth=1.5,
-                    elinewidth=1
-                )
+                # Extract x and y values
+                for experiment_id, exp_metrics in experiments.items():
+                    if metric in exp_metrics and exp_metrics[metric] is not None:
+                        try:
+                            x_value = float(experiment_id)
+                            x_values.append(x_value)
+                            y_values.append(exp_metrics[metric]['mean'])
+                            y_errors.append(exp_metrics[metric]['std'])
+                        except (ValueError, TypeError, KeyError):
+                            # Skip if experiment_id can't be converted to float or if mean/std is not available
+                            pass
+                
+                # Sort by x values
+                if x_values:
+                    sorted_data = sorted(zip(x_values, y_values, y_errors))
+                    x_values, y_values, y_errors = zip(*sorted_data)
+                    
+                    # Plot the line with error bars
+                    ax.errorbar(
+                        x_values, 
+                        y_values, 
+                        yerr=y_errors, 
+                        marker='o', 
+                        label=unlearn_type,
+                        capsize=3,  # Add caps to the error bars
+                        markersize=5,
+                        linewidth=1.5,
+                        elinewidth=1
+                    )
+            
+            # Set labels and title
+            ax.set_xlabel(sweep_metric)
+            
+            # Create a more readable metric name for the y-axis
+            metric_parts = metric.split('/')
+            if len(metric_parts) >= 2:
+                y_label = metric_parts[-1]
+                subtitle = ' '.join(metric_parts[1:-1]) if len(metric_parts) > 2 else metric_parts[-1]
+            else:
+                y_label = metric
+                subtitle = ""
+                
+            ax.set_ylabel(y_label)
+            ax.set_title(subtitle, fontsize=10)
+            
+            # Add legend
+            ax.legend()
+            
+            # Add grid
+            ax.grid(True, linestyle='--', alpha=0.7)
         
-        # Set labels and title
-        ax.set_xlabel(sweep_metric)
-        ax.set_ylabel(metric.split('/')[-1])
+        # Adjust layout
+        plt.tight_layout(rect=[0, 0, 1, 0.97])  # Make room for the suptitle
         
-        # Create a more readable title from the metric name
-        title_parts = metric.split('/')
-        if len(title_parts) >= 2:
-            title = f"{title_parts[0]}: {' '.join(title_parts[1:])}"
-        else:
-            title = metric
-        ax.set_title(title, fontsize=10)
-        
-        # Add legend
-        ax.legend()
-        
-        # Add grid
-        ax.grid(True, linestyle='--', alpha=0.7)
+        # Save figure
+        plt.savefig(f"{category}_metrics_by_{sweep_metric}.png", dpi=300, bbox_inches='tight')
     
-    # Adjust layout
-    plt.tight_layout()
-    
-    # Save figure
-    plt.savefig(f"metrics_by_{sweep_metric}.png", dpi=300, bbox_inches='tight')
-    
-    # Show plot
+    # Show all plots
     plt.show()
 
 if __name__ == "__main__":
     # Example usage of the WandbClient class
-    unlearn_types = ["amnesiac"]
+    # unlearn_types = ["amnesiac"]
 
-    entity = "machine-unlearning-thesis"
-    project = "unlearning-experiments"
+    # entity = "machine-unlearning-thesis"
+    # project = "unlearning-experiments"
 
-    results = {}
-    for unlearn_type in unlearn_types:
-        filters = {
-            "config.experiment.experiment_group": "sweep_forget_ood_ratio",
-            "config.experiment.unlearn_type": unlearn_type
-        }
+    # results = {}
+    # for unlearn_type in unlearn_types:
+    #     filters = {
+    #         "config.experiment.experiment_group": "sweep_forget_ood_ratio",
+    #         "config.experiment.unlearn_type": unlearn_type
+    #     }
         
-        client = WandbClient(entity=entity, project=project)
-        runs = client.get_runs(filters=filters)
+    #     client = WandbClient(entity=entity, project=project)
+    #     runs = client.get_runs(filters=filters)
 
-        experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
+    #     experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
 
-        results[unlearn_type] = experiment_means
-
-
-        print(experiment_means)
+    #     results[unlearn_type] = experiment_means
 
 
-    # save results
-    with open("results.json", "w") as f:
-        json.dump(results, f)
+    #     print(experiment_means)
+
+
+    # # save results
+    # with open("results.json", "w") as f:
+    #     json.dump(results, f)
 
 
     # load results
