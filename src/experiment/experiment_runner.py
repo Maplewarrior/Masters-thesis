@@ -123,26 +123,41 @@ def run_experiment(config: Config):
                 if config.wandb.enabled:
                     # Log metrics for this run using "/" for nesting
                     wandb.log({
+                        # Validation: divergence and hamming pd
                         "validation/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["validation"]["Hamming PD"],
                         "validation/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["validation"]["JS divergence"],
-                        "validation/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["validation"]["Hamming PD"],
-                        "validation/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["validation"]["JS divergence"],
+                        "validation/retrained_vs_original/hamming_pd": results["retrained vs. original"]["validation"]["Hamming PD"],
+                        "validation/retrained_vs_original/js_divergence": results["retrained vs. original"]["validation"]["JS divergence"],
+                        "validation/unlearned_vs_retrained/hamming_pd": results["unlearned vs. retrained"]["validation"]["Hamming PD"],
+                        "validation/unlearned_vs_retrained/js_divergence": results["unlearned vs. retrained"]["validation"]["JS divergence"],
+
+                        # Validation: accuracy
                         "validation/accuracy/unlearned": results["unlearned vs. original"]["validation"]["accuracy_unlearned_model"],
                         "validation/accuracy/retrained": results["unlearned vs. retrained"]["validation"]["accuracy_comparison_model"],
                         "validation/accuracy/original": results["unlearned vs. original"]["validation"]["accuracy_comparison_model"],
                         
+                        # Retain: divergence and hamming pd
                         "retain/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["retain"]["Hamming PD"],
                         "retain/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["retain"]["JS divergence"],
-                        "retain/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["retain"]["Hamming PD"],
-                        "retain/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["retain"]["JS divergence"],
+                        "retain/retrained_vs_original/hamming_pd": results["retrained vs. original"]["retain"]["Hamming PD"],
+                        "retain/retrained_vs_original/js_divergence": results["retrained vs. original"]["retain"]["JS divergence"],
+                        "retain/unlearned_vs_retrained/hamming_pd": results["unlearned vs. retrained"]["retain"]["Hamming PD"],
+                        "retain/unlearned_vs_retrained/js_divergence": results["unlearned vs. retrained"]["retain"]["JS divergence"],
+
+                        # Retain: accuracy
                         "retain/accuracy/unlearned": results["unlearned vs. original"]["retain"]["accuracy_unlearned_model"],
                         "retain/accuracy/retrained": results["unlearned vs. retrained"]["retain"]["accuracy_comparison_model"],
                         "retain/accuracy/original": results["unlearned vs. original"]["retain"]["accuracy_comparison_model"],
 
+                        # Forget: divergence and hamming pd
                         "forget/unlearned_vs_original/hamming_pd": results["unlearned vs. original"]["forget"]["Hamming PD"],
                         "forget/unlearned_vs_original/js_divergence": results["unlearned vs. original"]["forget"]["JS divergence"],
-                        "forget/retrained_vs_original/hamming_pd": results["unlearned vs. retrained"]["forget"]["Hamming PD"],
-                        "forget/retrained_vs_original/js_divergence": results["unlearned vs. retrained"]["forget"]["JS divergence"],
+                        "forget/retrained_vs_original/hamming_pd": results["retrained vs. original"]["forget"]["Hamming PD"],
+                        "forget/retrained_vs_original/js_divergence": results["retrained vs. original"]["forget"]["JS divergence"],
+                        "forget/unlearned_vs_retrained/hamming_pd": results["unlearned vs. retrained"]["forget"]["Hamming PD"],
+                        "forget/unlearned_vs_retrained/js_divergence": results["unlearned vs. retrained"]["forget"]["JS divergence"],
+
+                        # Forget: accuracy
                         "forget/accuracy/unlearned": results["unlearned vs. original"]["forget"]["accuracy_unlearned_model"],
                         "forget/accuracy/retrained": results["unlearned vs. retrained"]["forget"]["accuracy_comparison_model"],
                         "forget/accuracy/original": results["unlearned vs. original"]["forget"]["accuracy_comparison_model"],
