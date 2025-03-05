@@ -6,8 +6,9 @@ from tqdm import tqdm
 import numpy as np
 import subprocess
 import os
+import uuid
 
-def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="configs/sweep", models=None, experiment_group_prefix=None):
+def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="configs/sweep", models=None, experiment_group_prefix=None, use_wandb=False):
     """
     Run a parameter sweep by varying a single parameter across multiple values.
     
@@ -18,6 +19,7 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
         output_dir: Directory to store generated config files
         models: List of model types to run experiments for (if None, uses the model in base config)
         experiment_group_prefix: Prefix for the experiment group name (if None, uses "sweep")
+        use_wandb: Whether to use Weights & Biases for logging
     """
     # Load base config
     with open(base_config_path, "r") as f:
@@ -48,11 +50,28 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
             for key in param_path[:-1]:
                 current = current[key]
             current[param_path[-1]] = value
+
+            config['experiment']['unlearn_type'] = model
             
             
             # Create a unique experiment group name based on the parameter and model
-            config['experiment']['experiment_group'] = f"{experiment_group_prefix}_{param_path[-1]}_{value}_{model}"
+            if config['experiment']['experiment_group'] is None:
+                config['experiment']['experiment_group'] = f"{experiment_group_prefix}"
+            else:
+                config['experiment']['experiment_group'] = f"{config['experiment']['experiment_group']}_{experiment_group_prefix}"
             
+            # Append parameter and value to experiment ID
+            param_short_name = param_path[-1]
+            
+            # Check if experiment_id exists in the config
+            if 'experiment_id' not in config['experiment'] or config['experiment']['experiment_id'] is None:
+                # Generate a unique ID using uuid and combine with parameter info
+                unique_id = str(uuid.uuid4())[:8]
+                config['experiment']['experiment_id'] = f"{unique_id}_{param_short_name}_{value}"
+            else:
+                config['experiment']['experiment_id'] = f"{config['experiment']['experiment_id']}_{param_short_name}_{value}"
+            
+
             # Save the config to a file
             config_filename = f"{output_dir}/{param_path[-1]}_{value}_{model}.yaml"
             with open(config_filename, "w") as f:
@@ -60,6 +79,10 @@ def run_parameter_sweep(base_config_path, param_name, param_values, output_dir="
             
             # Run the experiment with this config
             cmd = ["python", "main.py", "experiment", "--unlearn-type", model, "--config", config_filename]
+            
+            # Add wandb flag if requested
+            if use_wandb:
+                cmd.append("--wandb")
 
             subprocess.run(cmd)
 
@@ -75,6 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--models", type=str, nargs="+", help="List of model types to run experiments for")
     parser.add_argument("--experiment_group", type=str, default=None, 
                         help="Prefix for experiment group name (default: 'sweep')")
+    parser.add_argument("--wandb", action="store_true", help="Use Weights & Biases for logging")
     
     args = parser.parse_args()
     
@@ -90,4 +114,5 @@ if __name__ == "__main__":
     else:
         param_values = [float(x) for x in param_values]
     
-    run_parameter_sweep(args.base_config, args.param, param_values, args.output_dir, args.models, args.experiment_group) 
+    run_parameter_sweep(args.base_config, args.param, param_values, args.output_dir, args.models, 
+                        args.experiment_group, args.wandb) 
