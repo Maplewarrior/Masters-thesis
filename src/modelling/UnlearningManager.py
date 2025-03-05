@@ -199,7 +199,9 @@ class UnlearningManager:
         # Forget all sensitive batches
         trainer.forget(indices_to_forget=None)
 
+        repair_epochs = int(n_epochs * 0.2)
+
         # Repair phase
-        trainer.train(dataloaders["train_full_loader"], epochs=10, save_accuracy_to_file=False, repair=True)
+        trainer.train(dataloaders["train_full_loader"], epochs=repair_epochs, save_accuracy_to_file=False, repair=True)
 
         return unlearned_model, retrained_model, original_model
