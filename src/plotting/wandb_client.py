@@ -1,3 +1,6 @@
+# This code is used to fetch runs from Weights & Biases and return the results as a list of dictionaries.
+# It is used to group runs by experiment_id and calculate the mean and std of numeric metrics.
+
 import wandb
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,6 +10,7 @@ import concurrent.futures
 from tqdm import tqdm
 from matplotlib.gridspec import GridSpec
 import json
+from datetime import datetime
 
 class WandbClient:
     """
@@ -55,6 +59,8 @@ class WandbClient:
             "validation/unlearned_vs_original/js_divergence",
             "validation/retrained_vs_original/hamming_pd",
             "validation/retrained_vs_original/js_divergence",
+            "validation/unlearned_vs_retrained/js_divergence",
+            "validation/unlearned_vs_retrained/hamming_pd",
             "validation/accuracy/unlearned",
             "validation/accuracy/retrained",
             "validation/accuracy/original",
@@ -64,6 +70,8 @@ class WandbClient:
             "retain/unlearned_vs_original/js_divergence",
             "retain/retrained_vs_original/hamming_pd",
             "retain/retrained_vs_original/js_divergence",
+            "retain/unlearned_vs_retrained/js_divergence",
+            "retain/unlearned_vs_retrained/hamming_pd",
             "retain/accuracy/unlearned",
             "retain/accuracy/retrained",
             "retain/accuracy/original",
@@ -73,9 +81,30 @@ class WandbClient:
             "forget/unlearned_vs_original/js_divergence",
             "forget/retrained_vs_original/hamming_pd",
             "forget/retrained_vs_original/js_divergence",
+            "forget/unlearned_vs_retrained/js_divergence",
+            "forget/unlearned_vs_retrained/hamming_pd",
             "forget/accuracy/unlearned",
             "forget/accuracy/retrained",
-            "forget/accuracy/original"
+            "forget/accuracy/original",
+
+            # Performance metrices
+            "validation/accuracy/unlearned",
+            "validation/accuracy/retrained",
+            "validation/accuracy/original",
+            "validation/unlearned_vs_original/hamming_pd",
+            "validation/unlearned_vs_original/js_divergence",
+            "validation/retrained_vs_original/hamming_pd",
+            "validation/retrained_vs_original/js_divergence",
+
+            "performance_tracking/unlearning/time_seconds",
+            "performance_tracking/retrained/training_time_seconds",
+            "performance_tracking/original/training_time_seconds",
+            "performance_tracking/unlearning/cpu_peak_memory_mb",
+            "performance_tracking/retrained/cpu_peak_memory_mb",
+            "performance_tracking/original/cpu_peak_memory_mb",
+            "performance_tracking/unlearning/cpu_memory_usage_mb",
+            "performance_tracking/retrained/cpu_memory_usage_mb",
+            "performance_tracking/original/cpu_memory_usage_mb",
         ]
         
         # print(f"Fetching history for run {run_id}...")
@@ -140,7 +169,6 @@ class WandbClient:
         
         return all_results
     
-
     def get_run_ids(self, runs, num_workers: int = 16) -> List[str]:
         """
         Get run IDs for runs matching the given filters.
@@ -326,6 +354,8 @@ class WandbClient:
         current_user = api.viewer
         return [current_user.entity]
 
+
+
 def plot_grid(results: Dict[str, Dict[str, Any]], sweep_metric: str = "ood_ratio"):
     """
     Plot separate grids of metrics for validation, retain, and forget categories.
@@ -466,36 +496,25 @@ def plot_grid(results: Dict[str, Dict[str, Any]], sweep_metric: str = "ood_ratio
 
 if __name__ == "__main__":
     # Example usage of the WandbClient class
-    # unlearn_types = ["amnesiac"]
+    unlearn_types = ["amnesiac", "sisa", "scrub+r", "ssd"]
 
-    # entity = "machine-unlearning-thesis"
-    # project = "unlearning-experiments"
+    entity = "machine-unlearning-thesis"
+    project = "unlearning-experiments"
 
-    # results = {}
-    # for unlearn_type in unlearn_types:
-    #     filters = {
-    #         "config.experiment.experiment_group": "sweep_forget_ood_ratio",
-    #         "config.experiment.unlearn_type": unlearn_type
-    #     }
+    results = {}
+    for unlearn_type in unlearn_types:
+        # Get today's date in ISO format (YYYY-MM-DD)
+        today = datetime.now().strftime("%Y-%m-%d")
         
-    #     client = WandbClient(entity=entity, project=project)
-    #     runs = client.get_runs(filters=filters)
+        filters = {
+            "config.experiment.experiment_group": "sweep_forget_ood_ratio",
+            "config.experiment.unlearn_type": unlearn_type,
+            "created_at": {"$gte": "2025-03-05"}  # Filter for runs created on or after May 3, 2025
+        }
+        
+        client = WandbClient(entity=entity, project=project)
+        runs = client.get_runs(filters=filters)
 
-    #     experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
+        experiment_means = client.group_runs_by_experiment_id(runs, sweep_metric="forget.ood_ratio")
 
-    #     results[unlearn_type] = experiment_means
-
-
-    #     print(experiment_means)
-
-
-    # # save results
-    # with open("results.json", "w") as f:
-    #     json.dump(results, f)
-
-
-    # load results
-    with open("results.json", "r") as f:
-        results = json.load(f)
-
-    plot_grid(results)
+        results[unlearn_type] = experiment_means
