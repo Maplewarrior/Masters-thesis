@@ -8,7 +8,7 @@ import json
 import os
 
 from src.modelling.trainer import Trainer
-from src.modelling.neural_network import NeuralNet
+from src.modelling.neural_network import NeuralNet, NeuralNetRS
 from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
 from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
 from src.modelling.scrub import ScrubR
@@ -250,7 +250,7 @@ def apply_unlearning_sae(dataloaders, n_features, n_classes, n_epochs, device="c
 
     ### Train original model ###
     print("\nTraining neural net:\n\n")
-    network = NeuralNet(n_features, n_classes)
+    network = NeuralNetRS(n_features, n_classes)
     retrained_network = copy.deepcopy(network) # keep same initialization of weights 
     # train neural net
     trainer = Trainer(network, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs, device=device)
