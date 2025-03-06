@@ -43,9 +43,6 @@ class SAE(nn.Module):
         # pdb.set_trace()
         loss = reconstruction_term + self._lambda * regularization_term
         return loss.mean()
-
-    
-
 class Crosscoder(nn.Module):
     def __init__(self, d: int, m: int) -> None:
         super().__init__()
