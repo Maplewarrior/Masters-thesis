@@ -240,11 +240,50 @@ def apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, devi
     return unlearned_model, retrained_model, original_model
 
 
-def apply_unlearning_sae():
+def apply_unlearning_sae(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
     """
     Placeholder function for SAE unlearning since it's not yet implemented.
     """
-    raise NotImplementedError("SAE is not implemented yet.")
+    layer_num = 6
+    d_factor = 8
+    _lambda = 0.6 # 0.5
+
+    ### Train original model ###
+    print("\nTraining neural net:\n\n")
+    network = NeuralNet(n_features, n_classes)
+    retrained_network = copy.deepcopy(network) # keep same initialization of weights 
+    # train neural net
+    trainer = Trainer(network, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs, device=device)
+    trainer.train()
+    # train the SAE
+    d = network.net[layer_num].in_features
+    sae = SAE(d=d, m=d * d_factor, _lambda = _lambda)
+    unlearned_model = SAEUnlearner(network, sae, layer_num=layer_num)
+    print("\n\nTraining SAE:\n")
+    trainer = Trainer(unlearned_model, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs*5, device=device)
+    trainer.train_sae()
+
+    original_model = copy.deepcopy(unlearned_model)
+
+    ### perform unlearning ###
+    
+    unlearned_model.unlearn(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'])
+
+    ### Train original model ###
+    print("\nTraining neural net:\n\n")
+    # network = NeuralNet2(n_features, n_classes)
+    # train neural net
+    trainer = Trainer(retrained_network, dataloaders['train_retain_loader'], dataloaders['val_loader'], n_epochs, device=device)
+    trainer.train()
+    # train the SAE
+    d = network.net[layer_num].in_features
+    sae = SAE(d=d, m=d * d_factor, _lambda = _lambda)
+    retrained_model = SAEUnlearner(retrained_network, sae, layer_num=layer_num)
+    print("\n\nTraining SAE:\n")
+    trainer = Trainer(retrained_model, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs*5, device=device)
+    trainer.train_sae()
+
+    return unlearned_model, retrained_model, original_model
 
 
 def evaluate_models(unlearned_model, retrained_model, original_model, dataloaders):
