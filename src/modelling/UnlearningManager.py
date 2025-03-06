@@ -569,7 +569,7 @@ class UnlearningManager:
         repair_epochs = int(n_epochs * 0.2)
 
         # Repair phase
-        trainer.train(dataloaders["train_full_loader"], epochs=repair_epochs, save_accuracy_to_file=False, repair=True)
+        trainer.train(dataloaders["train_retain_loader"], epochs=repair_epochs, save_accuracy_to_file=False, repair=True)
         
         # Log performance metrics for unlearning
         if self.track_performance:
