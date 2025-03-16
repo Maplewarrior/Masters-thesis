@@ -125,7 +125,7 @@ class ExperimentConfig(BaseModel):
     @field_validator('mode')
     @classmethod
     def validate_mode(cls, v):
-        if v not in ["experiment", "visualize", "get_latex_results"]:
+        if v not in ["experiment", "visualize", "get_latex_results", "sync_wandb"]:
             raise ValueError(f"Mode must be one of 'experiment', 'visualize', or 'get_latex_results', got {v}")
         return v
     

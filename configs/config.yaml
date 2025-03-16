@@ -7,7 +7,7 @@ defaults:
 
 # Weights & Biases logging
 wandb:
-  enabled: false
+  enabled: true
   mode: "offline"
   project: "unlearning-experiments"
   dir: "./experiments/wandb"
@@ -49,9 +49,9 @@ system:
 experiment:
   mode: "experiment"
   unlearn_type: "ssd"
-  n_repeats: 30
+  n_repeats: 5
   n_epochs: 50
-  n_forget_trials: 10
+  n_forget_trials: 5
   experiment_id: null  # Will be auto-generated
   experiment_group: "default_group"
   track_performance: false
