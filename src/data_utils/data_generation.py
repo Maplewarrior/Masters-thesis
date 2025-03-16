@@ -1,13 +1,13 @@
 from src.data_utils.synthetic_data import DataGenerator
-from src.utils.config_loader import Config
+from src.utils.hydra_config import DataConfig, ForgetConfig
 from src.data_utils.synthetic_data import create_dataloaders
 
-def generate_data(args) -> DataGenerator:
+def generate_data(args: DataConfig) -> DataGenerator:
     """
-    Generates and splits the synthetic data using arguments from argparse.
+    Generates and splits the synthetic data using arguments from config.
     
     Args:
-        args: Parsed command line arguments containing data generation parameters
+        args: Data configuration parameters
     """
     data_generator = DataGenerator(random_state=args.random_state)
     data_generator.generate_data(
@@ -30,7 +30,7 @@ def generate_data(args) -> DataGenerator:
     return data_generator
 
 
-def create_forget_retain_split(data_generator, config: Config):
+def create_forget_retain_split(data_generator, config: ForgetConfig):
     """Creates a new forget/retain split for existing data and returns associated dataloaders."""
     data_generator.draw_forget_set(
         n_points=config.forget.n_points, 

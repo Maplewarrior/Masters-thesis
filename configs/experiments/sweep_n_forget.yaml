@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - /config
+  - _self_
+
+experiment:
+  experiment_group: "sweep_forget_n_points"
+  n_repeats: 5
+  n_epochs: 10
+  n_forget_trials: 5
+  track_performance: true
+
+forget:
+  n_points: 50
+  ood_ratio: 0.0
+
+system:
+  device: "cpu" 

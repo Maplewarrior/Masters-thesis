@@ -1,7 +1,14 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
 # Weights & Biases logging
 wandb:
   enabled: false
-  mode: "offline"  # "online" or "offline"
+  mode: "offline"
   project: "unlearning-experiments"
   dir: "./experiments/wandb"
 
@@ -13,9 +20,10 @@ data:
   n_informative: 25
   n_redundant: 0
   n_outliers: 50
-  outlier_scale: 2.0
+  outlier_scale: 4.0
   outlier_variance: 0.4
-  # outlier_class: null # Default to None
+  outlier_class: null
+  random_state: 42
   train_ratio: 0.8
   val_ratio: 0.1
   test_ratio: 0.1
@@ -29,19 +37,26 @@ model:
 # Forget set configuration
 forget:
   n_points: 50
-  class_idx: null  # Set to a specific class index or null
+  class_idx: null
   ood_ratio: 0.5
 
 # System settings
 system:
-  device: "cuda"  # "cpu", "cuda", or "mps"
-  seed: 42
+  device: "cpu"
+  seed: null
 
 # Experiment configuration
 experiment:
-  mode: "experiment"  # "experiment", "visualize", or "get_latex_results"
-  unlearn_type: "ssd"  # Type of unlearning method to use
+  mode: "experiment"
+  unlearn_type: "ssd"
   n_repeats: 30
   n_epochs: 50
   n_forget_trials: 10
+  experiment_id: null  # Will be auto-generated
   experiment_group: "default_group"
+  track_performance: false
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

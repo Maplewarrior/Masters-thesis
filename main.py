@@ -1,146 +1,28 @@
-import argparse
-import json
 import os
+import json
 import sys
 from rich.console import Console
 from rich.table import Table
+import hydra
+from hydra.utils import get_original_cwd
+from omegaconf import DictConfig, OmegaConf
+import logging
+import uuid
+
+from rich.pretty import Pretty
+from rich.panel import Panel
 
 from src.evaluation.results_table import create_latex_table
-from src.utils.config_loader import load_config
+from src.utils.hydra_config import validate_config
 from src.experiment.experiment_runner import run_experiment
 
-
-def parse_arguments():
-    """Parses command-line arguments."""
-    parser = argparse.ArgumentParser()
-    # Core arguments
-    parser.add_argument(
-        "mode",
-        type=str.lower,
-        default="experiment",
-        choices=["experiment", "visualize", "get_latex_results"],
-        help="What to do when running the script",
-    )
-    parser.add_argument(
-        "--unlearn-type",
-        type=str.lower,
-        default="ssd",
-        choices=["ssd", "scrub+r", "sisa", "amnesiac", "sae"],
-        help="What type of unlearning algorithm to apply",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/default.yaml",
-        help="Path to experiment configuration file",
-    )
-    
-    # Data generation arguments
-    data_group = parser.add_argument_group('data generation')
-    data_group.add_argument("--n-samples", type=int, default=1000)
-    data_group.add_argument("--n-features", type=int, default=25)
-    data_group.add_argument("--n-classes", type=int, default=4)
-    data_group.add_argument("--n-informative", type=int, default=25)
-    data_group.add_argument("--n-redundant", type=int, default=0)
-    data_group.add_argument("--n-outliers", type=int, default=50)
-    data_group.add_argument("--outlier-scale", type=float, default=4.0)
-    data_group.add_argument("--outlier-variance", type=float, default=0.4)
-    data_group.add_argument("--outlier-class", type=int, default=1)
-    data_group.add_argument("--random-state", type=int, default=42)
-    data_group.add_argument("--train-ratio", type=float, default=0.8)
-    data_group.add_argument("--val-ratio", type=float, default=0.1)
-    data_group.add_argument("--test-ratio", type=float, default=0.1)
-
-    # Experiment arguments
-    exp_group = parser.add_argument_group('experiment')
-    exp_group.add_argument("--n-repeats", type=int, default=5,
-                          help="Number of experiment repeats")
-    exp_group.add_argument("--n-epochs", type=int, default=20,
-                          help="Number of training epochs")
-    exp_group.add_argument("--n-forget-trials", type=int, default=2,
-                          help="Number of different forget sets to try")
-
-    # Forget set arguments
-    forget_group = parser.add_argument_group('forget')
-    forget_group.add_argument("--forget-n-points", type=int, default=50,
-                            help="Number of points to include in forget set")
-    forget_group.add_argument("--forget-class-idx", type=int, default=None,
-                            help="Specific class to draw forget points from")
-    forget_group.add_argument("--forget-ood-ratio", type=float, default=0.5,
-                            help="Ratio of out-of-distribution points in forget set")
-
-    # System arguments
-    sys_group = parser.add_argument_group('system')
-    sys_group.add_argument(
-        "--device",
-        type=str.lower,
-        default="cpu",
-        choices=["cpu", "cuda", "mps"],
-    )
-    sys_group.add_argument(
-        "--wandb",
-        action="store_true",
-        help="Enable Weights & Biases logging",
-    )
-
-    sys_group.add_argument(
-        "--track-performance",
-        action="store_true",
-        help="Enable performance tracking",
-    )
-    
-    args = parser.parse_args()
-    
-    # First load the config file
-    config = load_config(args.config)
-    
-    # Only override config with explicitly provided command-line arguments
-    # (not using defaults from argparse)
-    arg_dict = vars(args)
-    
-    # Fix for action flags like --track-performance and --wandb
-    # These need special handling since they're boolean flags
-    if args.track_performance:
-        config.experiment.track_performance = True
-        
-    if args.wandb:
-        config.wandb.enabled = True
-        
-    # Special handling for mode and unlearn-type
-    # Check if mode was explicitly provided (not using default)
-    if 'mode' in sys.argv:
-        config.experiment.mode = args.mode
-        
-    # Check if unlearn-type was explicitly provided
-    if '--unlearn-type' in sys.argv:
-        config.experiment.unlearn_type = args.unlearn_type
-    
-    # Handle other arguments
-    provided_args = {}
-    for k, v in arg_dict.items():
-        # Skip the action flags and special args we handled above
-        if k in ['track_performance', 'wandb', 'mode', 'unlearn_type']:
-            continue
-            
-        # Check if this argument was explicitly provided
-        if k in parser._option_string_actions and \
-           parser._option_string_actions[k].dest in arg_dict and \
-           arg_dict[parser._option_string_actions[k].dest] is not parser.get_default(parser._option_string_actions[k].dest):
-            provided_args[k] = v
-     
-    # Update config with explicitly provided arguments
-    if provided_args:
-        config.update_from_dict(provided_args)
-    
-    return args, config
-
-
+logger = logging.getLogger(__name__)
+console = Console()
 
 def get_latex_results():
     """
     Loads all .json results in `experiments/results` and prints a combined LaTeX table.
     """
-    console = Console()
     result_dir = "experiments/results"
     result_files = [f for f in os.listdir(result_dir) if f.endswith(".json")]
     
@@ -203,19 +85,46 @@ def get_latex_results():
     
     console.print(f"[green]LaTeX table saved to {latex_file}[/green]")
 
-
-def main():
-    args, config = parse_arguments()
-
-    # print the config that is being used
-    print(config)
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig):
+    """
+    Main entry point for the application.
+    
+    Args:
+        cfg: Hydra configuration object
+    """
+    # Set experiment_id if not provided
+    if not cfg.experiment.experiment_id:
+        cfg.experiment.experiment_id = str(uuid.uuid4())[:8]
+    
+    # If we're in a multirun, add parameter info to experiment_id
+    if hasattr(hydra, 'multirun') and hydra.multirun:
+        # Extract the parameter being swept
+        sweep_params = [k for k, v in OmegaConf.to_container(cfg).items() 
+                       if isinstance(v, list) or (hasattr(v, '__iter__') and not isinstance(v, str))]
+        
+        if sweep_params:
+            param_name = sweep_params[0].split('.')[-1]
+            param_value = cfg[sweep_params[0]]
+            cfg.experiment.experiment_id = f"{cfg.experiment.experiment_id}_{param_name}_{param_value}"
+    
+    # Validate configuration
+    try:
+        config = validate_config(cfg)
+    except ValueError as e:
+        console.print(f"[bold red]Configuration error: {str(e)}[/bold red]")
+        return
+    
+    # Print the config that is being used
+    console.print("[bold blue]Configuration:[/bold blue]")
+    console.print(config.model_dump_json(indent=2))
     
     if config.experiment.mode == "experiment":
         run_experiment(config)
     elif config.experiment.mode == "get_latex_results":
         get_latex_results()
     else:
-        print("Visualization mode not implemented in this refactoring.")
+        console.print("[bold yellow]Visualization mode not implemented in this refactoring.[/bold yellow]")
 
 if __name__ == "__main__":
     main()
