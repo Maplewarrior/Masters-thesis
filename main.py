@@ -1,28 +1,26 @@
 import os
 import json
 import sys
-from rich.console import Console
-from rich.table import Table
 import hydra
 from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf
 import logging
 import uuid
 
-from rich.pretty import Pretty
-from rich.panel import Panel
-
 from src.evaluation.results_table import create_latex_table
 from src.utils.hydra_config import validate_config
 from src.experiment.experiment_runner import run_experiment
 
 logger = logging.getLogger(__name__)
-console = Console()
 
 def get_latex_results():
     """
     Loads all .json results in `experiments/results` and prints a combined LaTeX table.
     """
+    # Import rich inside the function to avoid serialization issues
+    from rich.console import Console
+    console = Console()
+    
     result_dir = "experiments/results"
     result_files = [f for f in os.listdir(result_dir) if f.endswith(".json")]
     
@@ -93,6 +91,10 @@ def main(cfg: DictConfig):
     Args:
         cfg: Hydra configuration object
     """
+    # Create console inside the function
+    from rich.console import Console
+    console = Console()
+    
     # Set experiment_id if not provided
     if not cfg.experiment.experiment_id:
         cfg.experiment.experiment_id = str(uuid.uuid4())[:8]

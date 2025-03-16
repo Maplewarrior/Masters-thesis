@@ -1,0 +1,11 @@
+# @package hydra.launcher
+_target_: hydra_plugins.hydra_ray_launcher.ray_launcher.RayLauncher
+ray:
+  init:
+    address: ???
+    num_cpus: ???
+    num_gpus: ???
+  remote:
+    max_retries: ???
+    num_cpus: ???
+    num_gpus: ??? 

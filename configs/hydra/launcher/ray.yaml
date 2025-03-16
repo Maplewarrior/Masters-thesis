@@ -1,0 +1,11 @@
+# @package hydra.launcher
+_target_: hydra_plugins.hydra_ray_launcher.ray_launcher.RayLauncher
+ray:
+  init:
+    address: null  # Set to "auto" if you want to connect to an existing Ray cluster
+    num_cpus: 8  # Adjust based on your machine's capabilities
+    num_gpus: 0  # Set to the number of GPUs you want to use
+  remote:
+    max_retries: 3
+    num_cpus: 1  # CPUs per task
+    num_gpus: 0  # GPUs per task 
