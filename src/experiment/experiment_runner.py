@@ -113,6 +113,7 @@ def run_experiment(config: Config):
         ray.init(num_cpus=config.launcher.ray.init.num_cpus if config.launcher and config.launcher.ray else None)
     
     # Generate data once
+
     data_generator = generate_data(config.data)
     
     console.print(Panel(
@@ -154,8 +155,25 @@ def run_experiment(config: Config):
     # Create all forget/retain splits upfront
     dataloaders_list = []
     for forget_trial in range(config.experiment.n_forget_trials):
-        dataloaders = create_forget_retain_split(data_generator, config)
-        dataloaders_list.append(dataloaders)
+
+        if config.data.data_type == "synthetic":
+            dataloaders = create_forget_retain_split(data_generator, config)
+            dataloaders_list.append(dataloaders)
+        elif config.data.data_type == "synthetic_ood_clusters":
+            from src.data_utils.synthetic_ood_data import create_data_loaders as create_data_loaders_synthetic_ood
+            import torch
+
+            data = torch.load("data/synthetic_data/synthetic_ood_data_outlier_class_2_seed_40.pt")
+            X_with_outliers = data["X_with_outliers"]
+            y_with_outliers = data["y_with_outliers"]
+            outlier_indices = data["outlier_indices"]
+
+            use_indices = config.experiment.unlearn_type == "amnesiac"
+            onehot_labels = config.experiment.unlearn_type == "ssd" or config.experiment.unlearn_type == "scrub+r"
+            dataloaders = create_data_loaders_synthetic_ood(X_with_outliers, y_with_outliers, outlier_indices, config.data.batch_size, use_indices=use_indices, device=config.system.device, onehot_labels=onehot_labels)
+            dataloaders_list.append(dataloaders)
+            print("Breaking. Synthetic ood data is not implemented for multiple forget trials")
+            break
     
     # Launch all experiments in parallel
     pending_results = []
@@ -170,6 +188,9 @@ def run_experiment(config: Config):
             )
             pending_results.append(future)
     
+        if config.data.data_type == "synthetic_ood_clusters":
+            break
+
     # Create progress display with Rich
     total_runs = config.experiment.n_forget_trials * config.experiment.n_repeats
     with Progress(

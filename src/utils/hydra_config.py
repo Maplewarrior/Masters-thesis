@@ -9,6 +9,7 @@ import os
 logger = logging.getLogger(__name__)
 
 class DataConfig(BaseModel):
+    data_type: str = Field(default="synthetic", description="Type of data to generate")
     n_samples: int = Field(default=1000, description="Number of samples to generate")
     n_features: int = Field(default=25, description="Number of features")
     n_classes: int = Field(default=4, description="Number of classes")
@@ -22,6 +23,7 @@ class DataConfig(BaseModel):
     train_ratio: float = Field(default=0.8, description="Ratio of training data")
     val_ratio: float = Field(default=0.1, description="Ratio of validation data")
     test_ratio: float = Field(default=0.1, description="Ratio of test data")
+    batch_size: int = Field(default=32, description="Batch size")
     
     @field_validator('train_ratio', 'val_ratio', 'test_ratio')
     @classmethod
