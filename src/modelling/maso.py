@@ -20,6 +20,7 @@ from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from matplotlib.colors import ListedColormap
+import os
 
 class MasoDataset(Dataset):
     def __init__(self, X, y, use_indices: bool = False, onehot_labels: bool = False, n_classes: int = None, device="cpu"):
@@ -58,6 +59,7 @@ class MasoDataset(Dataset):
 class MASO:
     def __init__(self, model: NeuralNet, train_dataloader, _lambda: float = 0.0):
         self.model = model
+        self.model_train_weights = None
         self.maso_params = self.extract_maso_params()
         self.X = train_dataloader.dataset.X
         self.y = train_dataloader.dataset.y
@@ -162,7 +164,7 @@ class MASO:
 
             # Compute the affine transformation for each partition
             # Equivalent to just using a linear transformation, but this looks cooler.
-            affine_values = torch.einsum("rd,bd->br", W_torch, current_activation) + b_torch
+            affine_values = torch.matmul(current_activation, W_torch.T) + b_torch
 
             # Compute argmax over partitions (r)
             # Based on Eq. (14) in Balestriero et al.
@@ -208,7 +210,7 @@ class MASO:
         grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
         
         # Create figure
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(12, 10))
         
         # Plot decision boundary first
         decision_boundary_creator = DecisionBoundaryCreator(self.model, self.train_dataloader)
@@ -234,19 +236,15 @@ class MASO:
             W, b = self.maso_params[layer]
             # Linear transformation
             current_activation = np.dot(current_activation, W.T) + b
-
-            
             
             # If this is not the final layer, plot in grey
             if layer < layer_idx - 1:
                 color = 'grey'
-                alpha = 0.3 * ((layer + 1) / layer_idx)  # Scale alpha by layer depth
                 
                 current_activation = activation_fn(torch.tensor(current_activation, dtype=torch.float32)).numpy()
                 Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
             else:
                 color = 'red'
-                alpha = 0.5
 
                 Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
 
@@ -255,29 +253,32 @@ class MASO:
                     max_indices = np.argmax(Z, axis=2)
                     for i in range(Z.shape[-1]):
                         class_region = (max_indices == i)
-                        plt.contour(xx, yy, class_region, colors=colors[i], linewidths=2, zorder=10)
+                        plt.contour(xx, yy, class_region, colors=colors[i], linewidths=2, zorder=1)
                 else:  # binary case
                     decision_boundary = Z[:,:,0] - Z[:,:,1]
                     plt.contour(xx, yy, decision_boundary, levels=[0], 
-                              colors=color, alpha=alpha, linewidths=2, zorder=10)
+                              colors=color, linewidths=2, zorder=1)
                 
             for i in range(Z.shape[-1]):
-                plt.contour(xx, yy, Z[:,:,i], levels=[0], colors=color, alpha=alpha, linewidths=1)
+                plt.contour(xx, yy, Z[:,:,i], levels=[0], colors=color, linewidths=1)
         
         # Plot the data points
         for class_idx, color in zip(classes, colors):
             plt.scatter(self.X[y == class_idx, 0], self.X[y == class_idx, 1], 
                        color=color, s=20, label=f"Class {class_idx}", alpha=0.6)
             
-        # Plot point on 0,-7.3
-        plt.scatter(-0.4, -7, color='black', s=30, label='Point (-0.4, -7)')
+        # Add area, by amount of gridpoints in each decision region to legend
+        decision_boundary = np.unique(decision_boundary.numpy(), return_counts=True)
+        total_points = grid.shape[0] * grid.shape[1]
+        for i in range(decision_boundary[0].shape[0]):
+            plt.scatter([], [], color=colors[i], label=f"Decision region {i} has {decision_boundary[1][i]/total_points*100:.2f}% of gridpoints", alpha=0.6)
 
         plt.colorbar(label='Class')
         plt.xlabel('Feature 1')
         plt.ylabel('Feature 2')
         plt.title(f'Decision Boundary and Input Space Partitions Through Layer {layer_idx}\n'
                  f'(Previous layers shown in grey)\nActivation Function: {activation_fn.__name__}')
-        plt.legend()
+        plt.legend(loc='upper right')
         plt.grid(True, alpha=0.2)
         if save_path:
             plt.savefig(save_path)
@@ -356,23 +357,306 @@ def maso_dataset(n_samples: int, n_features: int, n_classes: int):
     
     return X, y
 
+def perturb_and_gif(model: NeuralNet, 
+                    maso: MASO, 
+                    output_dir: str,
+                    layer_idx: int,
+                    weight_x_idx: int,
+                    weight_y_idx: int):
+    frames = []
+    # Create dir for layer
+    os.makedirs(f"{output_dir}/layer{layer_idx}", exist_ok=True)
+    # Make one dir for gifs
+    os.makedirs(f"{output_dir}/gifs", exist_ok=True)
+    for weight_perturbation in np.linspace(1, 0, 20):
+        save_path = f"{output_dir}/layer{layer_idx}/weight_perturbed_{layer_idx}_{weight_x_idx}_{weight_y_idx}_{weight_perturbation}.png"
+        frames.append(save_path)
+        model.net[layer_idx].weight.data[weight_x_idx, weight_y_idx] *= weight_perturbation
+
+        # save_path = "src/modelling/maso_model/original_model.png"
+
+        # ==============================
+        # Plot results
+        # ==============================
+        maso.plot_combined_visualization(layer_idx=3, 
+                                    activation_fn=nn.functional.relu,
+                                    x_interval=(-10, 10),
+                                    y_interval=(-10, 10),
+                                    save_path=save_path)
+    
+    gif_path = f"{output_dir}/gifs/weight_perturbation_layer{layer_idx}_{weight_x_idx}_{weight_y_idx}.gif"
+    with imageio.get_writer(gif_path, mode='I', duration=10) as writer:
+        for frame_path in frames:
+            image = imageio.imread(frame_path)
+            writer.append_data(image)
+    
+    print(f"GIF created at: {gif_path}")
+
+def pertubation_db_distributions(model: NeuralNet, 
+                                 maso: MASO, 
+                                 output_dir: str):
+    """
+    Function to perturb each weight individually (set it to 0), and then save the distribution of the decision boundary.
+    We use this to visualise the change in decision boundary from the original model.
+    """
+    # Create output directories
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(f"{output_dir}/heatmaps", exist_ok=True)
+    os.makedirs(f"{output_dir}/visualizations", exist_ok=True)
+    
+    # Define grid parameters for decision boundary calculation
+    x_interval = (-10, 10)
+    y_interval = (-10, 10)
+    
+    # Create decision boundary creator
+    decision_boundary_creator = DecisionBoundaryCreator(model, maso.train_dataloader)
+    
+    # Get original model's decision boundary
+    _, _, original_db = decision_boundary_creator.create_decision_boundary(x_interval, y_interval)
+    original_db_np = original_db.numpy()
+    
+    # Calculate original class distribution (number of grid points per class)
+    original_class_counts = np.unique(original_db_np, return_counts=True)
+    original_counts_dict = dict(zip(original_class_counts[0], original_class_counts[1]))
+    
+    # Save original model visualization
+    plt.figure(figsize=(12, 10))
+    maso.plot_combined_visualization(layer_idx=3, 
+                                    activation_fn=nn.functional.relu,
+                                    x_interval=x_interval,
+                                    y_interval=y_interval,
+                                    save_path=f"{output_dir}/original_model.png")
+    
+    # Store results for all perturbations
+    perturbation_results = []
+    
+    # Iterate through each layer
+    for layer_idx, layer in enumerate(model.net):
+        if not isinstance(layer, nn.Linear):
+            continue
+            
+        # Get the original weights
+        original_weights = layer.weight.data.clone()
+        
+        # Create heatmap data structures for this layer
+        layer_shape = original_weights.shape
+        area_change_heatmap = np.zeros(layer_shape)
+        
+        # Iterate through each weight in the layer
+        for i in range(layer_shape[0]):
+            for j in range(layer_shape[1]):
+                # Set the weight to 0
+                layer.weight.data[i, j] = 0.0
+                
+                # Recalculate decision boundary
+                _, _, perturbed_db = decision_boundary_creator.create_decision_boundary(x_interval, y_interval)
+                perturbed_db_np = perturbed_db.numpy()
+                
+                # Calculate perturbed class distribution
+                perturbed_class_counts = np.unique(perturbed_db_np, return_counts=True)
+                perturbed_counts_dict = dict(zip(perturbed_class_counts[0], perturbed_class_counts[1]))
+                
+                # Calculate area changes for each class
+                class_area_changes = {}
+                total_area_change = 0
+                
+                # Calculate absolute changes in area for each class
+                for class_idx in set(list(original_counts_dict.keys()) + list(perturbed_counts_dict.keys())):
+                    original_count = original_counts_dict.get(class_idx, 0)
+                    perturbed_count = perturbed_counts_dict.get(class_idx, 0)
+                    absolute_change = abs(perturbed_count - original_count)
+                    relative_change = absolute_change / original_count if original_count > 0 else float('inf')
+                    
+                    class_area_changes[class_idx] = {
+                        'original': original_count,
+                        'perturbed': perturbed_count,
+                        'absolute_change': absolute_change,
+                        'relative_change': relative_change
+                    }
+                    
+                    total_area_change += absolute_change
+                
+                # Store the total area change in the heatmap
+                area_change_heatmap[i, j] = total_area_change
+                
+                # Store detailed results
+                perturbation_results.append({
+                    'layer_idx': layer_idx,
+                    'weight_i': i,
+                    'weight_j': j,
+                    'total_area_change': total_area_change,
+                    'class_area_changes': class_area_changes
+                })
+                
+                # Restore the original weight
+                layer.weight.data[i, j] = original_weights[i, j]
+        
+        # Create and save heatmap for this layer
+        plt.figure(figsize=(10, 8))
+        plt.imshow(area_change_heatmap, cmap='hot', interpolation='nearest')
+        plt.colorbar(label='Total Decision Boundary Area Change')
+        plt.title(f'Impact of Weight Perturbation on Decision Boundary - Layer {layer_idx}')
+        plt.xlabel('Input Neuron Index')
+        plt.ylabel('Output Neuron Index')
+        plt.savefig(f"{output_dir}/heatmaps/layer{layer_idx}_heatmap.png")
+        plt.close()
+    
+    # Create summary visualization: bar chart of most influential weights
+    # Sort perturbation results by total area change
+    sorted_results = sorted(perturbation_results, key=lambda x: x['total_area_change'], reverse=True)
+    top_n = 20  # Show top 20 most influential weights
+    
+    plt.figure(figsize=(14, 8))
+    
+    # Extract data for top weights
+    top_weights = sorted_results[:top_n]
+    labels = [f"L{r['layer_idx']}_W{r['weight_i']}_{r['weight_j']}" for r in top_weights]
+    values = [r['total_area_change'] for r in top_weights]
+    
+    # Create bar chart
+    bars = plt.bar(range(len(labels)), values, color='skyblue')
+    plt.xticks(range(len(labels)), labels, rotation=90)
+    plt.xlabel('Weight (Layer_OutputNeuron_InputNeuron)')
+    plt.ylabel('Total Decision Boundary Area Change')
+    plt.title('Top Influential Weights on Decision Boundary')
+    
+    # Add value labels on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                f'{int(height)}',
+                ha='center', va='bottom', rotation=0)
+    
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/top_influential_weights.png")
+    plt.close()
+    
+    # Save detailed results as numpy array for further analysis
+    np.save(f"{output_dir}/perturbation_results.npy", np.array(perturbation_results, dtype=object))
+    
+    print(f"Perturbation analysis completed. Results saved to {output_dir}")
+    
+    return perturbation_results
+
+def plot_during_training(maso: MASO, 
+                         output_dir: str,
+                         epochs: int):
+    """
+    Function to plot the decision boundary during training.
+    We expect to have run the training loop and saved the weights for each epoch.
+    """
+    from tqdm import tqdm
+    # for each epoch we load the weights into the model
+    # We create a gif of the decision boundary changing over time
+    frames = []
+    for epoch in tqdm(range(epochs)):
+        model = NeuralNet(M=2, n_classes=3)
+        save_path = f"{output_dir}/epoch_{epoch+1}.png"
+        weights = torch.load(f"{output_dir}/epoch_train_weights_{epoch+1}.pth")
+        model.load_state_dict(weights)
+        maso.model = model
+        maso.maso_params = maso.extract_maso_params()
+        maso.plot_combined_visualization(layer_idx=3, 
+                                        activation_fn=nn.functional.relu,
+                                        x_interval=(-10, 10),
+                                        y_interval=(-10, 10),
+                                        save_path=save_path)
+        frames.append(save_path)
+    # Create a gif of the decision boundary changing over time
+    gif_path = f"{output_dir}/training_gif.gif"
+    with imageio.get_writer(gif_path, mode='I', duration=10) as writer:
+        for frame_path in frames:
+            image = imageio.imread(frame_path)
+            writer.append_data(image)
+
+def plot_with_varying_widths(maso: MASO,
+                             epochs: int,
+                             output_dir: str,
+                             train_dataloader: any,
+                             val_dataloader: any,
+                             widths: list[float]):
+    """
+    Function to plot the decision boundary with varying widths of the network.
+    We expect to have run the training loop and saved the weights for each epoch.
+    """
+    from tqdm import tqdm
+    frames = []
+    os.makedirs(output_dir, exist_ok=True)
+    for width in tqdm(widths):
+        model = NeuralNet(M=2, n_classes=3, width=width)
+        trainer = Trainer(model, 
+                         train_dataloader=train_dataloader,
+                         val_dataloader=val_dataloader,
+                         lr=0.001, 
+                         device='cpu',
+                         loss=maso.loss)
+        trainer.train(n_epochs=epochs)
+
+        maso.model = model
+        maso.maso_params = maso.extract_maso_params()
+        save_path = f"{output_dir}/width_{width}.png"
+        frames.append(save_path)
+        maso.plot_combined_visualization(layer_idx=3, 
+                                        activation_fn=nn.functional.relu,
+                                        x_interval=(-10, 10),
+                                        y_interval=(-10, 10),
+                                        save_path=save_path)
+        
+    gif_path = f"{output_dir}/width_varying_gif.gif"
+    with imageio.get_writer(gif_path, mode='I', duration=10) as writer:
+        for frame_path in frames:
+            image = imageio.imread(frame_path)
+            writer.append_data(image)
+
+def compare_splines(spline_1: nn.Linear,
+                    spline_2: nn.Linear):
+    """
+    Function to parameterise the splines, integrate them.
+    Construct a grid to approximate the integral of the splines.
+    Compare the integrated values of the splines.
+    """
+    # Parameterise the splines
+    # Since we can consider splines as affine linear functions, we can parameterise them as such.
+    # This means we just have to integrate the linear function over the interval.
+    # the integrated linear function is: F(x) = (a/2)x^2 + bx + c
+    raise NotImplementedError("Not implemented")
+    
+    grid = torch.linspace(0, 1, 100)
+
+    spline_1_weights = spline_1.weight.data / 2
+    spline_2_weights = spline_2.weight.data / 2
+    spline_1_bias = spline_1.bias.data
+    spline_2_bias = spline_2.bias.data
+    
+    # Integrate the splines
+    # reshape grid to match weight dimensions
+    grid = grid.view(1, -1)
+    integral_1 = torch.sum(spline_1_weights * grid**2 + spline_1_bias * grid)
+    integral_2 = torch.sum(spline_2_weights * grid**2 + spline_2_bias * grid)
+
+    # We can then compare them using the L2 norm
+    return torch.norm(integral_1 - integral_2, p=2)
+
 if __name__ == "__main__":
+    import imageio.v2 as imageio
+    import os
     # ==============================
     # Define dataset structure
     # ==============================
     n_samples = 1000
     n_features = 2
-    n_classes = 4
+    n_classes = 3
+    seed = 42
 
-    np.random.seed(42)
+    np.random.seed(seed)
 
     X, y = maso_dataset(n_samples=n_samples, 
                        n_features=n_features, 
                        n_classes=n_classes)
     
     # Train/val/test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.1, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=seed)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.1, random_state=seed)
     
     # Since y is already one-hot encoded from maso_dataset
     train_dataset = MasoDataset(X_train, y_train, onehot_labels=True, n_classes=n_classes)
@@ -404,29 +688,28 @@ if __name__ == "__main__":
                      device='cpu',
                      loss=maso.loss)
     
-    # trainer.train(n_epochs=40)
+    # trainer.train(n_epochs=40, save_weights=True)
     # trainer.eval()
 
-    # Save model
+    # # Save model
     # torch.save(model.state_dict(), "src/modelling/maso_model/model.pth")
     
     # ==============================
     # We tamper with the model to see effects on the splines
     # ==============================
-    # weight_x_idx = 0
-    # weight_y_idx = 0
-    # layer_idx = 0
-    # weight_perturbation = 1.5
-    # save_path = f"src/modelling/maso_model/weight_perturbed_{layer_idx}_{weight_x_idx}_{weight_y_idx}_{weight_perturbation}.png"
+    perturb_and_gif(model, 
+                    maso, "src/modelling/maso_model/weight_perturbation", 
+                    layer_idx=4, weight_x_idx=2, weight_y_idx=0)
+    
+    # pertubation_db_distributions(model, 
+    #                              maso, "src/modelling/maso_model/perturbation_analysis")
+    
+    # plot_during_training(maso, "src/modelling/maso_model/train_weights", 60)
 
-    # model.net[layer_idx].weight.data[weight_x_idx, weight_y_idx] *= weight_perturbation
-    save_path = "src/modelling/maso_model/original_model.png"
-
-    # ==============================
-    # Plot results
-    # ==============================
-    maso.plot_combined_visualization(layer_idx=3, 
-                                   activation_fn=nn.functional.relu,
-                                   x_interval=(-10, 10),
-                                   y_interval=(-10, 10),
-                                   save_path=save_path)
+    # plot_with_varying_widths(maso, 
+    #                         epochs=60, 
+    #                         output_dir="src/modelling/maso_model/width_varying", 
+    #                         train_dataloader=train_loader,
+    #                         val_dataloader=val_loader,
+    #                         widths=[1, 2, 4, 8, 16, 32, 64, 128])
+    # print(compare_splines(maso.model.net[0], maso.model.net[0]))
