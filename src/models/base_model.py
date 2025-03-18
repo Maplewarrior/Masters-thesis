@@ -37,11 +37,15 @@ class BaseModel(nn.Module):
         Reset parameters for all modules that have a reset_parameters method.
         This provides deterministic initialization when used with set_seed.
         """
-        for module in self.modules():
+        # Skip the model itself to avoid recursion
+        for name, module in self.named_children():
             if hasattr(module, 'reset_parameters'):
                 module.reset_parameters()
-            else: 
-                raise NotImplementedError(f"Module {module} does not have a reset_parameters method.")
+            # For container modules like Sequential, we need to reset their children
+            elif hasattr(module, 'children'):
+                for submodule in module.children():
+                    if hasattr(submodule, 'reset_parameters'):
+                        submodule.reset_parameters()
 
 
     def forward(self, x: torch.tensor, 
