@@ -9,7 +9,7 @@ Assumptions:
 
 """
 
-from src.modelling.neural_network import NeuralNet
+from src.modelling.neural_network import NeuralNet, SimpleNeuralNet
 import torch.nn as nn
 import torch
 from src.modelling.trainer import Trainer
@@ -88,7 +88,6 @@ class MASO:
                 W = layer.weight.detach().numpy()  # Extract weights
                 b = layer.bias.detach().numpy()    # Extract biases
                 maso_params.append((W, b))
-        
         return maso_params
 
     def plot_input_space_partitions(self, layer_idx: int, activation_fn: nn.Module):
@@ -200,6 +199,8 @@ class MASO:
         Plot both the decision boundary and input space partitions in a single plot.
         layer_idx represents how many layers to include for partitions.
         """
+        layer_idx = len(self.maso_params)
+
         # Create a grid of points
         x = torch.linspace(x_interval[0], x_interval[1], 1000)
         y = torch.linspace(y_interval[0], y_interval[1], 1000)
@@ -230,12 +231,11 @@ class MASO:
         current_activation = grid
         
         # Plot each layer's splines
+        
         for layer in range(layer_idx):
             W, b = self.maso_params[layer]
             # Linear transformation
             current_activation = np.dot(current_activation, W.T) + b
-
-            
             
             # If this is not the final layer, plot in grey
             if layer < layer_idx - 1:
@@ -249,7 +249,7 @@ class MASO:
                 alpha = 0.5
 
                 Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
-
+       
                 if Z.shape[-1] > 2:  # multiclass case
                     # Get regions where each class has maximum logit
                     max_indices = np.argmax(Z, axis=2)
@@ -270,7 +270,7 @@ class MASO:
                        color=color, s=20, label=f"Class {class_idx}", alpha=0.6)
             
         # Plot point on 0,-7.3
-        plt.scatter(-0.4, -7, color='black', s=30, label='Point (-0.4, -7)')
+        # plt.scatter(-0.4, -7, color='black', s=30, label='Point (-0.4, -7)')
 
         plt.colorbar(label='Class')
         plt.xlabel('Feature 1')
@@ -387,10 +387,10 @@ if __name__ == "__main__":
     # ==============================
     # Create model
     # ==============================
-    model = NeuralNet(M=n_features, n_classes=n_classes)
+    model = SimpleNeuralNet(M=n_features, n_classes=n_classes)
 
     # Load model
-    model.load_state_dict(torch.load("src/modelling/maso_model/model.pth"))
+    model.load_state_dict(torch.load("src/modelling/maso_model/simple_model.pth"))
 
     maso = MASO(model, train_loader, _lambda=0.3)
 
@@ -407,9 +407,11 @@ if __name__ == "__main__":
     # trainer.train(n_epochs=40)
     # trainer.eval()
 
+
     # Save model
-    # torch.save(model.state_dict(), "src/modelling/maso_model/model.pth")
+    # torch.save(model.state_dict(), "src/modelling/maso_model/simple_model.pth")
     
+    pdb.set_trace()
     # ==============================
     # We tamper with the model to see effects on the splines
     # ==============================
@@ -420,7 +422,7 @@ if __name__ == "__main__":
     # save_path = f"src/modelling/maso_model/weight_perturbed_{layer_idx}_{weight_x_idx}_{weight_y_idx}_{weight_perturbation}.png"
 
     # model.net[layer_idx].weight.data[weight_x_idx, weight_y_idx] *= weight_perturbation
-    save_path = "src/modelling/maso_model/original_model.png"
+    save_path = "src/modelling/maso_model/simple_model.png"
 
     # ==============================
     # Plot results

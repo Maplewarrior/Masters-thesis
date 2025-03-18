@@ -2,6 +2,32 @@ import torch
 import torch.nn as nn
 import pdb
 
+class SimpleNeuralNet(nn.Module):
+    def __init__(self, M: int, n_classes: int) -> None:
+        super().__init__()
+        """
+            M (int): Feature dimension of the data
+            n_classes (int): Number of classes in the dataset.
+        """
+        self.M = M
+        self.n_classes = n_classes
+        self.net = nn.Sequential(
+            nn.Linear(self.M, self.M*4),
+            nn.ReLU(),
+            nn.Linear(self.M*4, n_classes)
+            
+        )
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        logits = self.net(x)
+        return {'logits': logits, 'probabilities': self.softmax(logits), 'predictions': torch.argmax(logits, dim=-1)}
+
+    def inference(self, x):
+        self.eval()
+        with torch.no_grad():
+            return self(x)
+
 class NeuralNet(nn.Module):
     def __init__(self, M: int, n_classes: int) -> None:
         super().__init__()

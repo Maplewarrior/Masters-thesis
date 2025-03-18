@@ -6,7 +6,6 @@ class SAE(nn.Module):
         super().__init__()
         self.d = d # dimensionality of the model activations
         self.m = m # dimensionality of the dictionary space
-
         self.encoder = nn.Sequential(nn.Linear(self.d, self.m),
                                      nn.ReLU())
         
@@ -19,6 +18,11 @@ class SAE(nn.Module):
         xhat = self.decoder(z)
         return {'xhat': xhat, 
                 'z': z}
+
+    def inference(self, x):
+        self.eval()
+        with torch.no_grad():
+            return self(x)
     
     def loss(self, x, forward_out: dict):
         # x er 1 x 100
@@ -32,15 +36,21 @@ class SAE(nn.Module):
         l2_norm_dictionary = W_dec.norm(p=2, dim=0) # torch.linalg.norm(self.decoder.weight, dim=0, ord=2)
         # regularization_term = z @ l2_norm_dictionary # no need to abs z because of ReLU
         # MHA update:
-        # regularization_term = (z @ l2_norm_dictionary) / x.size(0) # no need to abs z because of ReLU
+        regularization_term = (z @ l2_norm_dictionary) / x.size(0) # no need to abs z because of ReLU
         
         # MHA update 2: Favor near orthogonal W values:
         # regularization_term = (z @ l2_norm_dictionary) / x.size(0) + torch.sum(torch.abs(W_dec @ W_dec.T - torch.diag(torch.diag(W_dec @ W_dec.T))))
         
         # MHA update 3: Actual orthogonality constraint:
-        mprod = W_dec.T @ W_dec
-        regularization_term = ((z @ l2_norm_dictionary) + torch.sum(torch.abs(mprod - torch.diag(torch.diag(mprod))))) / x.size(0)
-        # pdb.set_trace()
+        # mprod = W_dec.T @ W_dec # n_features x n_features
+        # regularization_term = ((z @ l2_norm_dictionary) + torch.sum(torch.abs(mprod - torch.diag(torch.diag(mprod))))) / x.size(0)
+        
+        # MHA update 4: Orthogonal + diversity constraint
+        # sparsity_constraint = z @ l2_norm_dictionary #/ x.size(0)
+        # orthogonality_constraint = torch.sum(torch.abs(mprod - torch.diag(torch.diag(mprod))))
+        # diversity_constraint = torch.log(torch.sum(torch.abs(mprod / torch.outer(l2_norm_dictionary, l2_norm_dictionary) - torch.eye(W_dec.size(1)))))
+        # regularization_term = (sparsity_constraint + orthogonality_constraint) / x.size(0) + diversity_constraint
+        
         loss = reconstruction_term + self._lambda * regularization_term
         return loss.mean()
 class Crosscoder(nn.Module):
