@@ -1,18 +1,21 @@
 import torch
 import torch.nn as nn
 import pdb
-from src.modelling.neural_network import NeuralNet
-from src.modelling.SAE import SAE
+# from src.models.neural_network import NeuralNet
+# from src.models.SAE import SAE
+from src.unlearners.base_unlearner import BaseUnlearner
 
 
-class SAEUnlearner(nn.Module):
-    def __init__(self, model, sae, layer_num: int) -> None:
+class SAEUnlearner(BaseUnlearner):
+    def __init__(self, model, sae, layer_num: int, alpha: float = 0.9) -> None:
         super().__init__()
         self.model = model
         self.model.eval()
         self.sae = sae
         self.layer_num = layer_num # which layer to apply the SAE to
+        self.alpha = alpha # the higher alpha, the lower the dampening
     
+
     def forward(self, x, return_reconstruction: bool = True):
         x_act = self.model.inference(x, start_idx=0, stop_idx=self.layer_num)['logits'] # activations at layer_num
         sae_out = self.sae(x_act) # reconstruction
@@ -41,12 +44,12 @@ class SAEUnlearner(nn.Module):
         with torch.no_grad():
             return self(x, return_reconstruction=False)
     
-    def calculate_dampening_factors(self, Z_retain, Z_forget, alpha: float):
+    def calculate_dampening_factors(self, Z_retain, Z_forget):
         retain_feature_idxs, retain_feature_counts = torch.unique(torch.where(Z_retain > 0)[1], return_counts=True)
         forget_feature_idxs, forget_feature_counts = torch.unique(torch.where(Z_forget > 0)[1], return_counts=True)
 
-        normalized_retain_counts = retain_feature_counts / Z_retain.size(0)
-        normalized_forget_counts = forget_feature_counts / Z_forget.size(0)
+        # normalized_retain_counts = retain_feature_counts / Z_retain.size(0)
+        # normalized_forget_counts = forget_feature_counts / Z_forget.size(0)
 
         dampening_factors = []
         
@@ -58,7 +61,7 @@ class SAEUnlearner(nn.Module):
             retain_idx = torch.where(forget_idx == retain_feature_idxs)[0]
             if len(retain_idx): # feature is also used in retain
                 # dampening_factors.append(torch.min(alpha * normalized_forget_counts[i] / normalized_retain_counts[retain_idx], torch.tensor(1.)))
-                dampening_factors.append(torch.min(alpha * mean_retain_activations[retain_idx] / mean_forget_activations[i], torch.tensor(1.)))
+                dampening_factors.append(torch.min(self.alpha * mean_retain_activations[retain_idx] / mean_forget_activations[i], torch.tensor(1.)))
             else:
                 dampening_factors.append(torch.tensor([0.]))
                 
@@ -70,12 +73,14 @@ class SAEUnlearner(nn.Module):
     def unlearn(self, retain_loader, forget_loader):
         Z_retain = self.get_Z_matrix(dataloader=retain_loader)
         Z_forget = self.get_Z_matrix(dataloader=forget_loader)
-
-        alpha = 0.9 # the higher alpha, the lower the dampening
         dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, alpha)
 
         with torch.no_grad():
             W_dec = self.sae.decoder.weight.data.clone()
             W_dec[:, forget_feature_idxs] = W_dec[:, forget_feature_idxs] * dampening_factors
             self.sae.decoder.weight.copy_(W_dec)
+    
+    def __call__(self, retain_dataloader, forget_dataloader):
+        self.unlearn(retain_dataloader, forget_dataloader)
+    
     

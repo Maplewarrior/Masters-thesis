@@ -3,10 +3,8 @@ import torch.nn as nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, M: int, n_classes: int) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.M = M
-        self.n_classes = n_classes
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x: torch.tensor, 
