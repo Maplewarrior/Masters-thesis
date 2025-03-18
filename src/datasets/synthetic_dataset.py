@@ -35,7 +35,7 @@ class SyntheticDataset(Dataset):
     def onehot_encode_labels(self, y, n_classes):
         if n_classes is None:
             n_classes = y.max() + 1
-        return torch.zeros(len(y), n_classes, device=self.device).scatter_(1, y.unsqueeze(1), 1)
+        return torch.zeros(len(y), n_classes).scatter_(1, y.unsqueeze(1), 1)
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx], self.indices[idx]
