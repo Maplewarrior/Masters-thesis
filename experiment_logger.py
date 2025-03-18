@@ -99,7 +99,11 @@ class WandBLogger(ExperimentLogger):
         self.run.finish()
 
 # Factory to create the appropriate logger
-def create_logger(backend: str, project_name: str, experiment_name: str) -> ExperimentLogger:
+def create_logger(project_name: str, experiment_name: str, backend: str = 'sqlite') -> ExperimentLogger:
+    assert backend in ['sqlite', 'wandb'], f"Unknown logger backend: {backend}"
+    assert project_name is not None, "Project name is required"
+    assert experiment_name is not None, "Experiment name is required"
+
     if backend.lower() == 'sqlite':
         return SQLiteLogger(project_name, experiment_name)
     elif backend.lower() == 'wandb':
@@ -144,9 +148,9 @@ if __name__ == '__main__':
     
     # Create logger (easily switch between 'sqlite' and 'wandb')
     logger = create_logger(
-        backend='sqlite',  # or 'wandb'
         project_name='my_project',
-        experiment_name='experiment_001'
+        experiment_name='experiment_001',
+        backend='sqlite'  # or 'wandb'
     )
     
     # Log hyperparameters
