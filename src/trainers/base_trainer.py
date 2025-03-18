@@ -31,9 +31,9 @@ class BaseTrainer:
         epoch_acc = 0
         n_samples = 0
 
-        for x, y in self.train_dataloader:
-            x = x.to(self.device)
-            y = y.to(self.device)
+        for batch in self.train_dataloader:
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
 
             # perform forward and backward pass
             out, loss = self.step(x, y)
@@ -74,13 +74,16 @@ class BaseTrainer:
 
                 avg_epoch_loss = np.mean(epoch_loss)
                 
+                train_dataset_name = self.train_dataloader.dataset.name
+                validation_dataset_name = self.val_dataloader.dataset.name
+
                 # log validation loss and accuracy
                 if self.logger:
                     self.logger.log({
-                        f"train/loss/{self.dataset_name}": avg_epoch_loss,
-                        f"train/accuracy/{self.dataset_name}": epoch_accuracy,
-                        f"validation/loss/{self.dataset_name}": val_loss,
-                        f"validation/accuracy/{self.dataset_name}": val_acc,
+                        f"train/loss/{train_dataset_name}": avg_epoch_loss,
+                        f"train/accuracy/{train_dataset_name}": epoch_accuracy,
+                        f"validation/loss/{validation_dataset_name}": val_loss,
+                        f"validation/accuracy/{validation_dataset_name}": val_acc,
                         "epoch": epoch
                     })
 
