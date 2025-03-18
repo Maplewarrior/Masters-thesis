@@ -3,11 +3,12 @@ import torch.nn as nn
 from src.models.base_model import BaseModel
 
 class NeuralNet(BaseModel):
-    def __init__(self, M: int, n_classes: int) -> None:
+    def __init__(self, M: int, n_classes: int, seed: int = None) -> None:
         super().__init__()
         """
             M (int): Feature dimension of the data
             n_classes (int): Number of classes in the dataset.
+            seed (int, optional): Random seed for weight initialization.
         """
         self.M = M
         self.n_classes = n_classes
@@ -17,6 +18,8 @@ class NeuralNet(BaseModel):
                                  nn.ReLU(),
                                  nn.Linear(self.M * 4, self.n_classes))
         
+        # Set seed for reproducible weight initialization
+        self.set_seed(seed)
 
     def forward(self, x, start_idx: int = 0, stop_idx: int = None):
         logits = self.net[start_idx:stop_idx](x)
