@@ -29,23 +29,20 @@ class BaseModel(nn.Module):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
             
-            # Re-initialize model weights using the seed
-            self._initialize_weights()
+            # Reset parameters for all modules that support it
+            self.reset_parameters()
     
-    def _initialize_weights(self):
+    def reset_parameters(self):
         """
-        Initialize model weights using the current random seed.
-        This should be called after setting the seed.
+        Reset parameters for all modules that have a reset_parameters method.
+        This provides deterministic initialization when used with set_seed.
         """
         for module in self.modules():
-            if isinstance(module, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-                # Initialize weights using a normal distribution
-                nn.init.normal_(module.weight, mean=0.0, std=0.02)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.GroupNorm, nn.LayerNorm)):
-                nn.init.ones_(module.weight)
-                nn.init.zeros_(module.bias)
+            if hasattr(module, 'reset_parameters'):
+                module.reset_parameters()
+            else: 
+                raise NotImplementedError(f"Module {module} does not have a reset_parameters method.")
+
 
     def forward(self, x: torch.tensor, 
                 start_idx: int = 0, 
