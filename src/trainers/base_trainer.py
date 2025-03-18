@@ -3,34 +3,27 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 
+def build_model(model_type, model_parameters):
+    if model_type == 'neural-network':
+        return NeuralNetwork(**model_parameters)
+    
 
 class BaseTrainer:
     def __init__(self, 
-                 model_type: str,
-                 model_parameters: dict, 
+                 model: nn.Module,
+                 optimizer, 
                  train_dataloader, 
                  val_dataloader,
                  logger,
-                 train_parameters: dict = {'optimizer_type': 'Adam',
-                                           'lr': 1e-3,
-                                           'disable_tqdm': False,
-                                           'do_early_stopping': True}
-                 ) -> None:
-        self.model_type = model_type
-        self.model_parameters = model_parameters
+                 disable_tqdm: bool,
+                 do_early_stopping: bool) -> None:
+        self.model = model
+        self.optimizer = optimizer
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.logger = logger
-        self.train_parameters = train_parameters
-
-    def _initialize_model(self):
-        return build_model(self.model_type, self.model_parameters)
-
-    def _initialize_optimizer(self):
-        return build_optimizer(self.train_parameters)
-    
-    def _initialize_criterion(self):
-        self.criterion = nn.CrossEntropyLoss() 
+        self.disable_tqdm = disable_tqdm
+        self.do_early_stopping = do_early_stopping
     
     def train_one_epoch(self) -> tuple[list[float], float]:
         self.model.train()
@@ -38,18 +31,18 @@ class BaseTrainer:
         epoch_acc = 0
         n_samples = 0
 
-        for ipt, label in self.train_dataloader:
-            ipt = ipt.to(self.device)
-            label = label.to(self.device)
+        for x, y in self.train_dataloader:
+            x = x.to(self.device)
+            y = y.to(self.device)
 
             # perform forward and backward pass
-            out, loss = self.step(ipt, label)
+            out, loss = self.step(x, y)
 
             # Update metrics
-            batch_correct = (out['probabilities'].argmax(dim=1) == label.argmax(dim=1)).sum().item()
+            batch_correct = (out['probabilities'].argmax(dim=1) == y.argmax(dim=1)).sum().item()
             epoch_acc += batch_correct
             epoch_loss.append(loss.item())
-            n_samples += len(label)
+            n_samples += len(y)
         
         epoch_acc = epoch_acc / n_samples
 
@@ -68,6 +61,8 @@ class BaseTrainer:
             for epoch in epoch_pbar:
                 # train one epoch
                 epoch_loss, epoch_accuracy = self.train_one_epoch()
+
+                self.model.step()
                 # run inference on validation set
                 val_loss, val_acc = self.eval()
 
@@ -103,11 +98,11 @@ class BaseTrainer:
 
         return train_losses, train_accs, val_losses, val_accs
 
-    def step(self, ipt: torch.tensor, label: torch.tensor) -> tuple[dict, torch.tensor]:
+    def step(self, x: torch.tensor, y: torch.tensor) -> tuple[dict, torch.tensor]:
         self.optimizer.zero_grad()
-        out = self.model(ipt)
+        out = self.model(x)
         # Compute loss and update
-        loss = self.criterion(out['logits'], label)
+        loss = self.model.loss(out, y)
         loss.backward()
         self.optimizer.step()
         return out, loss
@@ -119,18 +114,35 @@ class BaseTrainer:
         total_samples = 0
         
         with torch.no_grad():
-            for ipt, label in self.val_dataloader:
-                ipt = ipt.to(self.device)
-                label = label.to(self.device)
+            for x, y in self.val_dataloader:
+                x = x.to(self.device)
+                y = y.to(self.device)
                 
-                out = self.model(ipt)
-                loss = self.criterion(out['logits'], label)
+                out = self.model(x)
+                loss = self.criterion(out['logits'], y)
                 
                 total_loss += loss.item()
-                total_correct += ((out['probabilities'].argmax(dim=1)) == label.argmax(dim=1)).sum().item()
-                total_samples += len(label)
+                total_correct += ((out['probabilities'].argmax(dim=1)) == y.argmax(dim=1)).sum().item()
+                total_samples += len(y)
         
         avg_loss = total_loss / len(self.val_dataloader)
         accuracy = total_correct / total_samples
         
         return avg_loss, accuracy
+    
+    def __call__(self):
+        return self.train()
+    
+
+
+class SISATrainer(BaseTrainer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def train_client_models(self):
+        # TODO: Call self.train() as many times as there are n_clients 
+        raise NotImplementedError()
+    
+    def __call__(self):
+        return self.train_client_models()
+        
