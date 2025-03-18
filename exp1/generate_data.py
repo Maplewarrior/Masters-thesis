@@ -43,11 +43,12 @@ def generate_data(centroids: np.ndarray = None, stds: np.ndarray = None, sizes: 
 
 def plot_data(X, y, rogue_point_idx=None):
     # nicer colors
-    color_map = plt.cm.get_cmap('viridis', 3)
+    color_map = plt.colormaps['viridis']
+    colors = [color_map(i/3) for i in range(3)]  # Create 3 evenly spaced colors
     num_classes = np.unique(y).size
 
     for class_idx in range(num_classes):
-        plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], c=color_map(class_idx), label=f'Class {class_idx}')
+        plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=colors[class_idx], label=f'Class {class_idx}')
     
     if rogue_point_idx is not None:
         plt.scatter(X[rogue_point_idx, 0], X[rogue_point_idx, 1], c='red', marker='x', label=f'Rogue point (class {y[rogue_point_idx]})')
@@ -72,11 +73,16 @@ if __name__ == "__main__":
     centroids = np.array([[0, -3], [-3, 3], [3, 3]])
     stds = np.array([[0.7, 0.7], [0.7, 0.7], [0.7, 0.7]])
     sizes = np.array([50, 50, 50])
+    validation_sizes = np.array([20, 20, 20])
 
     data_folder = 'exp1/data'
     data_plots_folder = os.path.join(data_folder, 'plots')
     os.makedirs(data_plots_folder, exist_ok=True)
 
+    X_val, y_val, _ = generate_data(centroids, stds, validation_sizes)
+    save_data(X_val, y_val, None, os.path.join(data_folder, 'validation_data.npz'))
+    save_fig(plot_data(X_val, y_val), 'validation_data', data_plots_folder)
+    plt.close()
 
     # %%
     # 1. Rogue point with same distance to all centroids
