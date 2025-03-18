@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-class BaseUnlearningAlgorithm:
+class BaseUnlearner:
     def __init__(self, model: nn.Module, unlearn_parameters: dict) -> None:
         """
         Arguments:
