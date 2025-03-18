@@ -235,16 +235,20 @@ class MASO:
             # Linear transformation
             current_activation = np.dot(current_activation, W.T) + b
 
-            current_activation = activation_fn(torch.tensor(current_activation, dtype=torch.float32)).numpy()
-            Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
+            
             
             # If this is not the final layer, plot in grey
             if layer < layer_idx - 1:
                 color = 'grey'
                 alpha = 0.3 * ((layer + 1) / layer_idx)  # Scale alpha by layer depth
+                
+                current_activation = activation_fn(torch.tensor(current_activation, dtype=torch.float32)).numpy()
+                Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
             else:
                 color = 'red'
                 alpha = 0.5
+
+                Z = current_activation.reshape(xx.shape[0], xx.shape[1], -1)
 
                 if Z.shape[-1] > 2:  # multiclass case
                     # Get regions where each class has maximum logit
