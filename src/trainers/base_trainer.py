@@ -119,9 +119,9 @@ class BaseTrainer:
         total_samples = 0
         
         with torch.no_grad():
-            for x, y in self.val_dataloader:
-                x = x.to(self.device)
-                y = y.to(self.device)
+            for batch in self.val_dataloader:
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
                 
                 out = self.model(x)
                 loss = self.model.loss(out, y)
