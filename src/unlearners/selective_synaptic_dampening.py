@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+from src.unlearners.base_unlearner import BaseUnlearner
 import pdb
 
 """
@@ -16,7 +17,7 @@ Evaluation
 When can we compare 
 """
 
-class SelectiveSynapticDampening:
+class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
                  model, 
                  criterion,

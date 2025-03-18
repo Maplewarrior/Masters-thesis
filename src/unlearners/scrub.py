@@ -7,8 +7,9 @@ from src.data_utils.synthetic_data import SyntheticDataset
 from torch.utils.data import DataLoader
 import numpy as np
 import os
+from src.unlearners.base_unlearner import BaseUnlearner
 
-class ScrubR:
+class ScrubR(BaseUnlearner):
     def __init__(self, model, original_model, alpha, gamma):
         self.model = model
         self.original_model = original_model
