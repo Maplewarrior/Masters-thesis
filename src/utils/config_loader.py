@@ -1,0 +1,163 @@
+from pydantic import BaseModel, Field
+import yaml
+from typing import Dict, Any, Optional
+from pathlib import Path
+import uuid
+
+class DataConfig(BaseModel):
+    n_samples: int = Field(default=1000, description="Number of samples to generate")
+    n_features: int = Field(default=25, description="Number of features")
+    n_classes: int = Field(default=4, description="Number of classes")
+    n_informative: int = Field(default=25, description="Number of informative features")
+    n_redundant: int = Field(default=0, description="Number of redundant features")
+    n_outliers: int = Field(default=50, description="Number of outlier points")
+    outlier_scale: float = Field(default=4.0, description="Scale factor for outliers")
+    outlier_variance: float = Field(default=0.4, description="Variance of outliers")
+    outlier_class: Optional[int] = Field(default=None, description="Class index for outliers")
+    random_state: Optional[int] = Field(default=None, description="Random seed")
+    train_ratio: float = Field(default=0.8, description="Ratio of training data")
+    val_ratio: float = Field(default=0.1, description="Ratio of validation data")
+    test_ratio: float = Field(default=0.1, description="Ratio of test data")
+
+class ForgetConfig(BaseModel):
+    n_points: int = Field(default=50, description="Number of points to include in forget set")
+    class_idx: Optional[int] = Field(default=None, description="Specific class to draw forget points from")
+    ood_ratio: float = Field(default=0.5, description="Ratio of out-of-distribution points in forget set")
+
+class WandBConfig(BaseModel):
+    enabled: bool = Field(default=False, description="Enable wandb logging")
+    mode: str = Field(default="offline", description="Wandb mode (online/offline)")
+    project: str = Field(default="unlearning-experiments", description="Wandb project name")
+    dir: str = Field(default="./experiments/wandb", description="Directory for wandb files")
+
+class SystemConfig(BaseModel):
+    device: str = Field(default="cpu", description="Device to use (cpu/cuda/mps)")
+    seed: Optional[int] = Field(default=None, description="Global random seed")
+
+class ExperimentConfig(BaseModel):
+    mode: str = Field(default="experiment", description="Mode of operation")
+    unlearn_type: str = Field(default="ssd", description="Type of unlearning to use")
+    n_repeats: int = Field(default=30, description="Number of experiment repeats")
+    n_epochs: int = Field(default=50, description="Number of training epochs")
+    n_forget_trials: int = Field(default=10, description="Number of forget set trials")
+    experiment_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description="Unique experiment identifier")
+    experiment_group: str = Field(default="default_group", description="Group name for the experiment")
+    track_performance: bool = Field(default=False, description="Enable performance tracking")
+
+class ModelConfig(BaseModel):
+    n_features: int = Field(default=25, description="Number of input features")
+    n_classes: int = Field(default=4, description="Number of output classes")
+    n_epochs: int = Field(default=20, description="Number of training epochs")
+
+class Config(BaseModel):
+    data: DataConfig = Field(default_factory=DataConfig)
+    model: ModelConfig = Field(default_factory=ModelConfig)
+    forget: ForgetConfig = Field(default_factory=ForgetConfig)
+    wandb: WandBConfig = Field(default_factory=WandBConfig)
+    system: SystemConfig = Field(default_factory=SystemConfig)
+    experiment: ExperimentConfig = Field(default_factory=ExperimentConfig)
+
+def load_config(config_path: str = "configs/config.yaml", args_dict: Optional[Dict] = None) -> Config:
+    """
+    Load and validate configuration from a yaml file and merge with command line arguments.
+    
+    Args:
+        config_path: Path to the yaml config file
+        args_dict: Optional dictionary of command line arguments to override config values
+        
+    Returns:
+        Config: Validated configuration object
+        
+    Raises:
+        ValueError: If config validation fails
+    """
+    # Load config file if it exists
+    if Path(config_path).exists():
+        with open(config_path, "r") as f:
+            raw_config = yaml.safe_load(f)
+    else:
+        raw_config = {}
+
+    try:
+        # Create base config
+        config = Config(**raw_config)
+        
+        # Update with command line arguments if provided
+        if args_dict is not None:
+            # Convert config to dictionary for easier manipulation
+            config_dict = config.model_dump()
+            
+            # Map command line args to config structure
+            arg_mapping = {
+                # Data arguments
+                'n_samples': ('data', 'n_samples'),
+                'n_features': ('data', 'n_features'),
+                'n_classes': ('data', 'n_classes'),
+                'n_informative': ('data', 'n_informative'),
+                'n_redundant': ('data', 'n_redundant'),
+                'n_outliers': ('data', 'n_outliers'),
+                'outlier_scale': ('data', 'outlier_scale'),
+                'outlier_variance': ('data', 'outlier_variance'),
+                'outlier_class': ('data', 'outlier_class'),
+                'random_state': ('data', 'random_state'),
+                'train_ratio': ('data', 'train_ratio'),
+                'val_ratio': ('data', 'val_ratio'),
+                'test_ratio': ('data', 'test_ratio'),
+                
+                # System arguments
+                'device': ('system', 'device'),
+                'seed': ('system', 'seed'),
+                
+                # Experiment arguments
+                'mode': ('experiment', 'mode'),
+                'unlearn_type': ('experiment', 'unlearn_type'),
+                'n_repeats': ('experiment', 'n_repeats'),
+                'n_epochs': ('experiment', 'n_epochs'),
+                'n_forget_trials': ('experiment', 'n_forget_trials'),
+                'experiment_group': ('experiment', 'experiment_group'),
+                'track_performance': ('experiment', 'track_performance'),
+                
+                # Forget arguments
+                'forget_n_points': ('forget', 'n_points'),
+                'forget_class_idx': ('forget', 'class_idx'),
+                'forget_ood_ratio': ('forget', 'ood_ratio'),
+                
+                # Model arguments
+                'model_n_features': ('model', 'n_features'),
+                'model_n_classes': ('model', 'n_classes'),
+                'model_n_epochs': ('model', 'n_epochs'),
+                
+                # WandB arguments
+                'wandb': ('wandb', 'enabled'),
+                'wandb_mode': ('wandb', 'mode'),
+                'wandb_project': ('wandb', 'project'),
+                'wandb_dir': ('wandb', 'dir')
+            }
+            
+            # For debugging
+            print(f"Args dict: {args_dict}")
+            
+            # Update config with command line arguments
+            for arg_name, value in args_dict.items():
+                if arg_name in arg_mapping and value is not None:
+                    section, key = arg_mapping[arg_name]
+                    print(f"Updating {section}.{key} to {value}")
+                    
+                    # Ensure the section exists
+                    if section not in config_dict:
+                        config_dict[section] = {}
+                    
+                    # Update the value
+                    config_dict[section][key] = value
+            
+            # Recreate config with updated values
+            config = Config(**config_dict)
+            
+            # Verify the update worked
+            if 'unlearn_type' in args_dict:
+                print(f"Final unlearn_type: {config.experiment.unlearn_type}")
+        
+        return config
+        
+    except Exception as e:
+        raise ValueError(f"Config validation failed: {str(e)}")

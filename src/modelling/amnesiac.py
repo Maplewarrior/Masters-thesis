@@ -6,6 +6,7 @@ from tqdm import tqdm
 from src.data_utils.synthetic_data import create_dataloaders, DataGenerator
 import os
 import json
+import wandb
 
 class AmnesiacModel(nn.Module):
     def __init__(self, M: int, n_classes: int):
@@ -54,7 +55,9 @@ class AmnesiacTrainer:
                   optimizer: optim.Optimizer = None,
                   device: str=None, 
                   cache_gradients: bool = True,
-                  disable_tqdm: bool = False):
+                  disable_tqdm: bool = False,
+                  wandb=None,
+                  dataset_name=None):
         
         self.device = "cpu" if device is None else device
         self.model = model.to(self.device)
@@ -65,13 +68,19 @@ class AmnesiacTrainer:
         # {epoch: {batch_idx: param_diff}}
         self.batch_params = {}
         self.cache_gradients = cache_gradients
+        self.disable_tqdm = disable_tqdm
+        self.wandb = wandb
+        self.dataset_name = dataset_name
+
+        if self.wandb and self.dataset_name is None:
+            raise ValueError("dataset_name must be provided if wandb is True. Set it to either original or retrained.")
+
+
         if cache_gradients:
             print(f"Caching gradients. This could take a lot of memory. Download some more RAM if you run out.")
         else:
             print(f"Save gradients to file. This will save memory. Not storage space though :'(")
 
-        self.disable_tqdm = disable_tqdm
-    
     def train(self, 
               train_loader, 
               val_loader=None, 
@@ -152,16 +161,32 @@ class AmnesiacTrainer:
                 if ckpt:
                     self.save_checkpoint(epoch)
                 
-                train_loss = total_loss / len(train_loader)
+                train_loss, train_acc = self.evaluate(train_loader)
 
                 if val_loader is not None:
                     val_loss, val_acc = self.evaluate(val_loader)
                     pbar.set_description(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc*100:.2f}%")
+                    
+                    # Log metrics to wandb
+                    if self.wandb:
+                        self.wandb.log({
+                            f"train/loss/{self.dataset_name}": train_loss,
+                            f"train/accuracy/{self.dataset_name}": train_acc,
+                            f"validation/loss/{self.dataset_name}": val_loss,
+                            f"validation/accuracy/{self.dataset_name}": val_acc,
+                            "epoch": epoch
+                        }, commit=True)
 
                     accuracies_validation.append(val_acc)
 
                 else:
                     pbar.set_description(f"Train Loss: {train_loss:.4f}")
+                    if self.wandb:
+                        self.wandb.log({
+                            f"train/loss/{self.dataset_name}": train_loss,
+                            f"train/accuracy/{self.dataset_name}": train_acc,
+                            "epoch": epoch
+                        }, commit=True)
 
                 if forget_loader is not None:
                     forget_loss, forget_acc = self.evaluate(forget_loader)

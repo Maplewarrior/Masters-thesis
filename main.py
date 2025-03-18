@@ -1,473 +1,280 @@
-import argparse
-import pdb
-import pandas as pd
-import torch
-import torch.nn as nn
-import copy
-import json
 import os
+import json
+import sys
+import hydra
+from hydra.utils import get_original_cwd
+from omegaconf import DictConfig, OmegaConf
+import logging
+import uuid
+from rich.table import Table
 
-from src.modelling.trainer import Trainer
-from src.modelling.neural_network import NeuralNet, NeuralNetRS
-from src.data_utils.synthetic_data import DataGenerator, create_dataloaders
-from src.modelling.selective_synaptic_dampening import SelectiveSynapticDampening
-from src.modelling.scrub import ScrubR
-from src.modelling.sisa import SISA
-from src.modelling.sae_unlearner import SAEUnlearner
-from src.modelling.SAE import SAE
-from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from src.evaluation.results_table import create_latex_table
-from src.modelling.amnesiac import AmnesiacTrainer
-from tqdm.auto import tqdm
-from rich.console import Console
-from rich.panel import Panel
-from rich.live import Live
-from rich.layout import Layout
+from src.utils.hydra_config import validate_config
+from src.experiment.experiment_runner import run_experiment
 
-
-def parse_arguments():
-    """Parses command-line arguments."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "mode",
-        type=str,
-        default="experiment",
-        choices=["experiment", "visualize", "get_latex_results"],
-        help="What to do when running the script (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--unlearn-type",
-        type=str,
-        default="SSD",
-        choices=["SSD", "Scrub+R", "SISA", "amnesiac", "SAE"],
-        help="What type of unlearning algorithm to apply.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cpu",
-        choices=["cpu", "cuda", "mps"],
-        help="Torch device (default: %(default)s)",
-    )
-    return parser.parse_args()
-
-
-def generate_data(args, n_features=25, n_classes=4, random_state=42):
-    """
-    Generates and splits the synthetic data. Returns a data generator without drawing forget set.
-    """
-    data_generator = DataGenerator(random_state=random_state)
-    data_generator.generate_data(
-        n_samples=1000,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_informative=2,
-        n_redundant=0,
-        n_outliers=50,
-        outlier_scale=4.0,
-        outlier_variance=0.4,
-        outlier_class=1
-    )
-    data_generator.split_data(train_ratio=0.8, val_ratio=0.1, test_ratio=0.1)
-    return data_generator
-
-
-def create_forget_retain_split(data_generator, args, n_points=50, class_idx=None, ood_ratio=0.5):
-    """
-    Creates a new forget/retain split for existing data and returns associated dataloaders.
-    
-    Args:
-        data_generator: Existing DataGenerator instance with data already generated
-        args: Command line arguments
-        n_points: Number of points to include in forget set
-        class_idx: Specific class to draw forget points from (None for random)
-        ood_ratio: Ratio of out-of-distribution points in forget set
-    """
-    data_generator.draw_forget_set(n_points=n_points, class_idx=class_idx, ood_ratio=ood_ratio)
-    
-    batch_size = 32
-
-    # For amnesiac, we need indices, so batch_size differs:
-    if args.unlearn_type == "amnesiac":
-        dataloaders = create_dataloaders(
-            data_generator, batch_size=batch_size, use_indices=True, device=args.device
-        )
-    else:
-        dataloaders = create_dataloaders(
-            data_generator, batch_size=batch_size, onehot_labels=True, device=args.device
-        )
-    
-    return dataloaders
-
-
-def train_model(dataloader, val_dataloader, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Trains and returns a NeuralNet model using the provided dataloader.
-    """
-    model = NeuralNet(n_features, n_classes)
-    trainer = Trainer(model, train_dataloader=dataloader, val_dataloader=val_dataloader, n_epochs=n_epochs, device=device, disable_tqdm=True)
-    trainer.train()
-    trainer.eval()
-    return model
-
-
-def apply_unlearning_scrub_r_SSD(unlearn_type, dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies either Scrub+R or SSD to the given data. Returns the unlearned model, retrained model, and original model.
-    """
-    # 1) Train model on full dataset
-    unlearned_model = train_model(dataloader=dataloaders["train_full_loader"], 
-                                  val_dataloader=dataloaders["val_loader"], 
-                                  n_features=n_features, 
-                                  n_classes=n_classes, 
-                                  n_epochs=n_epochs, 
-                                  device=device)
-
-    # 2) Train retrained model on retain dataset
-    retrained_model = train_model(dataloader=dataloaders["train_retain_loader"], 
-                                  val_dataloader=dataloaders["val_loader"], 
-                                  n_features=n_features, 
-                                  n_classes=n_classes, 
-                                  n_epochs=n_epochs, 
-                                  device=device)
-
-    # 3) Copy the original model (before unlearning)
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
-
-    # 4) Perform unlearning
-    if unlearn_type == "Scrub+R":
-        alpha = 1.0
-        gamma = 1.0
-        scrub = ScrubR(unlearned_model, original_model, alpha=alpha, gamma=gamma)
-        scrub(
-            dataloaders["train_retain_loader"],
-            dataloaders["train_forget_loader"],
-            dataloaders["val_loader"],
-            n_rounds=6,
-        )
-    elif unlearn_type == "SSD":
-        alpha = 7.5
-        _lambda = 0.5
-        criterion = nn.CrossEntropyLoss()
-        ssd = SelectiveSynapticDampening(unlearned_model, criterion, alpha=alpha, _lambda=_lambda)
-        ssd(
-            full_dataloader=dataloaders["train_full_loader"],
-            forget_dataloader=dataloaders["train_forget_loader"],
-        )
-
-    return unlearned_model, retrained_model, original_model
-
-
-def apply_unlearning_sisa(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies SISA unlearning. Returns the unlearned model, retrained model, and original model.
-    """
-    # Unlearned model
-    unlearned_model = SISA(
-        dataloader=dataloaders["train_full_loader"],
-        n_shards=10,
-        n_slices=10,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_epochs=n_epochs,
-        save_dir="./experiments/checkpoints/SISA/original_model",
-        disable_tqdm=True
-    )
-    unlearned_shards_dict = unlearned_model.process_data()
-    original_shards_dict = unlearned_shards_dict  # in case you need it
-    unlearned_model.train_all_models()
-
-    # Retrained model
-    retrained_model = SISA(
-        dataloader=dataloaders["train_retain_loader"],
-        n_shards=10,
-        n_slices=10,
-        n_features=n_features,
-        n_classes=n_classes,
-        n_epochs=n_epochs,
-        save_dir="./experiments/checkpoints/SISA/retrained_model",
-        disable_tqdm=True
-    )
-    retrained_model.process_data()
-    retrained_model.train_all_models()
-
-    # Original model (copy before unlearning)
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
-
-    # Forget the datapoints
-    unlearned_model.forget_datapoints(datapoint_idxs=dataloaders["forget_idx_in_train"])
-
-    return unlearned_model, retrained_model, original_model
-
-
-def apply_unlearning_amnesiac(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Applies the amnesiac unlearning method.
-    Returns the unlearned model, retrained model, and original model.
-    """
-    unlearned_model = NeuralNet(n_features, n_classes)
-    trainer = AmnesiacTrainer(unlearned_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
-
-    # Train on full data, storing gradients for sensitive batches
-    indices_to_forget = dataloaders["forget_idx_in_train"]
-    trainer.train(
-        dataloaders["train_full_loader"], 
-        epochs=n_epochs,
-        indices_to_forget=indices_to_forget,
-        save_accuracy_to_file=False
-    )
-
-    # Retrained model
-    retrained_model = NeuralNet(n_features, n_classes)
-    retrained_trainer = AmnesiacTrainer(retrained_model, lr=0.1, device=device, cache_gradients=True, disable_tqdm=True)
-    retrained_trainer.train(dataloaders["train_retain_loader"], repair=True)
-
-    # Original model
-    original_model = copy.deepcopy(unlearned_model)
-    original_model.model_type = "pre_forget"
-    unlearned_model.model_type = "post_forget"
-
-    # Forget all sensitive batches
-    trainer.forget(indices_to_forget=None)
-
-    # Repair phase
-    trainer.train(dataloaders["train_full_loader"], epochs=10, save_accuracy_to_file=False, repair=True)
-
-    return unlearned_model, retrained_model, original_model
-
-
-def apply_unlearning_sae(dataloaders, n_features, n_classes, n_epochs, device="cpu"):
-    """
-    Placeholder function for SAE unlearning since it's not yet implemented.
-    """
-    layer_num = 6
-    d_factor = 8
-    _lambda = 0.6 # 0.5
-
-    ### Train original model ###
-    print("\nTraining neural net:\n\n")
-    network = NeuralNetRS(n_features, n_classes)
-    retrained_network = copy.deepcopy(network) # keep same initialization of weights 
-    # train neural net
-    trainer = Trainer(network, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs, device=device)
-    trainer.train()
-    # train the SAE
-    d = network.net[layer_num].in_features
-    sae = SAE(d=d, m=d * d_factor, _lambda = _lambda)
-    unlearned_model = SAEUnlearner(network, sae, layer_num=layer_num)
-    print("\n\nTraining SAE:\n")
-    trainer = Trainer(unlearned_model, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs*5, device=device)
-    trainer.train_sae()
-
-    original_model = copy.deepcopy(unlearned_model)
-
-    ### perform unlearning ###
-    
-    unlearned_model.unlearn(dataloaders['train_retain_loader'], dataloaders['train_forget_loader'])
-
-    ### Train original model ###
-    print("\nTraining neural net:\n\n")
-    # network = NeuralNet2(n_features, n_classes)
-    # train neural net
-    trainer = Trainer(retrained_network, dataloaders['train_retain_loader'], dataloaders['val_loader'], n_epochs, device=device)
-    trainer.train()
-    # train the SAE
-    d = network.net[layer_num].in_features
-    sae = SAE(d=d, m=d * d_factor, _lambda = _lambda)
-    retrained_model = SAEUnlearner(retrained_network, sae, layer_num=layer_num)
-    print("\n\nTraining SAE:\n")
-    trainer = Trainer(retrained_model, dataloaders['train_full_loader'], dataloaders['val_loader'], n_epochs*5, device=device)
-    trainer.train_sae()
-
-    return unlearned_model, retrained_model, original_model
-
-
-def evaluate_models(unlearned_model, retrained_model, original_model, dataloaders):
-    """
-    Runs the evaluation metrics and returns a dictionary with the results.
-    """
-    unlearning_evaluator = UnlearningEvaluator()
-
-    efficacy_metrics = ["accuracy", "Hamming PD", "min max normalized HPD"]
-    func_equivalence_metrics = ["avg norm prediction difference", "JS divergence"]
-    evaluation_metrics = efficacy_metrics + func_equivalence_metrics
-
-    # Compare unlearned vs. original
-    unlearned_original_retain = unlearning_evaluator.evaluate(
-        unlearned_model, original_model, evaluation_metrics, dataloaders["train_retain_loader"]
-    )
-    unlearned_original_forget = unlearning_evaluator.evaluate(
-        unlearned_model, original_model, evaluation_metrics, dataloaders["train_forget_loader"]
-    )
-    unlearned_original_val = unlearning_evaluator.evaluate(
-        unlearned_model, original_model, evaluation_metrics, dataloaders["val_loader"]
-    )
-
-    # Compare unlearned vs. retrained
-    unlearned_retrained_retain = unlearning_evaluator.evaluate(
-        unlearned_model, retrained_model, evaluation_metrics, dataloaders["train_retain_loader"]
-    )
-    unlearned_retrained_forget = unlearning_evaluator.evaluate(
-        unlearned_model, retrained_model, evaluation_metrics, dataloaders["train_forget_loader"]
-    )
-    unlearned_retrained_val = unlearning_evaluator.evaluate(
-        unlearned_model, retrained_model, evaluation_metrics, dataloaders["val_loader"]
-    )
-
-    results = {
-        "unlearned vs. original": {
-            "retain": unlearned_original_retain,
-            "forget": unlearned_original_forget,
-            "validation": unlearned_original_val,
-        },
-        "unlearned vs. retrained": {
-            "retain": unlearned_retrained_retain,
-            "forget": unlearned_retrained_forget,
-            "validation": unlearned_retrained_val,
-        },
-    }
-    return results
-
-
-def run_experiment(args):
-    """
-    Main experiment flow with multiple forget set trials
-    """
-    console = Console()
-    n_repeats = 10
-    n_epochs = 20
-    n_features = 25
-    n_classes = 4
-    n_forget_trials = 5  # Number of different forget sets to try
-
-    # Generate data once
-    data_generator = generate_data(args, n_features, n_classes, random_state=42)
-
-    # Prepare structure to store aggregated results
-    aggregated_results = {
-        "unlearned vs. original": {"retain": [], "forget": [], "validation": []},
-        "unlearned vs. retrained": {"retain": [], "forget": [], "validation": []},
-    }
-
-    # Create a panel for live updates
-    info_panel = Panel("Starting experiments...", title="Current Status")
-    
-    # Create progress bars for both loops
-    live = Live(info_panel, refresh_per_second=4)
-    
-    # Set up exception handler to clean up Live display
-    def handle_pdb(*args):
-        live.stop()  # Stop live display before pdb
-        result = original_trace(*args)  # Run pdb
-        live.start()  # Restart live display after pdb
-        return result
-    
-    original_trace = pdb.set_trace
-    pdb.set_trace = handle_pdb
-    
-    try:
-        live.start()
-        for forget_trial in tqdm(range(n_forget_trials), desc="Forget trials", position=0):
-            # Create new forget/retain split
-            dataloaders = create_forget_retain_split(data_generator, args)
-            
-            for i in tqdm(range(n_repeats), desc="Repeats", position=1, leave=False):
-                # Update the panel with current status
-                info_panel.title = f"[bold blue]Forget Trial {forget_trial + 1}/{n_forget_trials}, Iteration {i + 1}/{n_repeats}"
-                info_panel.subtitle = f"[bold]Unlearning type:[/bold] {args.unlearn_type}"
-                
-                # Call the appropriate unlearning function based on the type
-                if args.unlearn_type in ["SSD", "Scrub+R"]:
-                    unlearned_model, retrained_model, original_model = apply_unlearning_scrub_r_SSD(
-                        args.unlearn_type,
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "amnesiac":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_amnesiac(
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "SISA":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_sisa(
-                        dataloaders,
-                        n_features,
-                        n_classes,
-                        n_epochs,
-                        device=args.device
-                    )
-                elif args.unlearn_type == "SAE":
-                    unlearned_model, retrained_model, original_model = apply_unlearning_sae()
-                else:
-                    raise ValueError(f"Unknown unlearning type: {args.unlearn_type}")
-
-                # Evaluate
-                results = evaluate_models(unlearned_model, retrained_model, original_model, dataloaders)
-
-                # Aggregate results
-                for comp_type in aggregated_results.keys():
-                    for subset in aggregated_results[comp_type].keys():
-                        aggregated_results[comp_type][subset].append(results[comp_type][subset])
-                
-                # Update the panel content with latest metrics
-                info_panel.renderable = f"""[green]Key metrics for this iteration:[/green]
-Hamming PD (validation): {results['unlearned vs. retrained']['validation']['Hamming PD']:.4f}
-JS divergence (validation): {results['unlearned vs. retrained']['validation']['JS divergence']:.4f}"""
-                
-                live.refresh()
-
-        # Save results and print final output
-        os.makedirs("experiments/results", exist_ok=True)
-        output_file = f"experiments/results/{args.unlearn_type}_results.json"
-        with open(output_file, "w") as f:
-            json.dump(aggregated_results, f)
-        
-        live.stop()
-        
-        console.print(f"[bold green]Results saved to {output_file}.")
-        
-        
-    finally:
-        # Restore original pdb.set_trace and ensure Live display is stopped
-        pdb.set_trace = original_trace
-        live.stop()
-
+logger = logging.getLogger(__name__)
 
 def get_latex_results():
     """
     Loads all .json results in `experiments/results` and prints a combined LaTeX table.
     """
+    # Import rich inside the function to avoid serialization issues
+    from rich.console import Console
+    console = Console()
+    
     result_dir = "experiments/results"
     result_files = [f for f in os.listdir(result_dir) if f.endswith(".json")]
-    all_results = {}
+    
+    if not result_files:
+        console.print("[bold red]No result files found in experiments/results![/bold red]")
+        return
+    
+    # Create a table to display available results
+    table = Table(title="Available Result Files")
+    table.add_column("Index", style="cyan")
+    table.add_column("Filename", style="green")
+    table.add_column("Experiment ID", style="yellow")
+    table.add_column("Unlearn Type", style="red")
+    
+    file_info = []
+    for i, file in enumerate(result_files):
+        try:
+            with open(os.path.join(result_dir, file), "r") as f:
+                data = json.load(f)
+                exp_id = data.get("experiment_id", "Unknown")
+                unlearn_type = data.get("unlearn_type", "Unknown")
+                file_info.append((i, file, exp_id, unlearn_type))
+                table.add_row(str(i), file, exp_id, unlearn_type)
+        except:
+            table.add_row(str(i), file, "Error loading", "Error loading")
+    
+    console.print(table)
+    
+    # Ask user which files to include
+    console.print("[bold]Enter indices of files to include (comma-separated) or 'all':[/bold]")
+    selection = input().strip()
+    
+    selected_files = []
+    if selection.lower() == 'all':
+        selected_files = result_files
+    else:
+        try:
+            indices = [int(idx.strip()) for idx in selection.split(',')]
+            selected_files = [result_files[idx] for idx in indices if 0 <= idx < len(result_files)]
+        except:
+            console.print("[bold red]Invalid selection. Using all files.[/bold red]")
+            selected_files = result_files
 
-    for file in result_files:
+    print(selected_files)
+    
+    all_results = {}
+    for file in selected_files:
         with open(os.path.join(result_dir, file), "r") as f:
             results = json.load(f)
         all_results.update(results)
 
-    print("\n\n\n" + create_latex_table(all_results))
+    print(all_results)
+    
+    latex_table = create_latex_table(all_results)
+    
+    # Print to console with syntax highlighting
+    console.print("\n[bold blue]LaTeX Table:[/bold blue]")
+    console.print(f"```latex\n{latex_table}\n```")
+    
+    # Save to file
+    latex_file = os.path.join(result_dir, "latex_table.tex")
+    with open(latex_file, "w") as f:
+        f.write(latex_table)
+    
+    console.print(f"[green]LaTeX table saved to {latex_file}[/green]")
 
+def sync_wandb_runs(config: DictConfig):
+    """
+    Syncs all offline wandb runs to the server in parallel using Ray with optimizations for maximum speed.
+    This function should be called after experiments are complete.
+    """
+    from rich.console import Console
+    from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+    import subprocess
+    import os
+    import ray
+    import time
+    import shutil
+    
+    console = Console()
+    
+    # Get the wandb directory from config
+    wandb_dir = config.wandb.dir
+    
+    if not os.path.exists(wandb_dir):
+        console.print("[bold red]No wandb directory found![/bold red]")
+        return
+    
+    # Find all run directories (they have a 'files' subdirectory)
+    run_dirs = []
+    for root, dirs, files in os.walk(wandb_dir):
+        if 'files' in dirs:
+            run_dirs.append(root)
+    
+    if not run_dirs:
+        console.print("[bold yellow]No offline wandb runs found to sync.[/bold yellow]")
+        return
+    
+    console.print(f"[bold green]Found {len(run_dirs)} offline wandb runs to sync.[/bold green]")
+    
+    # Initialize Ray if not already initialized
+    if not ray.is_initialized():
+        # Use more CPUs for faster syncing
+        num_cpus = os.cpu_count() or 8  # Default to 8 if can't determine
+        ray.init(num_cpus=num_cpus)
+    
+    # Define a Ray remote function for syncing a single run with optimizations
+    @ray.remote(num_cpus=0.5)  # Allow more tasks than CPUs for I/O-bound operations
+    def sync_single_run(run_dir):
+        run_id = os.path.basename(run_dir)
+        start_time = time.time()
+        
+        try:
+            # Use --no-verbose to reduce output and speed up sync
+            # Use --sync-all to ensure all files are synced
+            result = subprocess.run(
+                ["wandb", "sync", "--sync-all", run_dir],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=300  # 5-minute timeout per run
+            )
+            duration = time.time() - start_time
+            return {"success": True, "run_id": run_id, "duration": duration}
+        except subprocess.CalledProcessError as e:
+            duration = time.time() - start_time
+            return {"success": False, "run_id": run_id, "error": e.stderr, "duration": duration}
+        except subprocess.TimeoutExpired:
+            return {"success": False, "run_id": run_id, "error": "Sync operation timed out after 5 minutes", "duration": 300}
+    
+    # Group runs by size for better load balancing
+    # Smaller runs first to get quick wins
+    run_sizes = []
+    for run_dir in run_dirs:
+        size = 0
+        for root, dirs, files in os.walk(run_dir):
+            size += sum(os.path.getsize(os.path.join(root, file)) for file in files if os.path.isfile(os.path.join(root, file)))
+        run_sizes.append((run_dir, size))
+    
+    # Sort by size (smallest first)
+    run_sizes.sort(key=lambda x: x[1])
+    sorted_run_dirs = [item[0] for item in run_sizes]
+    
+    # Submit all sync tasks to Ray
+    batch_size = min(100, len(sorted_run_dirs))  # Process in batches to avoid overwhelming the system
+    console.print(f"[bold blue]Processing in batches of {batch_size} runs[/bold blue]")
+    
+    total_synced = 0
+    total_failed = 0
+    total_time = 0
+    
+    # Process in batches
+    for i in range(0, len(sorted_run_dirs), batch_size):
+        batch = sorted_run_dirs[i:i+batch_size]
+        pending_results = [sync_single_run.remote(run_dir) for run_dir in batch]
+        
+        # Track progress with Rich
+        with Progress(
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=40, style="blue", complete_style="bright_blue"),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            console=console,
+            expand=False
+        ) as progress:
+            task = progress.add_task(f"[Syncing Batch {i//batch_size + 1}/{(len(sorted_run_dirs) + batch_size - 1)//batch_size}]", total=len(batch))
+            
+            # Process results as they complete
+            while pending_results:
+                # Get the next completed result
+                done_id, pending_results = ray.wait(pending_results, num_returns=1)
+                result = ray.get(done_id[0])
+                
+                # Update progress based on result
+                if result["success"]:
+                    total_synced += 1
+                    total_time += result["duration"]
+                    progress.update(task, advance=1, 
+                                  description=f"[bold blue]Synced {result['run_id']} in {result['duration']:.1f}s")
+                else:
+                    total_failed += 1
+                    console.print(f"[bold red]Error syncing run {result['run_id']}:[/bold red] {result.get('error', 'Unknown error')}")
+                    progress.update(task, advance=1, 
+                                  description=f"[bold red]Failed to sync {result['run_id']}")
+    
+    # Print summary statistics
+    console.print(f"[bold green]Sync complete! Successfully synced {total_synced} runs, failed {total_failed} runs.[/bold green]")
+    if total_synced > 0:
+        console.print(f"[bold blue]Average sync time: {total_time/total_synced:.2f} seconds per run[/bold blue]")
+    
+    # Ask if user wants to clean up synced runs to save space
+    if total_synced > 0:
+        cleanup = input("Do you want to delete successfully synced runs to save disk space? (y/n): ").lower() == 'y'
+        if cleanup:
+            console.print("[bold yellow]Cleaning up synced runs...[/bold yellow]")
+            cleaned = 0
+            for run_dir in sorted_run_dirs:
+                try:
+                    # Check if run was successfully synced by looking for a wandb-summary.json file
+                    summary_file = os.path.join(run_dir, "wandb-summary.json")
+                    if os.path.exists(summary_file):
+                        shutil.rmtree(run_dir)
+                        cleaned += 1
+                except Exception as e:
+                    console.print(f"[bold red]Error removing {run_dir}: {str(e)}[/bold red]")
+            console.print(f"[bold green]Cleaned up {cleaned} run directories[/bold green]")
 
-def main():
-    args = parse_arguments()
-
-    if args.mode == "experiment":
-        run_experiment(args)
-    elif args.mode == "get_latex_results":
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig):
+    """
+    Main entry point for the application.
+    
+    Args:
+        cfg: Hydra configuration object
+    """
+    # Create console inside the function
+    from rich.console import Console
+    console = Console()
+    
+    # Set experiment_id if not provided
+    if not cfg.experiment.experiment_id:
+        cfg.experiment.experiment_id = str(uuid.uuid4())[:8]
+    
+    # If we're in a multirun, add parameter info to experiment_id
+    if hasattr(hydra, 'multirun') and hydra.multirun:
+        # Extract the parameter being swept
+        sweep_params = [k for k, v in OmegaConf.to_container(cfg).items() 
+                       if isinstance(v, list) or (hasattr(v, '__iter__') and not isinstance(v, str))]
+        
+        if sweep_params:
+            param_name = sweep_params[0].split('.')[-1]
+            param_value = cfg[sweep_params[0]]
+            cfg.experiment.experiment_id = f"{cfg.experiment.experiment_id}_{param_name}_{param_value}"
+    
+    # Validate configuration
+    try:
+        config = validate_config(cfg)
+    except ValueError as e:
+        console.print(f"[bold red]Configuration error: {str(e)}[/bold red]")
+        return
+    
+    # Print the config that is being used
+    console.print("[bold blue]Configuration:[/bold blue]")
+    console.print(config.model_dump_json(indent=2))
+    
+    if config.experiment.mode == "experiment":
+        run_experiment(config)
+    elif config.experiment.mode == "get_latex_results":
         get_latex_results()
+    elif config.experiment.mode == "sync_wandb":
+        sync_wandb_runs(config)
     else:
-        print("Visualization mode not implemented in this refactoring.")
+        console.print("[bold yellow]Mode not implemented: {config.experiment.mode}[/bold yellow]")
 
 if __name__ == "__main__":
     main()

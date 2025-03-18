@@ -25,8 +25,8 @@ def create_latex_table(results_dict):
     for algorithm in results_dict:
         for comparison in results_dict[algorithm]:
             for dataset in ['retain', 'forget', 'validation']:
-                if results_dict[algorithm][comparison][dataset]:
-                    metrics = results_dict[algorithm][comparison][dataset][0].keys()
+                if results_dict[algorithm][comparison]:
+                    metrics = results_dict[algorithm][comparison].keys()
                     all_metrics.update(metrics)
     all_metrics = sorted(all_metrics)
     
