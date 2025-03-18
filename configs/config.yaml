@@ -14,6 +14,7 @@ wandb:
 
 # Data generation parameters
 data:
+  data_type: "synthetic_ood_clusters"
   n_samples: 1000
   n_features: 25
   n_classes: 4
@@ -27,10 +28,10 @@ data:
   train_ratio: 0.8
   val_ratio: 0.1
   test_ratio: 0.1
-
+  batch_size: 32
 # Model configuration
 model:
-  n_features: 25
+  n_features: 2
   n_classes: 4
   n_epochs: 20
 
@@ -50,8 +51,8 @@ experiment:
   mode: "experiment"
   unlearn_type: "ssd"
   n_repeats: 5
-  n_epochs: 50
-  n_forget_trials: 5
+  n_epochs: 60
+  n_forget_trials: 1
   experiment_id: null  # Will be auto-generated
   experiment_group: "default_group"
   track_performance: false
