@@ -431,7 +431,7 @@ class DataGenerator:
         self.random_state = random_state
 
         # just load the data
-        data = torch.load("data/synthetic_data/synthetic_ood_data_outlier_class_2_seed_40.pt")
+        data = torch.load("data/synthetic_data/synthetic_ood_data_outlier_class_2_seed_40_forget_id.pt")
         self.X_with_outliers = data["X_with_outliers"]
         self.y_with_outliers = data["y_with_outliers"]
         self.outlier_indices = data["outlier_indices"]
@@ -451,6 +451,24 @@ if __name__ == "__main__":
     outlier_indices = data["outlier_indices"]
 
 
+    # pick some forget indices that are not outliers within the outlier class
+    forget_indices = np.where(y_with_outliers == 2)[0]
+    forget_indices = np.setdiff1d(forget_indices, outlier_indices)
+
+    # pick len(outlier_indices) random indices from forget_indices
+    forget_indices = np.random.choice(forget_indices, size=len(outlier_indices), replace=False)
+
+
+    outlier_indices = forget_indices
+
+    #Save data to neew file
+    torch.save({
+        "X_with_outliers": X_with_outliers,
+        "y_with_outliers": y_with_outliers,
+        "outlier_indices": outlier_indices
+    }, f"data/synthetic_data/ood_data/synthetic_ood_data_outlier_class_2_seed_40_forget_id.pt")
+
+
     # Split data into train, val, test, still keep track of outlier indices
     X_train, X_val, X_test, \
         y_train, y_val, y_test, \
@@ -467,16 +485,16 @@ if __name__ == "__main__":
               y_train, 
               outlier_indices=outlier_indices_train, 
               title="Train Data with Outliers", 
-              savefig=f"data/synthetic_data/ood_data/train_data_with_outliers.png")
+              savefig=f"data/synthetic_data/ood_data/train_data_with_outliers_forget_id.png")
 
     plot_data(X_val, 
               y_val, 
               outlier_indices=outlier_indices_val, 
               title="Validation Data with Outliers",
-              savefig=f"data/synthetic_data/ood_data/val_data_with_outliers.png")
+              savefig=f"data/synthetic_data/ood_data/val_data_with_outliers_forget_id.png")
 
     plot_data(X_test, 
               y_test, 
               outlier_indices=outlier_indices_test, 
               title="Test Data with Outliers",
-              savefig=f"data/synthetic_data/ood_data/test_data_with_outliers.png")
+              savefig=f"data/synthetic_data/ood_data/test_data_with_outliers_forget_id.png")
