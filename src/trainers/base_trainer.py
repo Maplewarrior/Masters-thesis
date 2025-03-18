@@ -3,9 +3,9 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 
-def build_model(model_type, model_parameters):
-    if model_type == 'neural-network':
-        return NeuralNetwork(**model_parameters)
+# def build_model(model_type, model_parameters):
+#     if model_type == 'neural-network':
+#         return NeuralNetwork(**model_parameters)
     
 
 class BaseTrainer:
@@ -16,7 +16,9 @@ class BaseTrainer:
                  val_dataloader,
                  logger,
                  disable_tqdm: bool,
-                 do_early_stopping: bool) -> None:
+                 do_early_stopping: bool,
+                 n_epochs: int = 20,
+                 device: str = 'cpu') -> None:
         self.model = model
         self.optimizer = optimizer
         self.train_dataloader = train_dataloader
@@ -24,7 +26,9 @@ class BaseTrainer:
         self.logger = logger
         self.disable_tqdm = disable_tqdm
         self.do_early_stopping = do_early_stopping
-    
+        self.n_epochs = n_epochs
+        self.device = device
+
     def train_one_epoch(self) -> tuple[list[float], float]:
         self.model.train()
         epoch_loss = []
@@ -54,17 +58,15 @@ class BaseTrainer:
         train_accs = []
         val_accs = []
 
-        self.model = self._initialize_model()
-        self.optimizer = self._initialize_optimizer()
-
-        with tqdm(range(self.train_parameters['n_epochs']), disable=self.train_parameters['disable_tqdm']) as epoch_pbar:
+        with tqdm(range(self.n_epochs), disable=self.disable_tqdm) as epoch_pbar:
             for epoch in epoch_pbar:
                 # train one epoch
                 epoch_loss, epoch_accuracy = self.train_one_epoch()
 
-                self.model.step()
                 # run inference on validation set
-                val_loss, val_acc = self.eval()
+                val_results = self.eval()
+                val_loss = val_results['avg_loss']
+                val_acc = val_results['accuracy']
 
                 # store dynamics
                 train_losses.append(epoch_loss)
@@ -89,13 +91,13 @@ class BaseTrainer:
 
                 # Update progress bar
                 epoch_pbar.set_description(
-                    f"epoch={epoch+1}/{self.train_parameters['n_epochs']}, "
+                    f"epoch={epoch+1}/{self.n_epochs}, "
                     f"loss={avg_epoch_loss:.4f}, "
                     f"acc={epoch_accuracy:.4f}, "
                     f"val_acc: {val_acc}"
                 )
                 
-                if self.train_parameters['do_early_stopping'] and epoch > 4 and not val_losses[-1] < np.mean(val_losses[:-4:-1]):
+                if self.do_early_stopping and epoch > 4 and not val_losses[-1] <= np.mean(val_losses[:-4:-1]):
                     print("\Ending due to early stopping")
                     return train_losses, train_accs, val_losses, val_accs
 
@@ -122,7 +124,7 @@ class BaseTrainer:
                 y = y.to(self.device)
                 
                 out = self.model(x)
-                loss = self.criterion(out['logits'], y)
+                loss = self.model.loss(out, y)
                 
                 total_loss += loss.item()
                 total_correct += ((out['probabilities'].argmax(dim=1)) == y.argmax(dim=1)).sum().item()
@@ -131,7 +133,7 @@ class BaseTrainer:
         avg_loss = total_loss / len(self.val_dataloader)
         accuracy = total_correct / total_samples
         
-        return avg_loss, accuracy
+        return {'avg_loss': avg_loss, 'accuracy': accuracy}
     
     def __call__(self):
         return self.train()
