@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+# Weights & Biases logging
+logging:
+  logger: "wandb" # wandb, sqlite, or disabled
+
+# Data generation parameters
+data:
+  dataset: "data/data_1.npz" # reference the data file
+
+model: 
+  unlearn_type: "retrain" # retrain, sisa, amnesiac, ssd, scrub+r
+  n_epochs: 10
+  lr: 0.001
+  batch_size: 16
+  seed: 42
+  # ... other params
+
+
