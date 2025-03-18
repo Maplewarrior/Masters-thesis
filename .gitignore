@@ -13,6 +13,8 @@ experiments/
 # Exclude configs/experiments/ from gitignore
 !configs/experiments/
 
+*.db
+
 # C extensions
 *.so
 
