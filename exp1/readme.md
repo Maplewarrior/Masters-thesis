@@ -9,7 +9,8 @@ python exp1/generate_data.py
 ```
 
 ## The network
-
+The network is a simple feedforward network can be seend below:
+![Network architecture](results/nn_model_architecture.png)
 ## Experiment runs
 Now we run the experiment on each of the dataset configuration, moving the rogue point.
 
