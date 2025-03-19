@@ -41,7 +41,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
         # turn of dropout if applicable
         self.model.eval()
         
-        for i, (x, y) in enumerate(dataloader):
+        for i, batch in enumerate(dataloader):
+            x, y = batch[0], batch[1]
             optimizer.zero_grad()
             # forward pass
             logits = self.model(x)['logits']
@@ -58,10 +59,10 @@ class SelectiveSynapticDampening(BaseUnlearner):
         return FIM
     
     def __call__(self, 
+                 full_dataloader,
+                 forget_dataloader,
                  FIM_full: dict = None, 
-                 FIM_forget: dict = None,
-                 full_dataloader = None,
-                 forget_dataloader = None
+                 FIM_forget: dict = None
                  ):
         
         # calculate FIM matrices if necessary
