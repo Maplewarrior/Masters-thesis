@@ -330,7 +330,7 @@ def main(cfg):
             print(decision_boundary_pre_unlearning)
             import pdb; pdb.set_trace()
 
-            X, y = dataloader_retrain.dataset.X, dataloader_retrain.dataset.y
+            X, y = dataloader_retain.dataset.X, dataloader_retain.dataset.y
 
             # If y is onehot, convert it to class indices
             if len(y.shape) == 2 and y.shape[1] > 1:
