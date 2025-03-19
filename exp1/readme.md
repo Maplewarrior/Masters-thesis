@@ -4,11 +4,22 @@ In this experiment we wish to explore what happens with the decision boundary de
 > [!NOTE]  
 > The Amnesiac unlearning method does not have a repair step. Might not be necessary for this experiment as we are forgetting a single point and points are easily separable.
 
-## Data generation
+## How to use
 To generate the data, run:
 ```bash
 python exp1/generate_data.py
 ```
+
+To run the experiment for all the datasets and unlearning methods, run:
+```bash
+python exp1/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae"  --multirun
+```
+
+You can overwrite any parameters from the config file, for example `n_epochs`:
+```bash
+python exp1/experiment_run.py trainer.n_epochs=10
+```
+
 
 ## The network
 The network is a simple feedforward network which can be seen below:
@@ -19,16 +30,6 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 
 ### 1. Rogue point with same distance to all centroids (close to decision boundary)
 ![Data configuration for Run 1](data/plots/data_1.png)
-
-#### Expectation
-We expect that unlearning this point will confuse the model and decision boundary will change more than for the other setups.
-
-#### Run the experiment
-
-Run the experiment
-```bash
-python exp1/experiment_run.py
-```
 
 #### Findings
 
@@ -58,18 +59,15 @@ python exp1/experiment_run.py
     <td><img src="results/1_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/1_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/1_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/1_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 2. Rogue point with same centroid as its class
 ![Data configuration for Run 2](data/plots/data_2.png)
-
-#### Expectation
-<!-- TODO: What do we expect -->
-
-
-#### Run the experiment
-<!-- TODO: Command to run experiment -->
-
 
 #### Findings
 
@@ -99,19 +97,16 @@ python exp1/experiment_run.py
     <td><img src="results/2_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/2_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/2_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/2_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 
 ### 3. Rogue point with same centroid as the class with a different label
 ![Data configuration for Run 3](data/plots/data_3.png)
-
-#### Expectation
-<!-- TODO: What do we expect -->
-
-
-#### Run the experiment
-<!-- TODO: Command to run experiment -->
-
 
 #### Findings
 
@@ -141,18 +136,15 @@ python exp1/experiment_run.py
     <td><img src="results/3_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/3_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/3_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/3_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 4. Rogue point far away from its centroid, but probably in the same decision boundary
 ![Data configuration for Run 4](data/plots/data_4.png)
-
-#### Expectation
-<!-- TODO: What do we expect -->
-
-
-#### Run the experiment
-<!-- TODO: Command to run experiment -->
-
 
 #### Findings
 
@@ -182,18 +174,17 @@ python exp1/experiment_run.py
     <td><img src="results/4_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/4_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/4_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/4_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 
 
 ### 5. Rogue point far away from its centroid, but probably in the same decision boundary
 ![Data configuration for Run 5](data/plots/data_5.png)
-
-#### Expectation
-<!-- TODO: What do we expect -->
-
-
-#### Run the experiment
 <!-- TODO: Command to run experiment -->
 
 
@@ -224,5 +215,10 @@ python exp1/experiment_run.py
     <td>Amnesiac</td>
     <td><img src="results/5_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/5_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/5_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/5_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
