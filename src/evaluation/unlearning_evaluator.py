@@ -84,9 +84,6 @@ class UnlearningEvaluator:
         p_c = self.softmax(preds_c)
         return (torch.linalg.norm(p_u - p_c, dim=1, ord=1).sum() / (2 * preds_u.size(0))).item()
 
-    """
-    This introduces many errors (6 falied)
-    """
     def KL_divergence(self, preds_u, preds_c):
         """
         @param preds_u: The predictions of the unlearned model.

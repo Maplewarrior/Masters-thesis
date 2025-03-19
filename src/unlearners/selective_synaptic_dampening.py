@@ -17,16 +17,36 @@ Evaluation
 When can we compare 
 """
 
+import torch
+import torch.optim as optim
+from src.unlearners.base_unlearner import BaseUnlearner
+import pdb
+
+"""
+How will the input space be partitioned based on the neural network.
+mad max: affine spline insights into deep learning.
+
+Use for func equivalence: If two NN's create the same partitioning in input space, then they are roughly the same
+
+More convex in deeper layers...
+Maybe dampening in last layer the model is 
+
+Evaluation
+-----------
+When can we compare 
+"""
+
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
                  model, 
                  criterion,
                  alpha: float,
                  _lambda: float) -> None:
-        self.model = model
+        super().__init__(model, {'alpha': alpha, '_lambda': _lambda})
         self.criterion = criterion
         self.alpha = alpha
         self._lambda = _lambda
+        
     
     def calculate_FIM(self, dataloader) -> dict:
         """

@@ -19,16 +19,6 @@ class NeuralNetworkTrainer(BaseTrainer):
         # Initialize optimizer
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         
-        # Initialize loss function
-        self.criterion = nn.CrossEntropyLoss()
-        
-        # Store training parameters
-        self.train_parameters = {
-            'n_epochs': n_epochs,
-            'disable_tqdm': disable_tqdm,
-            'do_early_stopping': do_early_stopping
-        }
-        
         # Set device
         self.device = device
         model = model.to(device)
@@ -43,12 +33,3 @@ class NeuralNetworkTrainer(BaseTrainer):
             disable_tqdm=disable_tqdm,
             do_early_stopping=do_early_stopping
         )
-    
-    def _initialize_model(self):
-        # Model is already initialized in __init__
-        return self.model
-    
-    def _initialize_optimizer(self):
-        # Optimizer is already initialized in __init__
-        return self.optimizer
-    
