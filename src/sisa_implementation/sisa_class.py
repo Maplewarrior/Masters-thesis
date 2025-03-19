@@ -19,14 +19,13 @@ class Shard(BaseModel):
 class ShardsDict(BaseModel):
     shards: dict[str, Shard]
 
-
 class SISA:
     def __init__(self, dataloader: DataLoader,
                  n_shards: int = 10, n_slices: int = 10,
                  n_features: int = 2, n_classes: int = 2,
                  n_epochs: int = 10,
                  save_dir: str = None,
-                 disable_tqdm: bool = False):
+                 disable_tqdm: bool = True):
         
         self.disable_tqdm = disable_tqdm
         self.experiment_id = str(uuid4())
@@ -132,6 +131,8 @@ class SISA:
 
         assert len(self.shards_dict.shards) == self.n_shards
         assert len(self.shards_dict.shards['shard_0'].slices) == self.n_slices
+        from pprint import pprint; pprint(self.shards_dict.model_dump())
+        import pdb; pdb.set_trace()
         return self.shards_dict
     
     def save_model(self, model: NeuralNet, shard_id: int, slice_id: int):
@@ -181,7 +182,7 @@ class SISA:
         # Otherwise we send an error.
         if start_slice > 0:
             model = self.load_model(shard_id, start_slice-1)
-            # print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
+            print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
         
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
@@ -192,12 +193,10 @@ class SISA:
             n_epochs = self.dynamic_epochs(slice_id)
             
             slice_id = start_slice + slice_id
-
-            # print(f"\nTraining model on slices {start_slice}:{slice_id} of shard {shard_id}")
-            # print(f"Dynamic epochs: {n_epochs}")
             
             slice_data = self.dataset.X[slice_indices]
             slice_labels = self.dataset.y[slice_indices]
+            print(f"training on slices {slice_indices}")
             # # onehot encode the labels
             # slice_labels = torch.nn.functional.one_hot(slice_labels, num_classes=self.n_classes)
             # slice_labels = slice_labels.to(torch.float32)
@@ -312,6 +311,9 @@ class SISA:
         slice_forget_point_index = self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].index(datapoint_idx)
         self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].pop(slice_forget_point_index)
             
+        # We make sure the datapoints is has been removed
+        assert datapoint_idx not in self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx], f"Datapoint {datapoint_idx} is still in slice {slice_idx} of shard {shard_id}"
+
         return
 
     def forget_datapoints(self, datapoint_idxs: list[int]):
@@ -345,22 +347,6 @@ class SISA:
             self.train_model_on_shard(shard_id, start_slice=slice_idx)
 
         return
-
-    def get_retrain_counts(self):
-        """
-        Returns statistics about how many times each shard has been retrained.
-        
-        Returns:
-            dict: Contains statistics about retraining counts
-        """
-        stats = {
-            'per_shard': dict(self.retrain_counts),
-            'total_retrains': sum(self.retrain_counts.values()),
-            'max_retrains': max(self.retrain_counts.values()) if self.retrain_counts else 0,
-            'min_retrains': min(self.retrain_counts.values()) if self.retrain_counts else 0,
-            'avg_retrains': sum(self.retrain_counts.values()) / len(self.retrain_counts) if self.retrain_counts else 0
-        }
-        return stats
 
 if __name__ == "__main__":
     n_features = 600

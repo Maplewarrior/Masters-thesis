@@ -51,6 +51,11 @@ python exp1/experiment_run.py
     <td><img src="results/1_decision_boundary_ssd_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/1_decision_boundary_ssd_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>Amnesiac</td>
+    <td><img src="results/1_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/1_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 2. Rogue point with same centroid as its class
@@ -86,6 +91,11 @@ python exp1/experiment_run.py
     <td>SSD</td>
     <td><img src="results/2_decision_boundary_ssd_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/2_decision_boundary_ssd_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>Amnesiac</td>
+    <td><img src="results/2_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/2_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -124,6 +134,11 @@ python exp1/experiment_run.py
     <td><img src="results/3_decision_boundary_ssd_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/3_decision_boundary_ssd_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>Amnesiac</td>
+    <td><img src="results/3_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/3_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 4. Rogue point far away from its centroid, but probably in the same decision boundary
@@ -159,6 +174,11 @@ python exp1/experiment_run.py
     <td>SSD</td>
     <td><img src="results/4_decision_boundary_ssd_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/4_decision_boundary_ssd_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>Amnesiac</td>
+    <td><img src="results/4_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/4_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -197,5 +217,10 @@ python exp1/experiment_run.py
     <td>SSD</td>
     <td><img src="results/5_decision_boundary_ssd_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/5_decision_boundary_ssd_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>Amnesiac</td>
+    <td><img src="results/5_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/5_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
