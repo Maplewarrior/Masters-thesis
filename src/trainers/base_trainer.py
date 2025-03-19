@@ -95,7 +95,6 @@ class BaseTrainer:
                 # Update progress bar
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
-                        
                 
                 if self.do_early_stopping and epoch > 4 and not train_metrics['val/loss'][-1] <= np.mean(train_metrics['val/loss'][:-4:-1]):
                     print("\Ending due to early stopping")
@@ -119,9 +118,9 @@ class BaseTrainer:
         epoch_metrics = self.init_epoch_metrics()
         
         with torch.no_grad():
-            for x, y in self.val_dataloader:
-                x = x.to(self.device)
-                y = y.to(self.device)
+            for batch in self.val_dataloader:
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
                 
                 # forward pass and calculate loss
                 out = self.model(x)

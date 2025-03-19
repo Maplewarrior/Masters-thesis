@@ -72,8 +72,8 @@ if __name__ == "__main__":
     # hardcode centroids, stds, sizes
     centroids = np.array([[0, -3], [-3, 3], [3, 3]])
     stds = np.array([[0.7, 0.7], [0.7, 0.7], [0.7, 0.7]])
-    sizes = np.array([50, 50, 50])
-    validation_sizes = np.array([20, 20, 20])
+    sizes = np.array([20, 20, 20])
+    validation_sizes = np.array([10, 10, 10])
 
     data_folder = 'exp1/data'
     data_plots_folder = os.path.join(data_folder, 'plots')

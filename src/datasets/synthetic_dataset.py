@@ -1,7 +1,7 @@
 import torch 
 from torch.utils.data import Dataset
 class SyntheticDataset(Dataset):
-    def __init__(self, X, y, n_classes: int = None, dataset_name: str = None):
+    def __init__(self, X, y, n_classes, dataset_name: str = None):
         """
         A PyTorch Dataset for synthetic data with optional metadata.
         
@@ -26,8 +26,11 @@ class SyntheticDataset(Dataset):
         self.name = dataset_name
 
         # if it is not onehot endcoded, do it
-        if y.dim() == 1 and y.max() != 1:
+        if y.dim() == 1 and n_classes is not None and n_classes > 1:
             self.y = self.onehot_encode_labels(self.y, self.n_classes)
+        elif y.dim() == 1 and n_classes == 1:
+            self.y = torch.zeros(len(y), 1)
+            self.y[y == 1] = 1
 
     def __len__(self):
         return len(self.X)

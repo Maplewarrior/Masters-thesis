@@ -1,0 +1,24 @@
+// Neural Network Architecture
+digraph {
+	bgcolor=white dpi=300 fontname=Helvetica rankdir=LR
+	node [color="#4285F4" fillcolor="#E8F0FE" fontcolor="#333333" fontname=Helvetica fontsize=14 shape=box style="filled,rounded"]
+	edge [arrowsize=0.8 color="#4285F4" penwidth=1.5]
+	input [label="Input
+(2 features)" shape=oval]
+	linear_0 [label="Linear
+2 → 16"]
+	input -> linear_0
+	relu_1 [label=ReLU]
+	linear_0 -> relu_1
+	linear_2 [label="Linear
+16 → 8"]
+	relu_1 -> linear_2
+	relu_3 [label=ReLU]
+	linear_2 -> relu_3
+	linear_4 [label="Linear
+8 → 3"]
+	relu_3 -> linear_4
+	output [label="Output
+(3 classes)" shape=oval]
+	linear_4 -> output
+}
