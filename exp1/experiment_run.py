@@ -13,6 +13,8 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 
+results_dir = os.path.join(os.path.dirname(__file__), "results")
+
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
     X = npz_file["X"]
@@ -24,6 +26,22 @@ def load_dataset(file):
         forget_idx = None
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
+
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
+        dataset_number = dataset_name.split("_")[1]
+    
+        creator = DecisionBoundaryCreator(model, dataloader_retrain)
+        plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+        plot1.title("Retrain")
+        plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
+        plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
+
+        creator = DecisionBoundaryCreator(original_model, dataloader_train)
+        plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+        plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x", alpha=0.3)
+        plot2.title("Original")
+        plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
+
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
@@ -108,16 +126,7 @@ def main(cfg):
 
         dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
         dataset_number = dataset_name.split("_")[1]
-        creator = DecisionBoundaryCreator(model, dataloader_retrain)
-        plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        # plot an 
-        plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
-
-
-        creator = DecisionBoundaryCreator(original_model, dataloader_train)
-        plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
-
+        decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg)
 
 
         
@@ -151,11 +160,12 @@ def main(cfg):
 
             creator = DecisionBoundaryCreator(model, dataloader_retrain)
             plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-            # plot an 
+            plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
             plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
 
             creator = DecisionBoundaryCreator(original_model, dataloader_train)
             plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+            plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
             plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
             
 
