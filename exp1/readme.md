@@ -27,8 +27,19 @@ python exp1/experiment_run.py
 ```
 
 #### Findings
-<!-- TODO: Document findings after running experiment -->
 
+<table>
+  <tr>
+    <th align="center" style="font-weight: bold"></th>
+    <th align="center" style="font-weight: bold">Original</th>
+    <th align="center" style="font-weight: bold">Unlearned</th>
+  </tr>
+  <tr>
+    <td>Retrain</td>
+    <td><img src="results/1_decision_boundary_retrain_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/1_decision_boundary_retrain_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+</table>
 
 ### 2. Rogue point with same centroid as its class
 ![Data configuration for Run 2](data/plots/data_2.png)
@@ -42,8 +53,19 @@ python exp1/experiment_run.py
 
 
 #### Findings
-<!-- TODO: Document findings after running experiment -->
 
+<table>
+  <tr>
+    <th align="center" style="font-weight: bold"></th>
+    <th align="center" style="font-weight: bold">Original</th>
+    <th align="center" style="font-weight: bold">Unlearned</th>
+  </tr>
+  <tr>
+    <td>Retrain</td>
+    <td><img src="results/2_decision_boundary_retrain_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/2_decision_boundary_retrain_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+</table>
 
 
 ### 3. Rogue point with same centroid as the class with a different label
@@ -58,8 +80,19 @@ python exp1/experiment_run.py
 
 
 #### Findings
-<!-- TODO: Document findings after running experiment -->
 
+<table>
+  <tr>
+    <th align="center" style="font-weight: bold"></th>
+    <th align="center" style="font-weight: bold">Original</th>
+    <th align="center" style="font-weight: bold">Unlearned</th>
+  </tr>
+  <tr>
+    <td>Retrain</td>
+    <td><img src="results/3_decision_boundary_retrain_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/3_decision_boundary_retrain_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+</table>
 
 ### 4. Rogue point far away from its centroid, but probably in the same decision boundary
 ![Data configuration for Run 4](data/plots/data_4.png)
@@ -73,8 +106,19 @@ python exp1/experiment_run.py
 
 
 #### Findings
-<!-- TODO: Document findings after running experiment -->
 
+<table>
+  <tr>
+    <th align="center" style="font-weight: bold"></th>
+    <th align="center" style="font-weight: bold">Original</th>
+    <th align="center" style="font-weight: bold">Unlearned</th>
+  </tr>
+  <tr>
+    <td>Retrain</td>
+    <td><img src="results/4_decision_boundary_retrain_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/4_decision_boundary_retrain_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+</table>
 
 
 
@@ -90,4 +134,16 @@ python exp1/experiment_run.py
 
 
 #### Findings
-<!-- TODO: Document findings after running experiment -->
+
+<table>
+  <tr>
+    <th align="center" style="font-weight: bold"></th>
+    <th align="center" style="font-weight: bold">Original</th>
+    <th align="center" style="font-weight: bold">Unlearned</th>
+  </tr>
+  <tr>
+    <td>Retrain</td>
+    <td><img src="results/5_decision_boundary_retrain_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/5_decision_boundary_retrain_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+</table>
