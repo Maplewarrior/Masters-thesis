@@ -222,6 +222,34 @@ def main(cfg):
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg)
 
+        elif cfg.unlearn.method == "sisa":
+            from src.unlearners.sisa_unlearner import SISAUnlearner
+            from src.sisa_implementation.sisa_class import SISA
+            from src.trainers.sisa_trainer import SISATrainer
+        
+            sisa = SISA(dataloader_train, 
+                        n_classes=cfg.data.n_classes, 
+                        n_features=X.shape[1], 
+                        n_epochs=cfg.trainer.n_epochs, 
+                        n_shards=cfg.sisa.n_shards, 
+                        n_slices=cfg.sisa.n_slices,
+                        save_dir=results_dir+'/sisa')
+            sisa.process_data()
+            
+            SISATrainer(
+                model=sisa.model, 
+                sisa=sisa, 
+                train_dataloader=dataloader_train, 
+                val_dataloader=dataloader_val, 
+                logger=None, 
+                device=cfg.model.device, 
+                learning_rate=cfg.trainer.lr, 
+                n_epochs=cfg.trainer.n_epochs, 
+                disable_tqdm=cfg.trainer.disable_tqdm, 
+                do_early_stopping=cfg.trainer.do_early_stopping)()
+            
+            sisa_unlearner = SISAUnlearner(sisa)
+            sisa_unlearner(forget_indices=[0, 1, 2])
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

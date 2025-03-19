@@ -28,6 +28,10 @@ trainer:
   disable_tqdm: False
   do_early_stopping: True
 
+sisa:
+  n_shards: 3
+  n_slices: 3
+
 model: 
   seed: 42
   device: "cpu"

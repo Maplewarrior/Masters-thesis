@@ -6,7 +6,7 @@ import pandas as pd
 
 class ExperimentLogger(ABC):
     @abstractmethod
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None):
+    def log(self, metrics: Dict[str, Any], step: Optional[int] = None):
         pass
     
     @abstractmethod
@@ -49,7 +49,7 @@ class SQLiteLogger(ExperimentLogger):
         self.conn = sqlite3.connect('experiment_logs.db')
         self.cursor = self.conn.cursor()
     
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None):
+    def log(self, metrics: Dict[str, Any], step: Optional[int] = None):
         self.cursor.execute(
             '''INSERT INTO experiment_logs 
                (project_name, experiment_name, step, type, data)
@@ -89,7 +89,7 @@ class WandBLogger(ExperimentLogger):
             name=experiment_name
         )
     
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None):
+    def log(self, metrics: Dict[str, Any], step: Optional[int] = None):
         self.run.log(metrics, step=step)
     
     def log_hyperparameters(self, params: Dict[str, Any]):
@@ -166,7 +166,7 @@ if __name__ == '__main__':
         }
         
         # Log metrics
-        logger.log_metrics(metrics, step=epoch)
+        logger.log(metrics, step=epoch)
     
     # Cleanup
     logger.finish()
