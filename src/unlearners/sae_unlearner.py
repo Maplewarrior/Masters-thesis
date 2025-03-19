@@ -4,7 +4,19 @@ import pdb
 # from src.models.neural_network import NeuralNet
 # from src.models.SAE import SAE
 from src.unlearners.base_unlearner import BaseUnlearner
+from src.utils.
 
+class CustomSAECriterion(nn.Module):
+    def __init__(self, penalty_terms, _lambda) -> None:
+        super().__init__()
+        self.CE = nn.CrossEntropyLoss()
+        self.penalty_terms = penalty_terms
+        self._lambda = _lambda
+    
+    def forward(self, logits, label, z):
+        fit_term = self.CE(logits, label)
+        reg_term = (self._lambda * z @ self.penalty_terms).mean()
+        return fit_term + reg_term
 
 class SAEUnlearner(BaseUnlearner):
     def __init__(self, model, sae, layer_num: int, alpha: float = 0.9) -> None:
@@ -79,8 +91,42 @@ class SAEUnlearner(BaseUnlearner):
             W_dec = self.sae.decoder.weight.data.clone()
             W_dec[:, forget_feature_idxs] = W_dec[:, forget_feature_idxs] * dampening_factors
             self.sae.decoder.weight.copy_(W_dec)
+        
+    def unlearn_features(self, retain_loader, forget_loader):
+        """
+        A method that dampens the dictionary matrix features based on how active they are in the forget vs retain set.
+        """
+        Z_retain = self.get_Z_matrix(dataloader=retain_loader)
+        Z_forget = self.get_Z_matrix(dataloader=forget_loader)
+
+        alpha = 0.75 # 0.9 # the higher alpha, the lower the dampening
+        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, alpha)
+
+        with torch.no_grad():
+            W_dec = self.sae.decoder.weight.data.clone()
+            W_dec[:, forget_feature_idxs] = W_dec[:, forget_feature_idxs] * dampening_factors
+            self.sae.decoder.weight.copy_(W_dec)
+    
+    # def unlearn_weights(self, retain_loader, forget_loader, val_loader, n_epochs: int, lr: float,):
+          # # TODO: Make this compatible with current setup  
+    #     Z_retain = self.get_Z_matrix(dataloader=retain_loader)
+    #     Z_forget = self.get_Z_matrix(dataloader=forget_loader)
+    #     alpha = 0.9 # the higher alpha, the lower the dampening
+    #     _lambda = 2.
+    #     dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, alpha)
+        
+    #     penalty_terms = torch.zeros_like(Z_retain[0,:])
+    #     penalty_terms[forget_feature_idxs] = 1 - dampening_factors
+    #     self.model.train()
+    #     trainer = Trainer(model=self, 
+    #                       train_dataloader=retain_loader, 
+    #                       val_dataloader=val_loader, 
+    #                       n_epochs=n_epochs, 
+    #                       lr=lr,
+    #                       loss = CustomSAECriterion(penalty_terms, 
+    #                                                 _lambda=_lambda))
     
     def __call__(self, retain_dataloader, forget_dataloader):
-        self.unlearn(retain_dataloader, forget_dataloader)
+        self.unlearn_features(retain_dataloader, forget_dataloader)
     
     
