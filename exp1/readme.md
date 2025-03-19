@@ -2,11 +2,22 @@
 In this experiment we wish to explore what happens with the decision boundary depending on where the point to forget is positioned (for the synthetic data we call this the "rouge point"). We experiment with placing it in a wrong class, 
 
 
-## Data generation
+## How to use
 To generate the data, run:
 ```bash
 python exp1/generate_data.py
 ```
+
+To run the experiment for all the datasets and unlearning methods, run:
+```bash
+python exp1/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae"  --multirun
+```
+
+You can overwrite any parameters from the config file, for example `n_epochs`:
+```bash
+python exp1/experiment_run.py trainer.n_epochs=10
+```
+
 
 ## The network
 The network is a simple feedforward network which can be seen below:
@@ -56,6 +67,11 @@ python exp1/experiment_run.py
     <td><img src="results/1_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/1_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/1_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/1_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 2. Rogue point with same centroid as its class
@@ -96,6 +112,11 @@ python exp1/experiment_run.py
     <td>Amnesiac</td>
     <td><img src="results/2_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/2_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/2_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/2_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -139,6 +160,11 @@ python exp1/experiment_run.py
     <td><img src="results/3_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/3_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/3_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/3_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 4. Rogue point far away from its centroid, but probably in the same decision boundary
@@ -179,6 +205,11 @@ python exp1/experiment_run.py
     <td>Amnesiac</td>
     <td><img src="results/4_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/4_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/4_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/4_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -222,5 +253,10 @@ python exp1/experiment_run.py
     <td>Amnesiac</td>
     <td><img src="results/5_decision_boundary_amnesiac_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/5_decision_boundary_amnesiac_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SAE</td>
+    <td><img src="results/5_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/5_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
