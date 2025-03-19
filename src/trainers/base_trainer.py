@@ -89,7 +89,7 @@ class BaseTrainer:
                         f"train/loss/{train_dataset_name}": train_epoch_metrics['accuracy'],
                         f"train/accuracy/{train_dataset_name}": train_epoch_metrics['loss'],
                         f"validation/loss/{validation_dataset_name}": val_metrics['loss'],
-                        f"validation/accuracy/{validation_dataset_name}": val_metrics['accracy'],
+                        f"validation/accuracy/{validation_dataset_name}": val_metrics['accuracy'],
                         "epoch": epoch
                     })
 

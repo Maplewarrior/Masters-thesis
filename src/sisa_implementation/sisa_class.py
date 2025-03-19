@@ -34,6 +34,9 @@ class SISA:
             self.save_dir = f'./src/sisa_implementation/checkpoints/SISA'
         else:
             self.save_dir = save_dir
+        self.root_save_dir = self.save_dir
+        # We add uuid to the save_dir
+        self.save_dir = f"{self.save_dir}/{self.experiment_id}"
         
         self.dataloader = dataloader
 
@@ -78,6 +81,17 @@ class SISA:
         }
         """
     
+    def copy(self):
+        """
+        We copy the models from the src_dir to the dst_dir.
+        """
+        import copy, shutil
+        copy_dir = self.root_save_dir + '/' + str(uuid4())
+        new_model = copy.deepcopy(self)
+        new_model.save_dir = copy_dir
+        shutil.copytree(self.save_dir, copy_dir)
+        return new_model
+       
     def shard_data(self):
         """
         We shard the data into n_shards shards.
@@ -87,7 +101,7 @@ class SISA:
         indices = np.arange(len(self.dataset.X))
         splits = np.array_split(indices, self.n_shards)
         for shard_id, shard_indices in enumerate(splits):
-            os.makedirs(f"{self.shard_models_path}/shard_{shard_id}_{self.experiment_id}", exist_ok=True)
+            os.makedirs(f"{self.shard_models_path}/shard_{shard_id}", exist_ok=True)
             self.shards_dict.shards[f"shard_{shard_id}"] = Shard(shard_id=shard_id, shard_indices=shard_indices.tolist())
 
     def slice_shards(self):
@@ -99,7 +113,7 @@ class SISA:
             shard_indices = shard.shard_indices
             splits = np.array_split(shard_indices, self.n_slices)
             for slice_id, slice_indices in enumerate(splits):
-                os.makedirs(f"{self.shard_models_path}/shard_{shard.shard_id}_{self.experiment_id}/slice_{slice_id}", exist_ok=True)
+                os.makedirs(f"{self.shard_models_path}/shard_{shard.shard_id}/slice_{slice_id}", exist_ok=True)
                 shard.slices.append(slice_indices.tolist())
 
     def process_data(self):
@@ -124,17 +138,17 @@ class SISA:
         """
         We save the models for a shard and slice.
         """
-        with open(f"{self.shard_models_path}/shard_{shard_id}_{self.experiment_id}/slice_{slice_id}/{slice_id}.pth", "wb") as f:
+        with open(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "wb") as f:
             torch.save(model.state_dict(), f)
 
     def load_model(self, shard_id: int, slice_id: int):
         model = NeuralNet(M=self.n_features, n_classes=self.n_classes)
-        with open(f"{self.shard_models_path}/shard_{shard_id}_{self.experiment_id}/slice_{slice_id}/{slice_id}.pth", "rb") as f:
+        with open(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "rb") as f:
             model.load_state_dict(torch.load(f))
         return model
     
     def remove_model(self, shard_id: int, slice_id: int):
-        os.remove(f"{self.shard_models_path}/shard_{shard_id}_{self.experiment_id}/slice_{slice_id}/{slice_id}.pth")
+        os.remove(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth")
 
     def dynamic_epochs(self, slice_id):
         return int((2*slice_id) / (self.n_slices + 1) * self.n_epochs)
@@ -196,7 +210,7 @@ class SISA:
             self.trainer.val_dataloader = DataLoader(slice_dataset, batch_size=32, shuffle=False) # Just for making it work with logging
             self.trainer.model = model
             self.trainer.optimizer = optim.Adam(model.parameters(), lr=0.001)
-            self.trainer.logger = create_logger(project_name='sisa', experiment_name=f'shard_{shard_id}_slice_{start_slice}')
+            # self.trainer.logger = create_logger(project_name='sisa', experiment_name=f'shard_{shard_id}_slice_{start_slice}')
             
             self.trainer.n_epochs = n_epochs
             self.trainer.train()

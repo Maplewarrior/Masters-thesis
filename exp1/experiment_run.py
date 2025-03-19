@@ -248,8 +248,51 @@ def main(cfg):
                 disable_tqdm=cfg.trainer.disable_tqdm, 
                 do_early_stopping=cfg.trainer.do_early_stopping)()
             
+            sisa_pre_unlearning = sisa.copy()
+
+            batch = next(iter(dataloader_retrain))
+            X_batch, y_batch, _ = batch
+
             sisa_unlearner = SISAUnlearner(sisa)
-            sisa_unlearner(forget_indices=[0, 1, 2])
+            sisa_unlearner(forget_indices=[forget_idx])
+
+            import pdb; pdb.set_trace()
+
+            infer_logits_pre_unlearning = sisa_pre_unlearning.inference(X_batch)['logits']
+            infer_logits_post_unlearning = sisa.inference(X_batch)['logits']
+
+            state_dict1 = sisa_pre_unlearning.model.state_dict()
+            state_dict2 = sisa.model.state_dict()
+            
+            # Check if models have the same structure
+            if state_dict1.keys() != state_dict2.keys():
+                print("Models have different structures!")
+                diff_keys = set(state_dict1.keys()).symmetric_difference(set(state_dict2.keys()))
+                print(f"Different keys: {diff_keys}")
+                return False
+            
+            # Compare each parameter
+            are_models_equal = True
+            for key in state_dict1.keys():
+                tensor1 = state_dict1[key]
+                tensor2 = state_dict2[key]
+                
+                # Check if shapes match
+                if tensor1.shape != tensor2.shape:
+                    print(f"Shape mismatch for {key}: {tensor1.shape} vs {tensor2.shape}")
+                    are_models_equal = False
+                    continue
+                    
+                # Compare values
+                if not torch.allclose(tensor1, tensor2, rtol=1e-05, atol=1e-08):
+                    are_models_equal = False
+                    # Calculate differences
+                    max_diff = torch.max(torch.abs(tensor1 - tensor2)).item()
+                    mean_diff = torch.mean(torch.abs(tensor1 - tensor2)).item()
+                    print(f"Max difference: {max_diff}, Mean difference: {mean_diff}")
+
+            print(are_models_equal)
+            # sisa_pre_unlearning.inference(dataloader_retrain)
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 
