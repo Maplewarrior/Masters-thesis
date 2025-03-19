@@ -113,10 +113,10 @@ def main(cfg):
     X_forget, y_forget = X[all_indices == forget_idx], y[all_indices == forget_idx]
     
     # X, y, X_val, y_val, X_retrain, y_retrain, X_forget, y_forget
-    dataset_train = SyntheticDataset(X, y, dataset_name="train")
-    dataset_val = SyntheticDataset(X_val, y_val, dataset_name="validation")
-    dataset_retrain = SyntheticDataset(X_retrain, y_retrain, dataset_name="retrain")
-    dataset_forget = SyntheticDataset(X_forget, y_forget, dataset_name="forget")
+    dataset_train = SyntheticDataset(X, y, dataset_name="train", n_classes=cfg.data.n_classes)
+    dataset_val = SyntheticDataset(X_val, y_val, dataset_name="validation", n_classes=cfg.data.n_classes)
+    dataset_retrain = SyntheticDataset(X_retrain, y_retrain, dataset_name="retrain", n_classes=cfg.data.n_classes)
+    dataset_forget = SyntheticDataset(X_forget, y_forget, dataset_name="forget", n_classes=cfg.data.n_classes)
 
     batch_size = cfg.data.batch_size
     dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
@@ -139,6 +139,7 @@ def main(cfg):
                             dir=cfg.logging.dir)
 
 
+        dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
 
     else:
         raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
@@ -178,12 +179,9 @@ def main(cfg):
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
 
-        dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
-        dataset_number = dataset_name.split("_")[1]
         decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg)
 
 
-        
     else:
 
         unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
@@ -211,18 +209,7 @@ def main(cfg):
                                     val_dataloader=dataloader_val, 
                                     n_rounds=10)
             
-
-            creator = DecisionBoundaryCreator(model, dataloader_retrain)
-            plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-            plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-            plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
-
-            creator = DecisionBoundaryCreator(original_model, dataloader_train)
-            plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-            plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-            plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
-            
-
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg)
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

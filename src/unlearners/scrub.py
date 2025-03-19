@@ -32,7 +32,7 @@ class ScrubR(BaseUnlearner):
         val_dataset = val_dataloader.dataset
         X_val = val_dataset.X
         y_val = val_dataset.y.argmax(dim=1)
-        n_classes = len(list(set(y_val))) # assumes all classes are in the validation set...
+        n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
         labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
 
         sample_sizes = []
@@ -69,7 +69,8 @@ class ScrubR(BaseUnlearner):
         model.eval()
         losses = []
         with torch.no_grad():
-            for x, y in dataloader:
+            for batch in dataloader:
+                x, y = batch[0], batch[1]
                 logits = model(x)['logits']
                 loss = self.CE(logits, y)
                 losses.append(loss)
@@ -114,9 +115,11 @@ class ScrubR(BaseUnlearner):
         forget_errors = []
         
         for i in range(n_rounds):
-            for x, y in forget_dataloader:
+            for batch in forget_dataloader:
+                x, y = batch[0], batch[1]
                 self.max_step(x, y)
-            for x, y in retain_dataloader:
+            for batch in retain_dataloader:
+                x, y = batch[0], batch[1]
                 self.min_step(x, y)
 
             err = self.calculate_error(self.model, forget_dataloader)
