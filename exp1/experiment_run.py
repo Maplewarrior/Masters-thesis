@@ -245,6 +245,34 @@ def main(cfg):
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
 
             
+        elif cfg.unlearn.method == "amnesiac":
+            from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
+            from src.models.amnesiac_model import AmnesiacModel
+            from src.trainers.amnesiac_trainer import AmnesiacTrainer
+
+
+            # Wrap the unlearned model in an AmnesiacModel
+            unlearned_model = AmnesiacModel(unlearned_model)
+
+            # Train the unlearned model
+            AmnesiacTrainer(model=unlearned_model, 
+                            train_dataloader=dataloader_train, 
+                            val_dataloader=dataloader_val, 
+                            logger=logger, 
+                            device=cfg.model.device,
+                            learning_rate=cfg.trainer.lr,
+                            cache_gradients=True,
+                            disable_tqdm=cfg.trainer.disable_tqdm,
+                            do_early_stopping=cfg.trainer.do_early_stopping,
+                            n_epochs=cfg.trainer.n_epochs)(indices_to_forget=[forget_idx])
+
+            original_model = copy.deepcopy(unlearned_model)
+
+            AmnesiacUnlearner(model=unlearned_model, 
+                              unlearn_parameters=cfg.unlearn)(indices_to_forget=[forget_idx])
+
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+
 
         elif cfg.unlearn.method == "sisa":
             from src.unlearners.sisa_unlearner import SISAUnlearner
