@@ -26,7 +26,6 @@ class SAEUnlearner(BaseUnlearner):
         self.sae = sae
         self.layer_num = layer_num # which layer to apply the SAE to
         self.alpha = alpha # the higher alpha, the lower the dampening
-    
 
     def forward(self, x, return_reconstruction: bool = True):
         x_act = self.model.inference(x, start_idx=0, stop_idx=self.layer_num)['logits'] # activations at layer_num
@@ -99,8 +98,7 @@ class SAEUnlearner(BaseUnlearner):
         Z_retain = self.get_Z_matrix(dataloader=retain_loader)
         Z_forget = self.get_Z_matrix(dataloader=forget_loader)
 
-        alpha = 0.75 # 0.9 # the higher alpha, the lower the dampening
-        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, alpha)
+        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, self.alpha)
 
         with torch.no_grad():
             W_dec = self.sae.decoder.weight.data.clone()
