@@ -19,41 +19,20 @@ class CustomSAECriterion(nn.Module):
         return fit_term + reg_term
 
 class SAEUnlearner(BaseUnlearner):
-    def __init__(self, model, sae, layer_num: int, alpha: float = 0.9) -> None:
-        super().__init__()
+    def __init__(self, model, alpha: float = 0.9) -> None:
+        super().__init__(model, {'alpha': alpha})
         self.model = model
-        self.model.eval()
-        self.sae = sae
-        self.layer_num = layer_num # which layer to apply the SAE to
         self.alpha = alpha # the higher alpha, the lower the dampening
-
-    def forward(self, x, return_reconstruction: bool = True):
-        x_act = self.model.inference(x, start_idx=0, stop_idx=self.layer_num)['logits'] # activations at layer_num
-        sae_out = self.sae(x_act) # reconstruction
-
-        if return_reconstruction:
-            sae_out['xact'] = x_act
-            return sae_out
-        # class prediction
-        logits = self.model.inference(sae_out['xhat'], start_idx=self.layer_num, stop_idx=None)['logits']
-        return {'logits': logits}
-    
-    def predict_from_reconstruction(self, xhat):
-        return self.model.inference(xhat, start_idx=self.layer_num, stop_idx=None)
 
     def get_Z_matrix(self, dataloader):
         Z = []
-        self.sae.eval()
+        self.model.sae.eval()
         with torch.no_grad():
-            for ipt, _ in dataloader:
-                z = self(ipt, return_reconstruction=True)['z']
+            for batch in dataloader:
+                x = batch[0]
+                z = self.model(x)['z']
                 Z.append(z)
         return torch.cat(Z)
-    
-    def inference(self, x):
-        self.sae.eval()
-        with torch.no_grad():
-            return self(x, return_reconstruction=False)
     
     def calculate_dampening_factors(self, Z_retain, Z_forget):
         retain_feature_idxs, retain_feature_counts = torch.unique(torch.where(Z_retain > 0)[1], return_counts=True)
@@ -79,17 +58,6 @@ class SAEUnlearner(BaseUnlearner):
         dampening_factors = torch.cat(dampening_factors)
 
         return dampening_factors, forget_feature_idxs
-
-    
-    def unlearn(self, retain_loader, forget_loader):
-        Z_retain = self.get_Z_matrix(dataloader=retain_loader)
-        Z_forget = self.get_Z_matrix(dataloader=forget_loader)
-        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, alpha)
-
-        with torch.no_grad():
-            W_dec = self.sae.decoder.weight.data.clone()
-            W_dec[:, forget_feature_idxs] = W_dec[:, forget_feature_idxs] * dampening_factors
-            self.sae.decoder.weight.copy_(W_dec)
         
     def unlearn_features(self, retain_loader, forget_loader):
         """
@@ -98,13 +66,13 @@ class SAEUnlearner(BaseUnlearner):
         Z_retain = self.get_Z_matrix(dataloader=retain_loader)
         Z_forget = self.get_Z_matrix(dataloader=forget_loader)
 
-        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget, self.alpha)
+        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget)
 
         with torch.no_grad():
-            W_dec = self.sae.decoder.weight.data.clone()
+            W_dec = self.model.sae.decoder.weight.data.clone()
             W_dec[:, forget_feature_idxs] = W_dec[:, forget_feature_idxs] * dampening_factors
-            self.sae.decoder.weight.copy_(W_dec)
-    
+            self.model.sae.decoder.weight.copy_(W_dec)
+        
     # def unlearn_weights(self, retain_loader, forget_loader, val_loader, n_epochs: int, lr: float,):
           # # TODO: Make this compatible with current setup  
     #     Z_retain = self.get_Z_matrix(dataloader=retain_loader)
