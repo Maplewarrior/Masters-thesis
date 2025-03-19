@@ -7,8 +7,9 @@ class BaseUnlearner:
             @param model: A model that has been trained on the full training set that should unlearn the forget set.
             @param unlearn_parameters: The hyperparameters of the unlearning algorithm. 
         """
-        raise NotImplementedError()
-    
+        self.model = model
+        self.unlearn_parameters = unlearn_parameters
+
     def __call__(self, **kwargs):
         """
         This function applies the unlearning algorithm on the model.

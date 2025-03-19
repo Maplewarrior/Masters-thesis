@@ -11,7 +11,7 @@ from src.unlearners.base_unlearner import BaseUnlearner
 
 class ScrubR(BaseUnlearner):
     def __init__(self, model, original_model, alpha, gamma):
-        self.model = model
+        super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()
         # self.CE = nn.CrossEntropyLoss(reduction='sum')
