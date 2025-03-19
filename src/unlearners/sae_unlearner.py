@@ -4,7 +4,7 @@ import pdb
 # from src.models.neural_network import NeuralNet
 # from src.models.SAE import SAE
 from src.unlearners.base_unlearner import BaseUnlearner
-from src.utils.
+from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 
 class CustomSAECriterion(nn.Module):
     def __init__(self, penalty_terms, _lambda) -> None:
