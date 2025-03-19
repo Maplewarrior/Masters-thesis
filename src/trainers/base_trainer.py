@@ -3,11 +3,6 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 import pdb
-import pdb
-# def build_model(model_type, model_parameters):
-#     if model_type == 'neural-network':
-#         return NeuralNetwork(**model_parameters)
-    
 
 class BaseTrainer:
     def __init__(self, 
@@ -39,24 +34,24 @@ class BaseTrainer:
 
     def train_one_epoch(self) -> tuple[list[float], float]:
         self.model.train()
+        N_steps = len(self.train_dataloader)
         epoch_losses = []
         epoch_metrics = self.init_epoch_metrics()
-
         for batch in self.train_dataloader:
             x = batch[0].to(self.device)
             y = batch[1].to(self.device)
             # perform forward and backward pass
             out, loss = self.step(x, y)
             # Update/store metrics
-            epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y)
+            epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y, N_steps)
             epoch_losses.append(loss.item())
         
-        epoch_metrics['loss'] = sum(epoch_losses) / len(epoch_losses)
-        epoch_metrics['accuracy'] = epoch_metrics['accuracy'] / len(epoch_losses)
+        epoch_metrics['loss'] = sum(epoch_losses) / N_steps
+        # epoch_metrics['accuracy'] = epoch_metrics['accuracy']
         return epoch_metrics
     
-    def update_epoch_metrics(self, metrics: dict, out: dict, y):
-        metrics['accuracy'] += (out['probabilities'].argmax(dim=1) == y.argmax(dim=1)).sum().item() / y.size(0)
+    def update_epoch_metrics(self, metrics: dict, out: dict, y, N: int):
+        metrics['accuracy'] += (out['probabilities'].argmax(dim=1) == y.argmax(dim=1)).sum().item() / (y.size(0) * N)
         return metrics
 
     def update_train_metrics(self, train_metrics: dict, epoch_metrics: dict, epoch_type: str):
@@ -113,10 +108,13 @@ class BaseTrainer:
         self.optimizer.step()
         return out, loss
     
+    def eval_step(self, x):
+        return self.model(x)
+    
     def eval(self):
         self.model.eval()
         losses = []
-        
+        N_steps = len(self.val_dataloader)
         epoch_metrics = self.init_epoch_metrics()
         
         with torch.no_grad():
@@ -125,15 +123,15 @@ class BaseTrainer:
                 y = batch[1].to(self.device)
                 
                 # forward pass and calculate loss
-                out = self.model(x)
+                # out = self.model(x)
+                out = self.eval_step(x)
                 loss = self.model.loss(out, y)
                 
                 # update metrics
-                epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y)
+                epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y, N_steps)
                 losses.append(loss.item())
         
         epoch_metrics['loss'] = sum(losses) / len(losses)
-        epoch_metrics['accuracy'] = epoch_metrics['accuracy'] / len(losses)
         return epoch_metrics
     
     def __call__(self):

@@ -12,7 +12,6 @@ import torch.nn as nn
 
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
-
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 
 results_dir = os.path.join(os.path.dirname(__file__), "results")
@@ -64,7 +63,6 @@ def create_simple_model_visualization(model, save_path, input_shape):
     
     # Set edge attributes
     dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    
     # Add input node
     dot.node('input', f'Input\n({input_shape} features)', shape='oval')
     
@@ -176,14 +174,10 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-
         decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
 
-
     else:
-
         unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
-
         NeuralNetworkTrainer(model=unlearned_model, 
                                     train_dataloader=dataloader_train, 
                                     val_dataloader=dataloader_val, 
@@ -196,21 +190,8 @@ def main(cfg):
 
         original_model = copy.deepcopy(unlearned_model)
         
-        if cfg.unlearn.method == "scrubr":
-
-            from src.unlearners.scrub import ScrubR
-            ScrubR(model=unlearned_model, 
-                           original_model=original_model,
-                           alpha=1,
-                           gamma=1)(retain_dataloader=dataloader_retain, 
-                                    forget_dataloader=dataloader_forget, 
-                                    val_dataloader=dataloader_val, 
-                                    n_rounds=10)
-            
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
-        elif cfg.unlearn.method == "ssd":
+        if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-
 
             SelectiveSynapticDampening(unlearned_model, 
                                        criterion=nn.CrossEntropyLoss(), 
@@ -220,103 +201,16 @@ def main(cfg):
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
         
-        elif cfg.unlearn.method == 'sae':
-            from src.models.neural_network import NeuralNetRS
-            from src.models.SAE import SAE
-            from src.models.neural_net_with_sae import NeuralNetWithSAE
-            from src.trainers.sae_trainer import SAETrainer
-            from src.unlearners.sae_unlearner import SAEUnlearner
-            # instantiate & train neural network
-            neural_net = NeuralNetRS(X.shape[1], cfg.data.n_classes)
-            nn_trainer = NeuralNetworkTrainer(neural_net, dataloader_train, dataloader_val)
-            nn_trainer.train()
-            original_model = copy.deepcopy(neural_net)
+        elif cfg.unlearn.method == "ssd_v2":
+            from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
+            SelectiveSynapticDampening(unlearned_model, 
+                                       criterion=nn.CrossEntropyLoss(), 
+                                       alpha=1, 
+                                       _lambda=1)(full_dataloader=dataloader_train, 
+                                                 forget_dataloader=dataloader_forget)
             
-            # instantiate & train SAE
-            sae = SAE(d=8, m=32, _lambda=1.)
-            unlearned_model = NeuralNetWithSAE(neural_net, sae, layer_num=6)
-            sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val)
-            sae_trainer.train()
-
-            # unlearn with feature dampening
-            sae_unlearner = SAEUnlearner(unlearned_model, alpha=0.9)
-            sae_unlearner(dataloader_retain, dataloader_forget)
-
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
-
-            
-
-        elif cfg.unlearn.method == "sisa":
-            from src.unlearners.sisa_unlearner import SISAUnlearner
-            from src.sisa_implementation.sisa_class import SISA
-            from src.trainers.sisa_trainer import SISATrainer
         
-            sisa = SISA(dataloader_train, 
-                        n_classes=cfg.data.n_classes, 
-                        n_features=X.shape[1], 
-                        n_epochs=cfg.trainer.n_epochs, 
-                        n_shards=cfg.sisa.n_shards, 
-                        n_slices=cfg.sisa.n_slices,
-                        save_dir=results_dir+'/sisa')
-            sisa.process_data()
-            
-            SISATrainer(
-                model=sisa.model, 
-                sisa=sisa, 
-                train_dataloader=dataloader_train, 
-                val_dataloader=dataloader_val, 
-                logger=None, 
-                device=cfg.model.device, 
-                learning_rate=cfg.trainer.lr, 
-                n_epochs=cfg.trainer.n_epochs, 
-                disable_tqdm=cfg.trainer.disable_tqdm, 
-                do_early_stopping=cfg.trainer.do_early_stopping)()
-            
-            sisa_pre_unlearning = sisa.copy()
-
-            batch = next(iter(dataloader_retain))
-            X_batch, y_batch, _ = batch
-
-            sisa_unlearner = SISAUnlearner(sisa)
-            sisa_unlearner(forget_indices=[forget_idx])
-
-            import pdb; pdb.set_trace()
-
-            infer_logits_pre_unlearning = sisa_pre_unlearning.inference(X_batch)['logits']
-            infer_logits_post_unlearning = sisa.inference(X_batch)['logits']
-
-            state_dict1 = sisa_pre_unlearning.model.state_dict()
-            state_dict2 = sisa.model.state_dict()
-            
-            # Check if models have the same structure
-            if state_dict1.keys() != state_dict2.keys():
-                print("Models have different structures!")
-                diff_keys = set(state_dict1.keys()).symmetric_difference(set(state_dict2.keys()))
-                print(f"Different keys: {diff_keys}")
-                return False
-            
-            # Compare each parameter
-            are_models_equal = True
-            for key in state_dict1.keys():
-                tensor1 = state_dict1[key]
-                tensor2 = state_dict2[key]
-                
-                # Check if shapes match
-                if tensor1.shape != tensor2.shape:
-                    print(f"Shape mismatch for {key}: {tensor1.shape} vs {tensor2.shape}")
-                    are_models_equal = False
-                    continue
-                    
-                # Compare values
-                if not torch.allclose(tensor1, tensor2, rtol=1e-05, atol=1e-08):
-                    are_models_equal = False
-                    # Calculate differences
-                    max_diff = torch.max(torch.abs(tensor1 - tensor2)).item()
-                    mean_diff = torch.mean(torch.abs(tensor1 - tensor2)).item()
-                    print(f"Max difference: {max_diff}, Mean difference: {mean_diff}")
-
-            print(are_models_equal)
-            # sisa_pre_unlearning.inference(dataloader_retrain)
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

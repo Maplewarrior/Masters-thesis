@@ -5,7 +5,7 @@ import pdb
 
 class SAE(BaseModel):
     def __init__(self, d: int, m: int, _lambda: float):
-        super().__init__(d, )
+        super().__init__()
         self.d = d # dimensionality of the model activations
         self.m = m # dimensionality of the dictionary space
 
@@ -25,8 +25,10 @@ class SAE(BaseModel):
     def loss(self, x, forward_out: dict):
         z = forward_out['z']
         x_hat = forward_out['xhat']
+        
         # calculate reconstruction_term 
         reconstruction_term = self.mse(x, x_hat).mean(dim=-1)
+        
         # calculate regularization term
         W_dec = self.decoder.weight
         l2_norm_dictionary = W_dec.norm(p=2, dim=0) # torch.linalg.norm(self.decoder.weight, dim=0, ord=2)
