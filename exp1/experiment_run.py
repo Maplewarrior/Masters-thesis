@@ -278,6 +278,8 @@ def main(cfg):
             from src.unlearners.sisa_unlearner import SISAUnlearner
             from src.sisa_implementation.sisa_class import SISA
             from src.trainers.sisa_trainer import SISATrainer
+            import matplotlib.pyplot as plt
+            from matplotlib.colors import ListedColormap
         
             sisa = SISA(dataloader_train, 
                         n_classes=cfg.data.n_classes, 
@@ -308,43 +310,64 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=[forget_idx])
 
+            #! Monkey mode
+            x_interval = (-8.5, 8.5)
+            y_interval = (-8.5, 8.5)
+
+            x = torch.linspace(x_interval[0], x_interval[1], 1000)
+            y = torch.linspace(y_interval[0], y_interval[1], 1000)
+            xx, yy = torch.meshgrid(x, y, indexing='xy')
+            
+            # Reshape the grid into a 2D array of points
+            grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
+
+            #! Post unlearning
+            decision_boundary_post_unlearning = sisa.predict(grid).reshape(xx.shape)
+
+            #! Pre unlearning
+            decision_boundary_pre_unlearning = sisa_pre_unlearning.predict(grid).reshape(xx.shape)
+
+            print(decision_boundary_pre_unlearning)
             import pdb; pdb.set_trace()
 
-            infer_logits_pre_unlearning = sisa_pre_unlearning.inference(X_batch)['logits']
-            infer_logits_post_unlearning = sisa.inference(X_batch)['logits']
+            X, y = dataloader_retrain.dataset.X, dataloader_retrain.dataset.y
 
-            state_dict1 = sisa_pre_unlearning.model.state_dict()
-            state_dict2 = sisa.model.state_dict()
-            
-            # Check if models have the same structure
-            if state_dict1.keys() != state_dict2.keys():
-                print("Models have different structures!")
-                diff_keys = set(state_dict1.keys()).symmetric_difference(set(state_dict2.keys()))
-                print(f"Different keys: {diff_keys}")
-                return False
-            
-            # Compare each parameter
-            are_models_equal = True
-            for key in state_dict1.keys():
-                tensor1 = state_dict1[key]
-                tensor2 = state_dict2[key]
+            # If y is onehot, convert it to class indices
+            if len(y.shape) == 2 and y.shape[1] > 1:
+                y = torch.argmax(y, dim=1) 
+
+            classes = np.unique(y)
+
+            colors = plt.cm.viridis(np.linspace(0, 1, len(classes)))
+            custom_cmap = ListedColormap(colors)
+
+            # ! We start with pre unlearning
+            plt.figure(figsize=(10, 8))
+
+            plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary_pre_unlearning, 
+                                         alpha=0.4, cmap=custom_cmap, shading='auto')        
                 
-                # Check if shapes match
-                if tensor1.shape != tensor2.shape:
-                    print(f"Shape mismatch for {key}: {tensor1.shape} vs {tensor2.shape}")
-                    are_models_equal = False
-                    continue
-                    
-                # Compare values
-                if not torch.allclose(tensor1, tensor2, rtol=1e-05, atol=1e-08):
-                    are_models_equal = False
-                    # Calculate differences
-                    max_diff = torch.max(torch.abs(tensor1 - tensor2)).item()
-                    mean_diff = torch.mean(torch.abs(tensor1 - tensor2)).item()
-                    print(f"Max difference: {max_diff}, Mean difference: {mean_diff}")
+            for class_idx, color in zip(classes, colors):
+                plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=color, s=10, label=f"Class {class_idx}", alpha=0.5)
 
-            print(are_models_equal)
-            # sisa_pre_unlearning.inference(dataloader_retrain)
+            plt.title = "Pre unlearning"
+            plt.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
+            plt.legend()
+            plt.savefig(f"{results_dir}/sisa/decision_boundary_pre_unlearning.png")
+
+
+            # ! We end with unlearning
+            plt.figure(figsize=(10, 8))
+
+            plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary_post_unlearning, 
+                                         alpha=0.4, cmap=custom_cmap, shading='auto')  
+            for class_idx, color in zip(classes, colors):
+                plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=color, s=10, label=f"Class {class_idx}", alpha=0.5)
+
+            plt.title = "Post unlearning"
+            plt.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
+            plt.legend()
+            plt.savefig(f"{results_dir}/sisa/decision_boundary_post_unlearning.png")
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 
