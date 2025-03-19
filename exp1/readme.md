@@ -1,6 +1,8 @@
 # Experiment 1
 In this experiment we wish to explore what happens with the decision boundary depending on where the point to forget is positioned (for the synthetic data we call this the "rouge point"). We experiment with placing it in a wrong class, 
 
+> [!NOTE]  
+> The Amnesiac unlearning method does not have a repair step. Might not be necessary for this experiment as we are forgetting a single point and points are easily separable.
 
 ## How to use
 To generate the data, run:
