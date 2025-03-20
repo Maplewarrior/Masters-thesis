@@ -1,5 +1,7 @@
 # Experiment 1: Rogue One :octocat:
-In this experiment we wish to explore what happens with the decision boundary depending on where the point to forget is positioned (for the synthetic data we call this the "rouge point"). We experiment with placing it in a wrong class, 
+In this experiment we wish to explore what happens with the decision boundary depending on where the point to forget is positioned (for the synthetic data we call this the "rouge point"). We experiment with placing it in a wrong class, far away from the centroid of its class, etc.
+
+See [Experiment 1: Rogue Many](../exp1_rogue_many/readme.md) for results with a cluster of rogue points.
 
 > [!NOTE]  
 > The Amnesiac unlearning method does not have a repair step. Might not be necessary for this experiment as we are forgetting a single point and points are easily separable.
@@ -255,3 +257,6 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td><img src="results/5_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
+
+
+See [Experiment 1: Rogue Many](../exp1_rogue_many/readme.md) for results with a cluster of rogue points.
