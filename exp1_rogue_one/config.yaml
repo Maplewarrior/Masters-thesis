@@ -19,7 +19,7 @@ logging:
 # Data generation parameters
 data:
   dataset: "data/data_1.npz" # reference the data file
-  batch_size: 16
+  batch_size: 8
   n_classes: 3
 
 trainer: 
