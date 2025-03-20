@@ -24,7 +24,7 @@ data:
 
 trainer: 
   lr: 0.001
-  n_epochs: 20
+  n_epochs: 30
   disable_tqdm: False
   do_early_stopping: True
 
