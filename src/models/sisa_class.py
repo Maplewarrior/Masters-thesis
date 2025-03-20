@@ -96,6 +96,7 @@ class SISA(BaseModel):
         copy_dir = self.root_save_dir + '/' + str(uuid4())
         new_model = copy.deepcopy(self)
         new_model.save_dir = copy_dir
+        new_model.shard_models_path = copy_dir
         shutil.copytree(self.save_dir, copy_dir)
         return new_model
        
@@ -191,6 +192,8 @@ class SISA(BaseModel):
         if start_slice > 0:
             model = self.load_model(shard_id, start_slice-1)
             print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
+
+        self.trainer.optimizer = optim.Adam(model.parameters(), lr=0.001)
         
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
@@ -216,7 +219,7 @@ class SISA(BaseModel):
             self.trainer.train_dataloader = DataLoader(slice_dataset, batch_size=32, shuffle=True)
             self.trainer.val_dataloader = DataLoader(slice_dataset, batch_size=32, shuffle=False) # Just for making it work with logging
             self.trainer.model = model
-            self.trainer.optimizer = optim.Adam(model.parameters(), lr=0.001)
+            
             # self.trainer.logger = create_logger(project_name='sisa', experiment_name=f'shard_{shard_id}_slice_{start_slice}')
             
             self.trainer.n_epochs = n_epochs
@@ -327,6 +330,7 @@ class SISA(BaseModel):
         # We remove the datapoint from the slice
         slice_forget_point_index = self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].index(datapoint_idx)
         self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx].pop(slice_forget_point_index)
+        self.shards_dict.shards[f"shard_{shard_id}"].shard_indices.pop(slice_forget_point_index)
             
         # We make sure the datapoints is has been removed
         assert datapoint_idx not in self.shards_dict.shards[f"shard_{shard_id}"].slices[slice_idx], f"Datapoint {datapoint_idx} is still in slice {slice_idx} of shard {shard_id}"
@@ -364,6 +368,32 @@ class SISA(BaseModel):
             self.train_model_on_shard(shard_id, start_slice=slice_idx)
 
         return
+
+
+
+def are_sisa_models_different(model1: torch.nn.Module, model2: torch.nn.Module) -> bool:
+    """Check if two SISA models have different parameters.
+
+    Args:
+        model1: The first model to compare.
+        model2: The second model to compare.
+
+    Returns:
+        bool: True if models are different, False otherwise.
+    """
+
+    shards = [0,1,2]
+    slices = [0,1,2]
+
+    for shard in shards:
+        for slice in slices:
+            sub_model1 = model1.load_model(shard, slice)
+            sub_model2 = model2.load_model(shard, slice)
+
+            for param1, param2 in zip(sub_model1.parameters(), sub_model2.parameters()):
+                if not torch.equal(param1, param2):
+                    return True
+    return False
 
 if __name__ == "__main__":
     n_features = 600
