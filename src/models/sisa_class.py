@@ -1,6 +1,6 @@
 from src.data_utils.synthetic_data import SyntheticDataset
 from torch.utils.data import DataLoader
-from pydantic import BaseModel
+from pydantic import BaseModel as PydanticBaseModel
 from src.models.neural_network import NeuralNet
 from src.trainers.base_trainer import BaseTrainer
 import numpy as np
@@ -11,21 +11,27 @@ import torch
 import torch.optim as optim
 from src.experiment_logger import create_logger
 
-class Shard(BaseModel):
+from src.models.base_model import BaseModel
+
+from torch import nn
+
+class Shard(PydanticBaseModel):
     shard_id: int
     shard_indices: list[int]
     slices: list[list[int]] = []
 
-class ShardsDict(BaseModel):
+class ShardsDict(PydanticBaseModel):
     shards: dict[str, Shard]
 
-class SISA:
+class SISA(BaseModel):
     def __init__(self, dataloader: DataLoader,
                  n_shards: int = 10, n_slices: int = 10,
                  n_features: int = 2, n_classes: int = 2,
                  n_epochs: int = 10,
                  save_dir: str = None,
                  disable_tqdm: bool = True):
+        
+        super().__init__()
         
         self.disable_tqdm = disable_tqdm
         self.experiment_id = str(uuid4())
@@ -68,6 +74,8 @@ class SISA:
             n_epochs=None,
             disable_tqdm=self.disable_tqdm,
             do_early_stopping=False)
+        
+        self.process_data()
 
         """
         We could save all the shards in files, but we want to save them in memory for now.
@@ -266,9 +274,9 @@ class SISA:
         # Get the class with highest probability
         predictions = np.argmax(weighted_probs, axis=2).reshape((len(X),))
 
-        return predictions
+        return predictions, weighted_probs
 
-    def inference(self, x: torch.tensor):
+    def forward(self, x: torch.tensor):
         """
         @param x: A torch tensor of shape (batch_size x n_features)
         returns: A tensor of size (batch_size x n_classes) with the averaged logits of all client models for x.
@@ -285,8 +293,17 @@ class SISA:
         
         all_model_logits = torch.stack(all_model_logits)
 
-        return {'logits': all_model_logits.mean(dim=0)}
+        preds, weighted_probs = self.predict(x)
+        # convert to torch
+        weighted_probs = torch.tensor(weighted_probs) # shape: 1, len(x), n_classes
+        weighted_probs = weighted_probs.reshape(len(x), self.n_classes)
+        preds = torch.tensor(preds)
+
+        return {'logits': all_model_logits.mean(dim=0), 'predictions': preds, 'probabilities': weighted_probs}
         
+    def inference(self, x: torch.tensor) -> dict:
+        return self(x)
+
     def find_slice_for_datapoint(self, datapoint_idx: int):
         """
         We find the slice that contains the datapoint.

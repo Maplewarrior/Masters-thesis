@@ -2,7 +2,7 @@ from src.trainers.base_trainer import BaseTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from src.sisa_implementation.sisa_class import SISA
+from src.models.sisa_class import SISA
 
 class SISATrainer(BaseTrainer):
     def __init__(self, 

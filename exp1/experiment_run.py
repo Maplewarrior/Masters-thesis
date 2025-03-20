@@ -276,7 +276,7 @@ def main(cfg):
 
         elif cfg.unlearn.method == "sisa":
             from src.unlearners.sisa_unlearner import SISAUnlearner
-            from src.sisa_implementation.sisa_class import SISA
+            from src.models.sisa_class import SISA
             from src.trainers.sisa_trainer import SISATrainer
             import matplotlib.pyplot as plt
             from matplotlib.colors import ListedColormap
@@ -288,7 +288,6 @@ def main(cfg):
                         n_shards=cfg.sisa.n_shards, 
                         n_slices=cfg.sisa.n_slices,
                         save_dir=results_dir+'/sisa')
-            sisa.process_data()
             
             SISATrainer(
                 model=sisa.model, 
@@ -310,63 +309,8 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=[forget_idx])
 
-            #! Monkey mode
-            x_interval = (-8.5, 8.5)
-            y_interval = (-8.5, 8.5)
+            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
 
-            x = torch.linspace(x_interval[0], x_interval[1], 1000)
-            y = torch.linspace(y_interval[0], y_interval[1], 1000)
-            xx, yy = torch.meshgrid(x, y, indexing='xy')
-            
-            # Reshape the grid into a 2D array of points
-            grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
-
-            #! Post unlearning
-            decision_boundary_post_unlearning = sisa.predict(grid).reshape(xx.shape)
-
-            #! Pre unlearning
-            decision_boundary_pre_unlearning = sisa_pre_unlearning.predict(grid).reshape(xx.shape)
-
-            print(decision_boundary_pre_unlearning)
-
-            X, y = dataloader_retain.dataset.X, dataloader_retain.dataset.y
-
-            # If y is onehot, convert it to class indices
-            if len(y.shape) == 2 and y.shape[1] > 1:
-                y = torch.argmax(y, dim=1) 
-
-            classes = np.unique(y)
-
-            colors = plt.cm.viridis(np.linspace(0, 1, len(classes)))
-            custom_cmap = ListedColormap(colors)
-
-            # ! We start with pre unlearning
-            plt.figure(figsize=(10, 8))
-
-            plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary_pre_unlearning, 
-                                         alpha=0.4, cmap=custom_cmap, shading='auto')        
-                
-            for class_idx, color in zip(classes, colors):
-                plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=color, s=10, label=f"Class {class_idx}", alpha=0.5)
-
-            plt.title = "Pre unlearning"
-            plt.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-            plt.legend()
-            plt.savefig(f"{results_dir}/sisa/decision_boundary_pre_unlearning.png")
-
-
-            # ! We end with unlearning
-            plt.figure(figsize=(10, 8))
-
-            plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary_post_unlearning, 
-                                         alpha=0.4, cmap=custom_cmap, shading='auto')  
-            for class_idx, color in zip(classes, colors):
-                plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=color, s=10, label=f"Class {class_idx}", alpha=0.5)
-
-            plt.title = "Post unlearning"
-            plt.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-            plt.legend()
-            plt.savefig(f"{results_dir}/sisa/decision_boundary_post_unlearning.png")
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

@@ -1,5 +1,5 @@
 from src.unlearners.base_unlearner import BaseUnlearner
-from src.sisa_implementation.sisa_class import SISA
+from src.models.sisa_class import SISA
 import torch.nn as nn
 
 class SISAUnlearner(BaseUnlearner):
