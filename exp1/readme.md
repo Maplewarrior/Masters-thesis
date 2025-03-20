@@ -4,6 +4,9 @@ In this experiment we wish to explore what happens with the decision boundary de
 > [!NOTE]  
 > The Amnesiac unlearning method does not have a repair step. Might not be necessary for this experiment as we are forgetting a single point and points are easily separable.
 
+> [!NOTE]  
+> The SAE model is slightly different from the other models (it uses skip connections) and the results before unlearning will be different than the others, even when using the same seed.
+
 ## How to use
 To generate the data, run:
 ```bash
@@ -12,7 +15,7 @@ python exp1/generate_data.py
 
 To run the experiment for all the datasets and unlearning methods, run:
 ```bash
-python exp1/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae"  --multirun
+python exp1/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa"  --multirun
 ```
 
 You can overwrite any parameters from the config file, for example `n_epochs`:
@@ -35,8 +38,15 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 
 <table>
   <tr>
+    <th></th>
+    <th colspan="2">Single rogue point</th>
+    <th colspan="2">Rogue cluster</th>
+  </tr>
+  <tr>
     <th align="center" style="font-weight: bold"></th>
     <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
+     <th align="center" style="font-weight: bold">Before unlearning</th>
     <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
@@ -63,6 +73,11 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td>SAE</td>
     <td><img src="results/1_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/1_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SISA</td>
+    <td><img src="results/1_decision_boundary_sisa_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/1_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -101,6 +116,11 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td>SAE</td>
     <td><img src="results/2_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/2_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SISA</td>
+    <td><img src="results/2_decision_boundary_sisa_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/2_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -141,6 +161,11 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td><img src="results/3_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/3_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
+  <tr>
+    <td>SISA</td>
+    <td><img src="results/3_decision_boundary_sisa_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/3_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
 </table>
 
 ### 4. Rogue point far away from its centroid, but probably in the same decision boundary
@@ -178,6 +203,11 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td>SAE</td>
     <td><img src="results/4_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/4_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SISA</td>
+    <td><img src="results/4_decision_boundary_sisa_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/4_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>
 
@@ -220,5 +250,10 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
     <td>SAE</td>
     <td><img src="results/5_decision_boundary_sae_original.png" alt="Original Model" width="400"/></td>
     <td><img src="results/5_decision_boundary_sae_unlearned.png" alt="Retrained Model" width="400"/></td>
+  </tr>
+  <tr>
+    <td>SISA</td>
+    <td><img src="results/5_decision_boundary_sisa_original.png" alt="Original Model" width="400"/></td>
+    <td><img src="results/5_decision_boundary_sisa_unlearned.png" alt="Retrained Model" width="400"/></td>
   </tr>
 </table>

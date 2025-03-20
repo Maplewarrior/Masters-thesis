@@ -281,13 +281,15 @@ def main(cfg):
             import matplotlib.pyplot as plt
             from matplotlib.colors import ListedColormap
         
+
+            weights_dir = os.path.join(os.path.dirname(__file__), "weights")
             sisa = SISA(dataloader_train, 
                         n_classes=cfg.data.n_classes, 
                         n_features=X.shape[1], 
                         n_epochs=cfg.trainer.n_epochs, 
                         n_shards=cfg.sisa.n_shards, 
                         n_slices=cfg.sisa.n_slices,
-                        save_dir=results_dir+'/sisa')
+                        save_dir=weights_dir+'/sisa')
             
             SISATrainer(
                 model=sisa.model, 
