@@ -16,8 +16,12 @@ python exp1_rogue_one/generate_data.py
 
 To run the experiment for all the datasets and unlearning methods, run:
 ```bash
-python exp1_rogue_one/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa"  --multirun
+python exp1_rogue_one/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa" hydra/launcher=ray --multirun
 ```
+
+> [!TIP]
+> The `hydra/launcher=ray` argument will run the experiments in parallel using Ray.
+
 
 You can overwrite any parameters from the config file, for example `n_epochs`:
 ```bash
