@@ -36,8 +36,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 <table>
   <tr>
     <th align="center" style="font-weight: bold"></th>
-    <th align="center" style="font-weight: bold">Original</th>
-    <th align="center" style="font-weight: bold">Unlearned</th>
+    <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
     <td>Retrain</td>
@@ -74,8 +74,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 <table>
   <tr>
     <th align="center" style="font-weight: bold"></th>
-    <th align="center" style="font-weight: bold">Original</th>
-    <th align="center" style="font-weight: bold">Unlearned</th>
+    <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
     <td>Retrain</td>
@@ -113,8 +113,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 <table>
   <tr>
     <th align="center" style="font-weight: bold"></th>
-    <th align="center" style="font-weight: bold">Original</th>
-    <th align="center" style="font-weight: bold">Unlearned</th>
+    <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
     <td>Retrain</td>
@@ -151,8 +151,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 <table>
   <tr>
     <th align="center" style="font-weight: bold"></th>
-    <th align="center" style="font-weight: bold">Original</th>
-    <th align="center" style="font-weight: bold">Unlearned</th>
+    <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
     <td>Retrain</td>
@@ -193,8 +193,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 <table>
   <tr>
     <th align="center" style="font-weight: bold"></th>
-    <th align="center" style="font-weight: bold">Original</th>
-    <th align="center" style="font-weight: bold">Unlearned</th>
+    <th align="center" style="font-weight: bold">Before unlearning</th>
+    <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
     <td>Retrain</td>

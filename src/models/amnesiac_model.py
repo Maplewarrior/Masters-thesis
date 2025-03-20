@@ -1,38 +1,33 @@
 from src.models.base_model import BaseModel
+from src.models.neural_network import NeuralNet
 
 from torch import nn
 
 
-class AmnesiacModel(BaseModel):
-    def __init__(self, base_model: nn.Module) -> None:
+class AmnesiacModel(NeuralNet):
+    def __init__(self, base_model: NeuralNet) -> None:
         """
         A wrapper model that adds additional parameters to any base model.
         
         Args:
             base_model (nn.Module): The model to wrap
-            parameters (dict, optional): Additional parameters to store with the model
-            seed (int, optional): Random seed for reproducibility
         """
-        super().__init__()
+        # Check if NeuralNet
+        if not isinstance(base_model, NeuralNet):
+            raise ValueError("base_model must be a NeuralNet")
+        
+        # Unpack params of the neural net and pass to init of NeuralNet
+        M, n_classes, seed = base_model.M, base_model.n_classes, base_model.seed
+        super().__init__(M, n_classes, seed)
         self.base_model = base_model
 
         # Set these empty parameters to be set later
         self.batch_mapping = {}
         self.batch_params = {}
         self.cache_gradients = None
-    
-    def forward(self, x, start_idx: int = 0, stop_idx: int = None):
-        # Pass the input through the base model
-        return self.base_model(x, start_idx, stop_idx)
-    
-    def get_parameter(self, key, default=None):
-        """Get a parameter by key with an optional default value"""
-        return self.parameters_dict.get(key, default)
-    
-    def set_parameter(self, key, value):
-        """Set or update a parameter"""
-        self.parameters_dict[key] = value
         
-    def get_all_parameters(self):
-        """Get all stored parameters"""
-        return self.parameters_dict
+        # Initialize parameters dictionary
+        self.parameters_dict = {}
+        
+        # No need to set seed - base model should already have it set
+    

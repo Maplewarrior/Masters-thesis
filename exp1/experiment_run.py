@@ -34,14 +34,14 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
         creator = DecisionBoundaryCreator(model, dataloader_retrain)
         plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot1.title("Unlearned")
+        plot1.title("After unlearning")
         plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
         plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
 
         creator = DecisionBoundaryCreator(original_model, dataloader_train)
         plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
         plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x", alpha=0.3)
-        plot2.title("Original")
+        plot2.title("Before unlearning")
         plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
 
 def create_simple_model_visualization(model, save_path, input_shape):
