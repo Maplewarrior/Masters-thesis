@@ -1,4 +1,4 @@
-# Experiment 1
+# Experiment 1: Rogue One :octocat:
 In this experiment we wish to explore what happens with the decision boundary depending on where the point to forget is positioned (for the synthetic data we call this the "rouge point"). We experiment with placing it in a wrong class, 
 
 > [!NOTE]  
@@ -11,17 +11,17 @@ In this experiment we wish to explore what happens with the decision boundary de
 ## How to use
 To generate the data, run:
 ```bash
-python exp1/generate_data.py
+python exp1_rogue_one/generate_data.py
 ```
 
 To run the experiment for all the datasets and unlearning methods, run:
 ```bash
-python exp1/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa"  --multirun
+python exp1_rogue_one/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa"  --multirun
 ```
 
 You can overwrite any parameters from the config file, for example `n_epochs`:
 ```bash
-python exp1/experiment_run.py trainer.n_epochs=10
+python exp1_rogue_one/experiment_run.py trainer.n_epochs=10
 ```
 
 
