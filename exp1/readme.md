@@ -38,15 +38,8 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 
 <table>
   <tr>
-    <th></th>
-    <th colspan="2">Single rogue point</th>
-    <th colspan="2">Rogue cluster</th>
-  </tr>
-  <tr>
     <th align="center" style="font-weight: bold"></th>
     <th align="center" style="font-weight: bold">Before unlearning</th>
-    <th align="center" style="font-weight: bold">After unlearning</th>
-     <th align="center" style="font-weight: bold">Before unlearning</th>
     <th align="center" style="font-weight: bold">After unlearning</th>
   </tr>
   <tr>
