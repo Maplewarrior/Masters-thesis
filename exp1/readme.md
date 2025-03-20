@@ -6,6 +6,7 @@ In this experiment we wish to explore what happens with the decision boundary de
 
 > [!NOTE]  
 > The SAE model is slightly different from the other models (it uses skip connections) and the results before unlearning will be different than the others, even when using the same seed.
+> The same is the case for the SISA model as it is an ensemble of models.
 
 ## How to use
 To generate the data, run:
