@@ -328,7 +328,6 @@ def main(cfg):
             decision_boundary_pre_unlearning = sisa_pre_unlearning.predict(grid).reshape(xx.shape)
 
             print(decision_boundary_pre_unlearning)
-            import pdb; pdb.set_trace()
 
             X, y = dataloader_retain.dataset.X, dataloader_retain.dataset.y
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from src.models.neural_network import NeuralNet
 from src.trainers.base_trainer import BaseTrainer
 import numpy as np
-import os, pdb
+import os
 from uuid import uuid4
 from tqdm import tqdm
 import torch
@@ -98,6 +98,7 @@ class SISA:
         """
         # Shuffle the data
         indices = np.arange(len(self.dataset.X))
+        np.random.shuffle(indices)
         splits = np.array_split(indices, self.n_shards)
         for shard_id, shard_indices in enumerate(splits):
             os.makedirs(f"{self.shard_models_path}/shard_{shard_id}", exist_ok=True)
@@ -131,8 +132,7 @@ class SISA:
 
         assert len(self.shards_dict.shards) == self.n_shards
         assert len(self.shards_dict.shards['shard_0'].slices) == self.n_slices
-        from pprint import pprint; pprint(self.shards_dict.model_dump())
-        import pdb; pdb.set_trace()
+        # from pprint import pprint; pprint(self.shards_dict.model_dump())
         return self.shards_dict
     
     def save_model(self, model: NeuralNet, shard_id: int, slice_id: int):
@@ -196,7 +196,7 @@ class SISA:
             
             slice_data = self.dataset.X[slice_indices]
             slice_labels = self.dataset.y[slice_indices]
-            print(f"training on slices {slice_indices}")
+            # print(f"training on slices {slice_indices}")
             # # onehot encode the labels
             # slice_labels = torch.nn.functional.one_hot(slice_labels, num_classes=self.n_classes)
             # slice_labels = slice_labels.to(torch.float32)
