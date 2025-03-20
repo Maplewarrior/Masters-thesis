@@ -23,7 +23,7 @@ class AmnesiacUnlearner(BaseUnlearner):
         
         for epoch in batch_mapping:
             if indices_to_forget is not None:
-                batches_to_forget = list(set([batch_mapping[epoch][idx] for idx in indices_to_forget if idx in batch_mapping[epoch]]))
+                batches_to_forget = list(set([batch_mapping[epoch][int(idx)] for idx in indices_to_forget if int(idx) in batch_mapping[epoch]]))
             else:
                 batches_to_forget = list(set(batch_mapping[epoch].values()))
             if batches_to_forget:
