@@ -78,6 +78,17 @@ class SelectiveSynapticDampening(BaseUnlearner):
         
         return FIM
     
+    def get_forget_loss_distribution(self, forget_loader):
+        losses = []
+        for batch in forget_loader:
+            x = batch[0]#.to(self.model.device)
+            y = batch[1]#.to(self.model.device)
+            out = self.model(x)
+            loss = self.model.loss(out, y)
+            losses.append(loss.item())
+        return losses
+    
+
     def __call__(self, 
                  full_dataloader,
                  forget_dataloader,
@@ -91,6 +102,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
         
         if FIM_full is None:
             FIM_full = self.calculate_FIM(full_dataloader)
+        
+        # forget_losses = self.get_forget_loss_distribution(forget_dataloader)
         
         # go through the parameters
         with torch.no_grad():

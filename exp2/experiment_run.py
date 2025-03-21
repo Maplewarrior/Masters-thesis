@@ -28,14 +28,19 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams):
         dataset_number = dataset_name.split("_")[1]
-    
+        title = f"{cfg.unlearn.method}"
+        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+        if 'ssd' in cfg.unlearn.method:
+            title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+            savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+
         creator = DecisionBoundaryCreator(model, dataloader_retrain)
         plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot1.title("Retrain")
+        plot1.title(title)
         plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-        plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
+        plot1.savefig(f"{savepath}_unlearned.png")
 
         creator = DecisionBoundaryCreator(original_model, dataloader_train)
         plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
@@ -174,7 +179,7 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, {})
 
     else:
         unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
@@ -192,24 +197,40 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-
+            hyperparams = {'alpha': 5.,
+                           '_lambda': 3.}
             SelectiveSynapticDampening(unlearned_model, 
                                        criterion=nn.CrossEntropyLoss(), 
-                                       alpha=1, 
-                                       _lambda=1)(full_dataloader=dataloader_train, 
+                                       alpha=hyperparams["alpha"], 
+                                       _lambda=hyperparams["_lambda"])(
+                                                 full_dataloader=dataloader_train, 
                                                  forget_dataloader=dataloader_forget)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
         
         elif cfg.unlearn.method == "ssd_v2":
+            hyperparams = {'alpha': 5.,
+                           '_lambda': 3.}
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
             SelectiveSynapticDampening(unlearned_model, 
                                        criterion=nn.CrossEntropyLoss(), 
-                                       alpha=1, 
-                                       _lambda=1)(full_dataloader=dataloader_train, 
+                                       alpha=hyperparams["alpha"], 
+                                       _lambda=hyperparams["_lambda"])(
+                                                 full_dataloader=dataloader_train, 
                                                  forget_dataloader=dataloader_forget)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+        
+        elif cfg.unlearn.method == "ssd_v3":
+            from src.unlearners.selective_synaptic_dampening_v3 import SelectiveSynapticDampening
+            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+                                       criterion=nn.CrossEntropyLoss(), 
+                                       alpha=None, 
+                                       _lambda=None)(full_dataloader=dataloader_train, 
+                                                 forget_dataloader=dataloader_forget,
+                                                 validation_dataloader=dataloader_val)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
         
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
