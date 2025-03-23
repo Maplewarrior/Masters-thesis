@@ -248,6 +248,16 @@ def main(cfg):
                                                  validation_dataloader=dataloader_val)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+        elif cfg.unlearn.method == "ssd_v5":
+            from src.unlearners.selective_synaptic_dampening_v5 import SelectiveSynapticDampening
+            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+                                       criterion=nn.CrossEntropyLoss(), 
+                                       alpha=None, 
+                                       _lambda=None)(full_dataloader=dataloader_train, 
+                                                 forget_dataloader=dataloader_forget,
+                                                 validation_dataloader=dataloader_val)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
         
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")

@@ -31,6 +31,9 @@ class SyntheticDataset(Dataset):
         elif y.dim() == 1 and n_classes == 1:
             self.y = torch.zeros(len(y), 1)
             self.y[y == 1] = 1
+        
+        # convert to float32 --> otherwise SSD v5 complains
+        self.y = self.y.to(torch.float32)
 
     def __len__(self):
         return len(self.X)

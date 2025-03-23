@@ -61,10 +61,10 @@ class SelectiveSynapticDampening(BaseUnlearner):
         A function for constructing a validation set that is "of the same distribution" as the forget dataset. This is the +R step in the method.
         "of the same distribution" is interpreted as being in terms of the label distribution.
         """
-        
         forget_dataset = forget_dataloader.dataset
         val_dataset = val_dataloader.dataset
         X_val = val_dataset.X
+        y_val_ohe = val_dataset.y
         y_val = val_dataset.y.argmax(dim=1)
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
         labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
@@ -73,18 +73,17 @@ class SelectiveSynapticDampening(BaseUnlearner):
 
         X_values = []
         y_values = []
-        
         for i, label in enumerate(labels):
             # find val set indexes that correspond to the label
             val_label_idx = torch.where(y_val == label)[0]
             # find sample size
-            sample_size = min(counts[i].item(), len(val_label_idx), 5)
+            sample_size = min(counts[i].item(), len(val_label_idx))
             sample_sizes.append(sample_size)
             # draw random samples
-            idxs = torch.randperm(sample_size)
+            idxs = torch.randperm(len(val_label_idx))[:sample_size]
             # draw subset of data based on index
             X = X_val[val_label_idx[idxs]]
-            y = y_val[val_label_idx[idxs]]
+            y = y_val_ohe[val_label_idx[idxs]]
             X_values.append(X)
             y_values.append(y)
 
@@ -94,9 +93,9 @@ class SelectiveSynapticDampening(BaseUnlearner):
 
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
-        
+
         dataset = SyntheticDataset(X_values, y_values, n_classes=n_classes)
-        dataloader = DataLoader(dataset, batch_size=1)
+        dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
         return dataloader
 
     def calculate_loss(self, dataloader, n_classes = int):
@@ -110,8 +109,9 @@ class SelectiveSynapticDampening(BaseUnlearner):
                 out = self.model(x)
                 loss = self.model.loss(out, y)
                 for i in range(y.size(0)):
-                    losses[y[i].argmax(dim=-1).item()].append(loss)
+                    losses[y[i].argmax(dim=-1).item()].append(loss.item())
         # losses = {k: np.mean(v) if len(v) else 0 for k, v in losses.items()}
+        
         losses = np.array([np.mean(e) if len(e) else 0 for e in losses.values()])
         return losses
     

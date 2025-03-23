@@ -36,12 +36,12 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         title = f"{cfg.unlearn.method}"
         savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
         if 'ssd' in cfg.unlearn.method:
-            if 'v4' in cfg.unlearn.method:
+            if 'v5' in cfg.unlearn.method:
                 title = f"{cfg.unlearn.method}_alpha1={hyperparams['alpha1']:.2f}_lambda1={hyperparams['lambda1']:.2f}_alpha2={hyperparams['alpha2']:.2f}_lambda2={hyperparams['lambda2']:.2f}"
                 savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
             else:
                 title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-                if 'v3' in cfg.unlearn.method:
+                if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
                     savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
                 else:
                     savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
@@ -248,6 +248,17 @@ def main(cfg):
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
         
         elif cfg.unlearn.method == "ssd_v4":
+            from src.unlearners.selective_synaptic_dampening_v4 import SelectiveSynapticDampening
+            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+                                       criterion=nn.CrossEntropyLoss(), 
+                                       alpha=None, 
+                                       _lambda=None)(full_dataloader=dataloader_train, 
+                                                 forget_dataloader=dataloader_forget,
+                                                 validation_dataloader=dataloader_val)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+        
+        elif cfg.unlearn.method == "ssd_v5":
             from src.unlearners.selective_synaptic_dampening_v5 import SelectiveSynapticDampening
             hyperparams = SelectiveSynapticDampening(unlearned_model, 
                                        criterion=nn.CrossEntropyLoss(), 

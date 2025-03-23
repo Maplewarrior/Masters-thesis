@@ -31,6 +31,7 @@ class ScrubR(BaseUnlearner):
         forget_dataset = forget_dataloader.dataset
         val_dataset = val_dataloader.dataset
         X_val = val_dataset.X
+        y_val_ohe = val_dataset.y
         y_val = val_dataset.y.argmax(dim=1)
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
         labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
@@ -46,10 +47,10 @@ class ScrubR(BaseUnlearner):
             sample_size = min(counts[i].item(), len(val_label_idx))
             sample_sizes.append(sample_size)
             # draw random samples
-            idxs = torch.randperm(sample_size)
+            idxs = torch.randperm(len(val_label_idx))[:sample_size]
             # draw subset of data based on index
             X = X_val[val_label_idx[idxs]]
-            y = y_val[val_label_idx[idxs]]
+            y = y_val_ohe[val_label_idx[idxs]]
             X_values.append(X)
             y_values.append(y)
 
