@@ -5,17 +5,7 @@ import pdb
 
 
 """
-How will the input space be partitioned based on the neural network.
-mad max: affine spline insights into deep learning.
-
-Use for func equivalence: If two NN's create the same partitioning in input space, then they are roughly the same
-
-More convex in deeper layers...
-Maybe dampening in last layer the model is 
-
-Evaluation
------------
-When can we compare 
+This version of SSD only applies dampening in the final layer of the model
 """
 
 class SelectiveSynapticDampening(BaseUnlearner):

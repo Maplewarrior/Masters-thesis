@@ -21,30 +21,40 @@ def load_dataset(file):
     X = npz_file["X"]
     y = npz_file["y"]
 
-    if "rogue_point_idx" in npz_file and npz_file["rogue_point_idx"].item() is not None:
-        forget_idx = int(npz_file["rogue_point_idx"])
+    if "rogue_point_idx" in npz_file:
+        try: # ? Not the nicest way to do this
+            forget_idxs = torch.from_numpy(npz_file["rogue_point_idx"])
+        except:
+            forget_idxs = npz_file["rogue_point_idx"] 
     else:
-        forget_idx = None
+        forget_idxs = None
 
-    return torch.from_numpy(X), torch.from_numpy(y), forget_idx
+    return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
 def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams):
         dataset_number = dataset_name.split("_")[1]
         title = f"{cfg.unlearn.method}"
         savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
         if 'ssd' in cfg.unlearn.method:
-            title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-            savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+            if 'v4' in cfg.unlearn.method:
+                title = f"{cfg.unlearn.method}_alpha1={hyperparams['alpha1']:.2f}_lambda1={hyperparams['lambda1']:.2f}_alpha2={hyperparams['alpha2']:.2f}_lambda2={hyperparams['lambda2']:.2f}"
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+            else:
+                title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+                if 'v3' in cfg.unlearn.method:
+                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+                else:
+                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
 
         creator = DecisionBoundaryCreator(model, dataloader_retrain)
         plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
         plot1.title(title)
-        plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
+        plot1.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x", alpha=0.3)
         plot1.savefig(f"{savepath}_unlearned.png")
 
         creator = DecisionBoundaryCreator(original_model, dataloader_train)
         plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x", alpha=0.3)
+        plot2.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x")
         plot2.title("Original")
         plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
 
@@ -106,14 +116,19 @@ def main(cfg):
     dataset_path = os.path.join(os.path.dirname(__file__), dataset_path)
     validation_path = os.path.join(os.path.dirname(__file__), "data/validation_data.npz")
 
-    X, y, forget_idx = load_dataset(dataset_path)
+    X, y, forget_idxs = load_dataset(dataset_path)
     # retrain data should be all the data except the index of the rogue point
     X_val, y_val, _ = load_dataset(validation_path)
 
-    # retrain data should be all the data except the index of the rogue point
-    all_indices = torch.arange(X.shape[0])
-    X_retrain, y_retrain = X[all_indices != forget_idx], y[all_indices != forget_idx]
-    X_forget, y_forget = X[all_indices == forget_idx], y[all_indices == forget_idx]
+    # Convert forget_idx to a set for faster lookup
+    forget_idx_set = set(forget_idxs.tolist())
+
+    # Use boolean indexing to filter out the indices
+    mask_retrain = ~torch.tensor([int(i) in forget_idx_set for i in torch.arange(X.shape[0])])
+    mask_forget = torch.tensor([int(i) in forget_idx_set for i in torch.arange(X.shape[0])])
+
+    X_retrain, y_retrain = X[mask_retrain], y[mask_retrain]
+    X_forget, y_forget = X[mask_forget], y[mask_forget]
     
     # X, y, X_val, y_val, X_retrain, y_retrain, X_forget, y_forget
     dataset_train = SyntheticDataset(X, y, dataset_name="train", n_classes=cfg.data.n_classes)
@@ -223,6 +238,17 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v3":
             from src.unlearners.selective_synaptic_dampening_v3 import SelectiveSynapticDampening
+            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+                                       criterion=nn.CrossEntropyLoss(), 
+                                       alpha=None, 
+                                       _lambda=None)(full_dataloader=dataloader_train, 
+                                                 forget_dataloader=dataloader_forget,
+                                                 validation_dataloader=dataloader_val)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+        
+        elif cfg.unlearn.method == "ssd_v4":
+            from src.unlearners.selective_synaptic_dampening_v5 import SelectiveSynapticDampening
             hyperparams = SelectiveSynapticDampening(unlearned_model, 
                                        criterion=nn.CrossEntropyLoss(), 
                                        alpha=None, 

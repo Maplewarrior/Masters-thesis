@@ -12,7 +12,7 @@ import pdb
 
 """
 This version of SSD automatically determiens the optimal values of the hyperparameters lambda and alpha.
-Dampening is applied to all model layers.
+Dampening is applied to only the last layer.
 """
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
@@ -120,6 +120,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
         # go through the parameters
         with torch.no_grad():
             for name, param in self.model.named_parameters():
+                if int(name.split('.')[1]) <= 2: # only dampen on the final layer
+                    continue
                 updated_parameter = param.data.clone()
                 dampen_mask = FIM_forget[name] > alpha * FIM_full[name] # find which paramters to dampen
                 # print(f'Original parameter: {param}')
@@ -262,6 +264,7 @@ class SelectiveSynapticDampening(BaseUnlearner):
         self.update_parameters(FIM_full, FIM_forget, alpha_opt, lambda_opt)
         
         return best_params
+    
         # alpha_opt = bo_result['max']['params']['alpha']
         # lambda_opt = bo_result['max']['params']['_lambda']
         # return bo_result['max']['params']

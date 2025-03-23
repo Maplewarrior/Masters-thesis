@@ -9,23 +9,23 @@ from functools import partial
 import copy
 import pdb
 
-
 """
 This version of SSD automatically determiens the optimal values of the hyperparameters lambda and alpha.
-Dampening is applied to all model layers.
+The method learns two values of alpha and two values of lambda.
+(alpha1, lambda1) are applied to the first half of layers in the model and (alpha2, lambda2) are applied to the last half.
 """
+
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
                  model, 
                  criterion,
                  alpha: float,
                  _lambda: float) -> None:
-        super().__init__(model, {})
+        super().__init__(model, {'alpha': alpha, '_lambda': _lambda})
         self.criterion = criterion
         self.alpha = alpha
         self._lambda = _lambda
         
-    
     def calculate_FIM(self, dataloader) -> dict:
         """
         A function that calculates the diagonal of the Fisher Information of a model for a specific dataset.
@@ -115,11 +115,18 @@ class SelectiveSynapticDampening(BaseUnlearner):
         losses = np.array([np.mean(e) if len(e) else 0 for e in losses.values()])
         return losses
     
-    def update_parameters(self, FIM_full, FIM_forget, alpha, _lambda):
-        
+    def update_parameters(self, FIM_full, FIM_forget, alpha1, lambda1, alpha2, lambda2):
+        n_param_types = len(FIM_full.keys())
         # go through the parameters
         with torch.no_grad():
-            for name, param in self.model.named_parameters():
+            for i, (name, param) in enumerate(self.model.named_parameters()):
+                if i <= n_param_types / 2: # apply alpha1 and lambda1 to first half
+                    alpha=alpha1
+                    _lambda = lambda1
+                else: # apply alpha2, lambda2
+                    alpha=alpha2
+                    _lambda = lambda2
+                
                 updated_parameter = param.data.clone()
                 dampen_mask = FIM_forget[name] > alpha * FIM_full[name] # find which paramters to dampen
                 # print(f'Original parameter: {param}')
@@ -156,8 +163,10 @@ class SelectiveSynapticDampening(BaseUnlearner):
         return best_params, best_diff
     
     def bo_objective_function(self, 
-                              alpha, 
-                              _lambda,
+                              alpha1, 
+                              lambda1,
+                              alpha2,
+                              lambda2,
                               FIM_full,
                               FIM_forget,
                               forget_loader: DataLoader,
@@ -169,7 +178,7 @@ class SelectiveSynapticDampening(BaseUnlearner):
         # make sure parameters were reset
         assert not self.check_statedict_diff(self.model.state_dict(), sd_original), 'Model parameters were not reset to original values!'
         # update parameters
-        self.update_parameters(FIM_full, FIM_forget, alpha, _lambda)
+        self.update_parameters(FIM_full, FIM_forget, alpha1, lambda1, alpha2, lambda2)
         # calculate loss on forget set
         forget_losses = self.calculate_loss(forget_loader, n_classes)
         # calculate squared error between forget an generalization loss
@@ -185,7 +194,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
                                   n_classes: int,
                                   ):
         
-        pbounds = {'alpha': (0.01, 10), '_lambda': (0.1, 50)}
+        pbounds = {'alpha1': (0.01, 10), 'lambda1': (0.1, 50),
+                   'alpha2': (0.01, 10), 'lambda2': (0.1, 50)}
         objective_func = partial(self.bo_objective_function,
                             FIM_full=FIM_full,
                             FIM_forget=FIM_forget,
@@ -240,6 +250,7 @@ class SelectiveSynapticDampening(BaseUnlearner):
             FIM_full = self.calculate_FIM(full_dataloader)
         
         sd_original = copy.deepcopy(self.model.state_dict())
+        
         n_classes = validation_dataloader.dataset.y.argmax(dim=-1).max() + 1
         generalization_dataloader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
@@ -251,17 +262,20 @@ class SelectiveSynapticDampening(BaseUnlearner):
         
         # find optimal alpha and lambda values via bayesian optimization
         bo_result = self.search_hyperparameters_bo(FIM_full, FIM_forget, forget_dataloader, generalization_losses, sd_original, n_classes)
-        best_params = self.select_optimal_parameters(bo_result)
+        
+        # best_params = self.select_optimal_parameters(bo_result)
+        # alpha_opt = best_params['alpha']#bo_result['max']['params']['alpha']
+        # lambda_opt = best_params['_lambda'] # bo_result['max']['params']['_lambda']
 
-        alpha_opt = best_params['alpha'] # bo_result['max']['params']['alpha']
-        lambda_opt = best_params['_lambda'] # bo_result['max']['params']['_lambda']
-        
-        # reset state dict
+        alpha1_opt = bo_result['max']['params']['alpha1']
+        lambda1_opt = bo_result['max']['params']['lambda1']
+
+        alpha2_opt = bo_result['max']['params']['alpha2']
+        lambda2_opt = bo_result['max']['params']['lambda2']
+
+
+        # go through the parameters
         self.model.load_state_dict(sd_original)
-        # update parameters
-        self.update_parameters(FIM_full, FIM_forget, alpha_opt, lambda_opt)
-        
-        return best_params
-        # alpha_opt = bo_result['max']['params']['alpha']
-        # lambda_opt = bo_result['max']['params']['_lambda']
-        # return bo_result['max']['params']
+        self.update_parameters(FIM_full, FIM_forget, alpha1_opt, lambda1_opt, alpha2_opt, lambda2_opt)
+                
+        return bo_result['max']['params']

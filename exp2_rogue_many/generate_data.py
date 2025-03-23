@@ -2,7 +2,12 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-def generate_data(centroids: np.ndarray = None, stds: np.ndarray = None, sizes: np.ndarray = None, rogue_point: tuple = None):
+def generate_data(centroids: np.ndarray = None, 
+                  stds: np.ndarray = None, 
+                  sizes: np.ndarray = None, 
+                  rogue_centroid: tuple = None, 
+                  n_rogue_points: int = 5,
+                  std_rogue_points: float = 0.5):
     # Make three cluster centroids
     if centroids is None:
         centroids = np.random.randn(3, 2) * 5  # Spread centroids further apart
@@ -26,17 +31,21 @@ def generate_data(centroids: np.ndarray = None, stds: np.ndarray = None, sizes: 
     X = np.concatenate(X)
     y = np.concatenate(y)
 
-    if rogue_point is not None:
+    if rogue_centroid is not None:
         # Unpack the rogue point tuple containing both X and y
+        rogue_centroid_coords, rogue_centroid_label = rogue_centroid
 
-        rogue_X, rogue_y = rogue_point
-        rogue_X = np.array([rogue_X])
+        # Draw n_rogue_points from a gaussian distribution with rogue_centroid_coords as the mean and std_rogue_points as the standard deviation
+        rogue_X = np.random.randn(n_rogue_points, 2) * std_rogue_points + rogue_centroid_coords
+        rogue_y = np.ones(n_rogue_points, dtype=int) * rogue_centroid_label
+
         X = np.concatenate([X, rogue_X])
         y = np.concatenate([y, rogue_y])
 
-        rogue_point_idx = len(X) - 1
+        # return the indices of the rogue points
+        rogue_point_idxs = np.arange(len(X) - n_rogue_points, len(X))
 
-        return X, y, rogue_point_idx
+        return X, y, rogue_point_idxs
     
     return X, y, None
 
@@ -51,7 +60,7 @@ def plot_data(X, y, rogue_point_idx=None):
         plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=colors[class_idx], label=f'Class {class_idx}')
     
     if rogue_point_idx is not None:
-        plt.scatter(X[rogue_point_idx, 0], X[rogue_point_idx, 1], c='red', marker='x', label=f'Rogue point (class {y[rogue_point_idx]})')
+        plt.scatter(X[rogue_point_idx, 0], X[rogue_point_idx, 1], c='red', marker='x', label=f'Rogue point (class {y[rogue_point_idx][0]})')
     
     plt.legend()
     return plt
@@ -75,7 +84,7 @@ if __name__ == "__main__":
     sizes = np.array([20, 20, 20])
     validation_sizes = np.array([10, 10, 10])
 
-    data_folder = 'exp1_rogue_one/data'
+    data_folder = 'exp2_rogue_many/data'
     data_plots_folder = os.path.join(data_folder, 'plots')
     os.makedirs(data_plots_folder, exist_ok=True)
 
@@ -87,7 +96,7 @@ if __name__ == "__main__":
     # %%
     # 1. Rogue point with same distance to all centroids
     rogue_point = (np.mean(centroids, axis=0), np.array([1]))
-    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
+    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_centroid=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_1.npz'))
     save_fig(plot, 'data_1', data_plots_folder)
@@ -97,7 +106,7 @@ if __name__ == "__main__":
     # %%
     # 2. Rogue point with same centroid as the class with 
     rogue_point = (centroids[1], np.array([1]))
-    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
+    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_centroid=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_2.npz'))
     save_fig(plot, 'data_2', data_plots_folder)
@@ -107,7 +116,7 @@ if __name__ == "__main__":
     # %% 
     # 3. Rogue point with same centroid as the class with a different label
     rogue_point = (centroids[2], np.array([1]))
-    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
+    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_centroid=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_3.npz'))
     save_fig(plot, 'data_3', data_plots_folder)
@@ -116,7 +125,7 @@ if __name__ == "__main__":
     # %%
     # 4. Rogue point far away from its centroid, but probably in the same decision boundary
     rogue_point = (np.array([-8, 8]), np.array([1]))
-    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
+    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_centroid=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_4.npz'))
     save_fig(plot, 'data_4', data_plots_folder)
@@ -126,7 +135,7 @@ if __name__ == "__main__":
     # %%
     # 5. Rogue point far away from its centroid, but probably in the same decision boundary
     rogue_point = (np.array([1, -8]), np.array([1]))
-    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
+    X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_centroid=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_5.npz'))
     save_fig(plot, 'data_5', data_plots_folder)
