@@ -269,6 +269,12 @@ def main(cfg):
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
         
+        elif cfg.unlearn.method == "assd":
+            from src.unlearners.adaptive_ssd import AdaptiveSSD
+            hyperparams = AdaptiveSSD(unlearned_model, criterion=nn.CrossEntropyLoss())(dataloader_train, 
+                                                                                        dataloader_forget)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 
