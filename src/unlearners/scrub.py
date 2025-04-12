@@ -87,9 +87,10 @@ class ScrubR(BaseUnlearner):
         """
         self.model.train()
         self.optimizer.zero_grad()
-        logits = self.model(x)['logits']
-        log_probabilities = self.log_softmax(logits)
-        loss = -self.KL(input=log_probabilities, target=y) # maximize KL divergence
+        
+        student_log_probs = self.log_softmax(self.model(x)['logits'])
+        teacher_probs = self.original_model.inference(x)['probabilities']
+        loss = -self.KL(input=student_log_probs, target=teacher_probs) # maximize KL divergence
         loss.backward()
         self.optimizer.step()
 
@@ -97,12 +98,11 @@ class ScrubR(BaseUnlearner):
         """
         Miminimzation step of the SCRUB loss: Encourages performance to have low error and have similar outputs to original model on retain data.
         """
-        with torch.no_grad():
-            teacher_probs = self.original_model(x)['probabilities']
         self.optimizer.zero_grad()
 
         student_out = self.model(x)
         student_log_probs = self.log_softmax(student_out['logits'])
+        teacher_probs = self.original_model.inference(x)['probabilities']
 
         reg_term = self.KL(input=student_log_probs, target=teacher_probs)
         fit_term = self.CE(student_out['logits'], y).mean()
@@ -136,10 +136,6 @@ class ScrubR(BaseUnlearner):
             best_epoch = (best_epoch[-1] + 1).item()
         else: # err_threshold lower than all elements in forget_errors
             best_epoch = 1
-        
-        # except Exception as e:
-        #     print("Sometimes an index error is thrown here which is fucking weird :). It happens randomly and it's because a shape changes.")
-        #     pdb.set_trace()
 
         os.makedirs('weights/scrub+r', exist_ok=True)
         best_ckpt = f'weights/tmp/scrub+r_epoch{best_epoch}.pth'

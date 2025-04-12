@@ -24,7 +24,9 @@ class UnlearningEvaluator:
         preds_c = []
         ys = []
         if unlearned_model != None and comparison_model != None:
-            for (x, y, *extra) in dataloader:                
+            for batch in dataloader:
+                x = batch[0]
+                y = batch[1]          
                 preds_u.append(unlearned_model.inference(x)['logits'])
                 preds_c.append(comparison_model.inference(x)['logits'])
 
@@ -56,9 +58,7 @@ class UnlearningEvaluator:
             else:
                 result[metric] = self.metricname2function[metric](preds_u, preds_c)
         
-
         return result
-    
     
     def calculate_accuracy(self, preds, y):
         return ((preds.argmax(dim=1) == y.argmax(dim=1)).sum() / y.size(0)).item()

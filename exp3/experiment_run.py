@@ -15,8 +15,27 @@ from matplotlib.colors import TwoSlopeNorm
 
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
+from src.evaluation.decision_boundary import DecisionBoundaryCreator
+from src.evaluation.membership_inference_attack import MIA
+
 
 results_dir = os.path.join(os.path.dirname(__file__), "results")
+
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
+    dataset_number = dataset_name.split("_")[1]
+
+    creator = DecisionBoundaryCreator(model, dataloader_retrain)
+    plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    plot1.title("After unlearning")
+    plot1.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x", alpha=0.3)
+    plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
+
+    creator = DecisionBoundaryCreator(original_model, dataloader_train)
+    plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    plot2.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x")
+    plot2.title("Before unlearning")
+    plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
+
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
@@ -201,10 +220,12 @@ def main(cfg):
     dataset_forget = SyntheticDataset(X_forget, y_forget, dataset_name="forget", n_classes=cfg.data.n_classes)
 
     batch_size = cfg.data.batch_size
-    dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
+    dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=False)
     dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
     dataloader_retain = DataLoader(dataset_retain, batch_size=batch_size, shuffle=True)
     dataloader_forget = DataLoader(dataset_forget, batch_size=batch_size, shuffle=True)
+
+    dataloader_train_bs1 = DataLoader(dataset_train, batch_size=1, shuffle=False)
 
     # ============= Initialize logger =============
     if cfg.logging.logger == "wandb":
@@ -243,21 +264,66 @@ def main(cfg):
         hyperparams = {'alpha': 5.,
                         '_lambda': 3.}
         
-        
         ssd = SelectiveSynapticDampening(unlearned_model, 
                                     criterion=nn.CrossEntropyLoss(), 
                                     alpha=hyperparams["alpha"], 
                                     _lambda=hyperparams["_lambda"])
         
-        FIM_forget = ssd.calculate_FIM(dataloader_forget)
-        FIM_full = ssd.calculate_FIM(dataloader_train)
+        # FIM_forget = ssd.calculate_FIM(dataloader_forget)
+        # FIM_full = ssd.calculate_FIM(dataloader_train)
+        # FIM_full_bs1 = ssd.calculate_FIM(dataloader_train_bs1)
+        # import pdb; pdb.set_trace()
         
-        forget_heatmap_fig = plot_nn_heatmaps(FIM_forget)
-        forget_heatmap_fig.savefig(f'{results_dir}/forget_heatmap_fig.png')
-        full_heatmap_fig = plot_nn_heatmaps(FIM_full)
-        full_heatmap_fig.savefig(f'{results_dir}/full_heatmap_fig.png')
-        
-        
+        # forget_heatmap_fig = plot_nn_heatmaps(FIM_forget)
+        # forget_heatmap_fig.savefig(f'{results_dir}/forget_heatmap_fig.png')
+        # full_heatmap_fig = plot_nn_heatmaps(FIM_full)
+        # full_heatmap_fig.savefig(f'{results_dir}/full_heatmap_fig.png')
+
+        retrained_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
+        NeuralNetworkTrainer(model=retrained_model, 
+                                train_dataloader=dataloader_retain, 
+                                val_dataloader=dataloader_val, 
+                                logger=logger, 
+                                device=cfg.model.device, 
+                                learning_rate=cfg.trainer.lr, 
+                                n_epochs=cfg.trainer.n_epochs, 
+                                disable_tqdm=cfg.trainer.disable_tqdm, 
+                                do_early_stopping=cfg.trainer.do_early_stopping)()
+
+        mia_model = MIA()
+        mia_prob_original = mia_model(original_model, dataloader_retain, dataloader_forget, dataloader_val)
+        mia_prob_unlearned = mia_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val)
+        mia_prob_retrained = mia_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val)
+        print(f'MIA prob original: {mia_prob_original}')
+        print(f'MIA prob unlearned: {mia_prob_unlearned}')
+        print(f'MIA prob retrained: {mia_prob_retrained}')
+   
+    elif cfg.unlearn.method =='teacher-ascend':
+        from src.unlearners.teacher_ascend import TeacherAscender
+        ta = TeacherAscender(unlearned_model, n_epochs=50)
+        ta(dataloader_retain, dataloader_forget)
+        decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+
+        retrained_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
+        NeuralNetworkTrainer(model=retrained_model, 
+                                train_dataloader=dataloader_retain, 
+                                val_dataloader=dataloader_val, 
+                                logger=logger, 
+                                device=cfg.model.device, 
+                                learning_rate=cfg.trainer.lr, 
+                                n_epochs=cfg.trainer.n_epochs, 
+                                disable_tqdm=cfg.trainer.disable_tqdm, 
+                                do_early_stopping=cfg.trainer.do_early_stopping)()
+
+
+        mia_model = MIA()
+        mia_prob_original = mia_model(original_model, dataloader_retain, dataloader_forget, dataloader_val)
+        mia_prob_unlearned = mia_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val)
+        mia_prob_retrained = mia_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val)
+        print(f'MIA prob original: {mia_prob_original}')
+        print(f'MIA prob unlearned: {mia_prob_unlearned}')
+        print(f'MIA prob retrained: {mia_prob_retrained}')
+
     else:
         raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

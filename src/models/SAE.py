@@ -33,7 +33,9 @@ class SAE(BaseModel):
                     param.copy_(self.state_dict()['decoder.weight'].T)
         
         assert torch.isclose(self.state_dict()['encoder.0.weight'].norm(p=2, dim=1), torch.ones(self.m)).all(), 'Encoder weights not initialized to unit norm!'
-        
+        assert torch.isclose(self.state_dict()['encoder.0.bias'], torch.zeros(self.m)).all(), 'Encoder bias not initalized to zeros'
+        assert torch.isclose(self.state_dict()['decoder.bias'], torch.zeros(self.d)).all(), 'Decoder bias not initialized to zeros'
+
 
     def forward(self, x):
         z = self.encoder(x)
