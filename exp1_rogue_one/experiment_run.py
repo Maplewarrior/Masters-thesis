@@ -30,7 +30,7 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, compress_pdfs=True):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
     dataset_number = dataset_name.split("_")[1]
     
     # Set common plot styling
@@ -108,16 +108,17 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
                  dpi=300, bbox_inches='tight')
     
     # Path for the PDF file
-    pdf_file_1 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.pdf"
+    if make_pdfs:
+        pdf_file_1 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.pdf"
     
-    # Save as optimized PDF with reduced DPI
-    plot1.savefig(pdf_file_1, 
-                  bbox_inches='tight', 
-                  format='pdf',
-                  dpi=150)  # Reduced DPI for PDF
+        # Save as optimized PDF with reduced DPI
+        plot1.savefig(pdf_file_1, 
+                    bbox_inches='tight', 
+                    format='pdf',
+                    dpi=150)  # Reduced DPI for PDF
     
-    # Add to list for later compression if enabled
-    pdf_files.append(pdf_file_1)
+        # Add to list for later compression if enabled
+        pdf_files.append(pdf_file_1)
     
     plt.close()
     
@@ -174,17 +175,18 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png", 
                  dpi=300, bbox_inches='tight')
     
+    if make_pdfs:
     # Path for the PDF file
-    pdf_file_2 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.pdf"
+        pdf_file_2 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.pdf"
+        
+        # Save as optimized PDF with reduced DPI
+        plot2.savefig(pdf_file_2, 
+                    bbox_inches='tight', 
+                    format='pdf',
+                    dpi=150)  # Reduced DPI for PDF
     
-    # Save as optimized PDF with reduced DPI
-    plot2.savefig(pdf_file_2, 
-                  bbox_inches='tight', 
-                  format='pdf',
-                  dpi=150)  # Reduced DPI for PDF
-    
-    # Add to list for later compression if enabled
-    pdf_files.append(pdf_file_2)
+        # Add to list for later compression if enabled
+        pdf_files.append(pdf_file_2)
     
     plt.close()
     
@@ -336,7 +338,7 @@ def main(cfg):
 
 
         decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, 
-                              compress_pdfs=cfg.get('compress_pdfs', True))
+                              compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
 
 
     else:
@@ -367,7 +369,7 @@ def main(cfg):
                                     n_rounds=10)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True))
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
         elif cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
 
@@ -379,7 +381,7 @@ def main(cfg):
                                                  forget_dataloader=dataloader_forget)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True))
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
         
         elif cfg.unlearn.method == 'sae':
             from src.models.neural_network import NeuralNetRS
@@ -404,7 +406,7 @@ def main(cfg):
             sae_unlearner(dataloader_retain, dataloader_forget)
 
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True))
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
 
             
         elif cfg.unlearn.method == "amnesiac":
@@ -434,7 +436,7 @@ def main(cfg):
                               unlearn_parameters=cfg.unlearn)(indices_to_forget=[forget_idx])
 
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True))
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
 
 
         elif cfg.unlearn.method == "sisa":
@@ -475,7 +477,7 @@ def main(cfg):
             sisa_unlearner(forget_indices=[forget_idx])
 
             decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True))
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
 
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
