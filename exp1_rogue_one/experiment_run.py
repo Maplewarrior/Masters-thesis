@@ -30,7 +30,7 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, compress_pdfs=True):
     dataset_number = dataset_name.split("_")[1]
     
     # Set common plot styling
@@ -51,8 +51,14 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
     rogue_color = professional_colors[rogue_class % len(professional_colors)]
     
+    # List to store PDF files for later compression
+    pdf_files = []
+    
     # After unlearning plot
     creator = DecisionBoundaryCreator(model, dataloader_retrain)
+    
+    # Create figure with specific size to control output size
+    plt.figure(figsize=(6, 5), dpi=100)
     
     # Make decision boundary more transparent by setting alpha
     plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5), alpha=0.3)
@@ -72,9 +78,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
                  label=f"Rogue Point (Class {rogue_class})")
     
     # Improve title and labels
-    plot1.title("After Unlearning", fontsize=14, fontweight='bold')
-    plot1.xlabel('Feature 1', fontsize=12)
-    plot1.ylabel('Feature 2', fontsize=12)
+    plt.title(f"After Unlearning ({cfg.unlearn.method})", fontsize=14, fontweight='bold')
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
     
     # Add legend with box
     legend = plot1.legend(
@@ -97,14 +103,29 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     # Ensure tight layout
     plot1.tight_layout()
     
-    # Save with high DPI
+    # Save with high DPI as PNG
     plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png", 
                  dpi=300, bbox_inches='tight')
+    
+    # Path for the PDF file
+    pdf_file_1 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.pdf"
+    
+    # Save as optimized PDF with reduced DPI
+    plot1.savefig(pdf_file_1, 
+                  bbox_inches='tight', 
+                  format='pdf',
+                  dpi=150)  # Reduced DPI for PDF
+    
+    # Add to list for later compression if enabled
+    pdf_files.append(pdf_file_1)
     
     plt.close()
     
     # Before unlearning plot
     creator = DecisionBoundaryCreator(original_model, dataloader_train)
+    
+    # Create figure with specific size to control output size
+    plt.figure(figsize=(6, 5), dpi=100)
     
     # Make decision boundary more transparent
     plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5), alpha=0.3)
@@ -124,9 +145,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
                  label=f"Rogue Point (Class {rogue_class})")
     
     # Improve title and labels
-    plot2.title("Before Unlearning", fontsize=14, fontweight='bold')
-    plot2.xlabel('Feature 1', fontsize=12)
-    plot2.ylabel('Feature 2', fontsize=12)
+    plt.title(f"Before Unlearning ({cfg.unlearn.method})", fontsize=14, fontweight='bold')
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
     
     # Add legend with box
     legend = plot2.legend(
@@ -149,9 +170,37 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     # Ensure tight layout
     plot2.tight_layout()
     
-    # Save with high DPI
+    # Save with high DPI as PNG
     plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png", 
                  dpi=300, bbox_inches='tight')
+    
+    # Path for the PDF file
+    pdf_file_2 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.pdf"
+    
+    # Save as optimized PDF with reduced DPI
+    plot2.savefig(pdf_file_2, 
+                  bbox_inches='tight', 
+                  format='pdf',
+                  dpi=150)  # Reduced DPI for PDF
+    
+    # Add to list for later compression if enabled
+    pdf_files.append(pdf_file_2)
+    
+    plt.close()
+    
+    # Further compress PDFs with Ghostscript if enabled
+    if compress_pdfs:
+        try:
+            from src.utils.pdf_compression import compress_pdf_with_ghostscript
+            
+            print("Further compressing PDFs with Ghostscript...")
+            for pdf_file in pdf_files:
+                compress_pdf_with_ghostscript(pdf_file, quality='ebook')
+        except ImportError:
+            print("PDF compression module not found. PDFs saved with basic compression only.")
+        except Exception as e:
+            print(f"Error during PDF compression: {e}")
+            print("PDFs saved with basic compression only.")
 
 def create_simple_model_visualization(model, save_path, input_shape):
     """Create a simple flowchart visualization of the model architecture.
@@ -286,7 +335,8 @@ def main(cfg):
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
 
-        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, 
+                              compress_pdfs=cfg.get('compress_pdfs', True))
 
 
     else:
@@ -316,7 +366,8 @@ def main(cfg):
                                     val_dataloader=dataloader_val, 
                                     n_rounds=10)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True))
         elif cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
 
@@ -327,7 +378,8 @@ def main(cfg):
                                        _lambda=1)(full_dataloader=dataloader_train, 
                                                  forget_dataloader=dataloader_forget)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True))
         
         elif cfg.unlearn.method == 'sae':
             from src.models.neural_network import NeuralNetRS
@@ -351,7 +403,8 @@ def main(cfg):
             sae_unlearner = SAEUnlearner(unlearned_model, alpha=0.9)
             sae_unlearner(dataloader_retain, dataloader_forget)
 
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True))
 
             
         elif cfg.unlearn.method == "amnesiac":
@@ -380,7 +433,8 @@ def main(cfg):
             AmnesiacUnlearner(model=unlearned_model, 
                               unlearn_parameters=cfg.unlearn)(indices_to_forget=[forget_idx])
 
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True))
 
 
         elif cfg.unlearn.method == "sisa":
@@ -420,7 +474,8 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=[forget_idx])
 
-            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True))
 
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
