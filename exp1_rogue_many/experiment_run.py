@@ -9,6 +9,7 @@ from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
 import graphviz
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
@@ -32,20 +33,185 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
-        dataset_number = dataset_name.split("_")[1]
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
+    dataset_number = dataset_name.split("_")[1]
     
-        creator = DecisionBoundaryCreator(model, dataloader_retrain)
-        plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot1.title("After unlearning")
-        plot1.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x", alpha=0.3)
-        plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
-
-        creator = DecisionBoundaryCreator(original_model, dataloader_train)
-        plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot2.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x")
-        plot2.title("Before unlearning")
-        plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
+    # Set common plot styling
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    # Get the classes of the rogue points
+    X, y = dataloader_train.dataset.X, dataloader_train.dataset.y
+    
+    # If y is onehot, convert it to class indices
+    if len(y.shape) == 2 and y.shape[1] > 1:
+        y = torch.argmax(y, dim=1)
+    
+    # Professional color palette
+    professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
+    
+    # Find the classes of the rogue points
+    rogue_classes = []
+    rogue_colors = []
+    for i in range(X_forget.shape[0]):
+        distances = np.sum((X.numpy() - X_forget[i].numpy())**2, axis=1)
+        rogue_class = y[np.argmin(distances)].item()
+        rogue_classes.append(rogue_class)
+        rogue_colors.append(professional_colors[rogue_class % len(professional_colors)])
+    
+    # List to store PDF files for later compression
+    pdf_files = []
+    
+    # After unlearning plot
+    creator = DecisionBoundaryCreator(model, dataloader_retrain)
+    
+    # Create figure with specific size to control output size
+    plt.figure(figsize=(6, 5), dpi=100)
+    
+    # Make decision boundary more transparent by setting alpha
+    plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5), alpha=0.3)
+    
+    # Enhance plot1 styling
+    ax1 = plot1.gca()
+    ax1.set_facecolor('white')
+    
+    # Add rogue points with labels and class colors - use hollow markers for "unlearned" state
+    for i, (x_point, rogue_class, rogue_color) in enumerate(zip(X_forget, rogue_classes, rogue_colors)):
+        plot1.scatter(x_point[0], x_point[1], 
+                     color='none',  # Hollow interior
+                     marker="X", 
+                     s=150,
+                     linewidth=2,
+                     edgecolor=rogue_color,  # Keep the edge color matching the class
+                     zorder=5,
+                     label=f"Rogue Point {i+1} (Class {rogue_class})" if i == 0 else "_nolegend_")
+    
+    # Improve title and labels
+    plt.title(f"After Unlearning ({cfg.unlearn.method})", fontsize=14, fontweight='bold')
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
+    
+    # Add legend with box
+    legend = plot1.legend(
+        frameon=True,
+        framealpha=0.95,
+        facecolor='white',
+        edgecolor='lightgray',
+        loc='best',
+        fontsize=10
+    )
+    
+    # Improve ticks
+    ax1.tick_params(direction='out', length=6, width=1)
+    
+    # Add a subtle border
+    for spine in ax1.spines.values():
+        spine.set_visible(True)
+        spine.set_color('lightgray')
+    
+    # Ensure tight layout
+    plot1.tight_layout()
+    
+    # Save with high DPI as PNG
+    plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png", 
+                 dpi=300, bbox_inches='tight')
+    
+    # Path for the PDF file
+    if make_pdfs:
+        pdf_file_1 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.pdf"
+    
+        # Save as optimized PDF with reduced DPI
+        plot1.savefig(pdf_file_1, 
+                    bbox_inches='tight', 
+                    format='pdf',
+                    dpi=150)  # Reduced DPI for PDF
+    
+        # Add to list for later compression if enabled
+        pdf_files.append(pdf_file_1)
+    
+    plt.close()
+    
+    # Before unlearning plot
+    creator = DecisionBoundaryCreator(original_model, dataloader_train)
+    
+    # Create figure with specific size to control output size
+    plt.figure(figsize=(6, 5), dpi=100)
+    
+    # Make decision boundary more transparent
+    plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5), alpha=0.3)
+    
+    # Enhance plot2 styling
+    ax2 = plot2.gca()
+    ax2.set_facecolor('white')
+    
+    # Add rogue points with labels and class colors - solid for "before unlearning"
+    for i, (x_point, rogue_class, rogue_color) in enumerate(zip(X_forget, rogue_classes, rogue_colors)):
+        plot2.scatter(x_point[0], x_point[1], 
+                     color=rogue_color, 
+                     marker="X", 
+                     s=150,
+                     linewidth=1.5,
+                     edgecolor='white',
+                     zorder=5,
+                     label=f"Rogue Point {i+1} (Class {rogue_class})" if i == 0 else "_nolegend_")
+    
+    # Improve title and labels
+    plt.title(f"Before Unlearning ({cfg.unlearn.method})", fontsize=14, fontweight='bold')
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
+    
+    # Add legend with box
+    legend = plot2.legend(
+        frameon=True,
+        framealpha=0.95,
+        facecolor='white',
+        edgecolor='lightgray',
+        loc='best',
+        fontsize=10
+    )
+    
+    # Improve ticks
+    ax2.tick_params(direction='out', length=6, width=1)
+    
+    # Add a subtle border
+    for spine in ax2.spines.values():
+        spine.set_visible(True)
+        spine.set_color('lightgray')
+    
+    # Ensure tight layout
+    plot2.tight_layout()
+    
+    # Save with high DPI as PNG
+    plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png", 
+                 dpi=300, bbox_inches='tight')
+    
+    if make_pdfs:
+        # Path for the PDF file
+        pdf_file_2 = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.pdf"
+        
+        # Save as optimized PDF with reduced DPI
+        plot2.savefig(pdf_file_2, 
+                    bbox_inches='tight', 
+                    format='pdf',
+                    dpi=150)  # Reduced DPI for PDF
+    
+        # Add to list for later compression if enabled
+        pdf_files.append(pdf_file_2)
+    
+    plt.close()
+    
+    # Further compress PDFs with Ghostscript if enabled
+    if compress_pdfs and pdf_files:
+        try:
+            from src.utils.pdf_compression import compress_pdf_with_ghostscript
+            
+            print("Further compressing PDFs with Ghostscript...")
+            for pdf_file in pdf_files:
+                compress_pdf_with_ghostscript(pdf_file, quality='ebook')
+        except ImportError:
+            print("PDF compression module not found. PDFs saved with basic compression only.")
+        except Exception as e:
+            print(f"Error during PDF compression: {e}")
+            print("PDFs saved with basic compression only.")
 
 def create_simple_model_visualization(model, save_path, input_shape):
     """Create a simple flowchart visualization of the model architecture.
