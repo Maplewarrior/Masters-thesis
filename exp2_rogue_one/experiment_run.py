@@ -251,10 +251,7 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v5":
             from src.unlearners.selective_synaptic_dampening_v5 import SelectiveSynapticDampening
-            hyperparams = SelectiveSynapticDampening(unlearned_model, 
-                                       criterion=nn.CrossEntropyLoss(), 
-                                       alpha=None, 
-                                       _lambda=None)(full_dataloader=dataloader_train, 
+            hyperparams = SelectiveSynapticDampening(unlearned_model)(full_dataloader=dataloader_train, 
                                                  forget_dataloader=dataloader_forget,
                                                  validation_dataloader=dataloader_val)
             

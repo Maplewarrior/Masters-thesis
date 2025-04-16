@@ -11,11 +11,10 @@ This version of SSD only applies dampening in the final layer of the model
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
                  model, 
-                 criterion,
+                 
                  alpha: float,
                  _lambda: float) -> None:
         super().__init__(model, {'alpha': alpha, '_lambda': _lambda})
-        self.criterion = criterion
         self.alpha = alpha
         self._lambda = _lambda
         
@@ -37,9 +36,9 @@ class SelectiveSynapticDampening(BaseUnlearner):
             x, y = batch[0], batch[1]
             optimizer.zero_grad()
             # forward pass
-            logits = self.model(x)['logits']
+            out = self.model(x)
             # calculate loss
-            loss = self.criterion(logits, y)
+            loss = self.model.loss(out, y)
             # calculate gradients
             loss.backward()
             for i, (name, param) in enumerate(self.model.named_parameters()):

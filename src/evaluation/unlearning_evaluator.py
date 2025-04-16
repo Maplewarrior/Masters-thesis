@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from src.data_utils.synthetic_data import SyntheticDataset
-
+from src.evaluation.membership_inference_attack import MIA
 class UnlearningEvaluator:
     def __init__(self) -> None:
         
@@ -17,36 +17,33 @@ class UnlearningEvaluator:
                                     'KL divergence': self.KL_divergence,
                                     'JS divergence': self.JS_divergence,}
 
-    def get_model_predictions(self, unlearned_model, 
-                                    comparison_model,
-                                    dataloader: DataLoader[SyntheticDataset]):
-        preds_u = []
-        preds_c = []
+    def get_model_logits(self, 
+                         model,
+                         dataloader: DataLoader[SyntheticDataset]):
+        logits = []
         ys = []
-        if unlearned_model != None and comparison_model != None:
-            for batch in dataloader:
-                x = batch[0]
-                y = batch[1]          
-                preds_u.append(unlearned_model.inference(x)['logits'])
-                preds_c.append(comparison_model.inference(x)['logits'])
+        for batch in dataloader:
+            x = batch[0]
+            y = batch[1]          
+            logits.append(model.inference(x)['logits'])
 
-                # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
-                if hasattr(dataloader, 'dataset') and hasattr(dataloader.dataset, 'onehot_labels') and not dataloader.dataset.onehot_labels:
-                    y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes)
-                ys.append(y)
+            # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
+            if hasattr(dataloader, 'dataset') and hasattr(dataloader.dataset, 'onehot_labels') and not dataloader.dataset.onehot_labels:
+                y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes)
+            ys.append(y)
 
-            preds_u = torch.cat(preds_u)
-            preds_c = torch.cat(preds_c)
-            ys = torch.cat(ys)
-        return preds_u, preds_c, ys
-
-    def evaluate(self, 
+        logits = torch.cat(logits)
+        ys = torch.cat(ys)
+        return logits, ys
+    
+    def evaluate(self,
                  unlearned_model, 
                  comparison_model, 
                  metrics: list[str], 
                  dataloader: DataLoader[SyntheticDataset]):
         result = {}
-        preds_u, preds_c, y_values = self.get_model_predictions(unlearned_model, comparison_model, dataloader)
+        preds_u, y_values = self.get_model_logits(unlearned_model, dataloader)
+        preds_c, _ = self.get_model_logits(comparison_model)
 
         for metric in metrics:
             if metric == 'accuracy':
@@ -60,6 +57,16 @@ class UnlearningEvaluator:
         
         return result
     
+    def evaluate_MIA(self, model, retain_dataloader, forget_dataloader, val_dataloader):
+        """
+        Returns the membership inference attack probability of the forget data.
+        The MIA model is a logistic regression trained for binary classification. It's train dataset is the following:
+            - X: The entropy of the target model's outputs.
+            - y: 1 if the datapoint belongs to retain 0 if it belongs to test.
+        """
+        mia_model = MIA()
+        return mia_model(model, retain_dataloader, forget_dataloader, val_dataloader)
+
     def calculate_accuracy(self, preds, y):
         return ((preds.argmax(dim=1) == y.argmax(dim=1)).sum() / y.size(0)).item()
     
@@ -100,7 +107,6 @@ class UnlearningEvaluator:
         probs_c = torch.clamp(self.softmax(preds_c), min=1e-8) # avoid numeric issues
         return F.kl_div(log_probs_u, probs_c, reduction='batchmean').item()
 
-    
     def JS_divergence(self, preds_u, preds_c, log_base: float = 2.0):
         tolerance = 1e-6
         probs_u = self.softmax(preds_u)

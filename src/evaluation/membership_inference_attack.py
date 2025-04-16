@@ -15,7 +15,8 @@ class MIA:
         
         returns: A torch tensor of dimension N.
         """
-        return -(probs * probs.log()).sum(dim=-1)
+        log_probs = (probs +1e-8).log() # add small value to avoid nans
+        return -(probs * log_probs).sum(dim=-1)
     
     def collect_probs(self, model, dataloader):
         probs = []
@@ -30,7 +31,6 @@ class MIA:
         val_probs = self.collect_probs(model, val_loader)
         forget_probs = self.collect_probs(model, forget_loader)
         
-
         X_r = torch.cat([self.entropy(retain_probs), self.entropy(val_probs)]).view(-1, 1).cpu().numpy()
         y_r = torch.cat([torch.ones((retain_probs.size(0))), torch.zeros(val_probs.size(0))]).cpu().numpy()
         X_f = self.entropy(forget_probs).view(-1, 1).cpu().numpy()
@@ -43,4 +43,4 @@ class MIA:
         mia_model = LogisticRegression(class_weight='balanced', solver='lbfgs')
         mia_model.fit(X_r, y_r)
         mia_probs = mia_model.predict(X_f)
-        return mia_probs.mean()        
+        return mia_probs.mean().item()     

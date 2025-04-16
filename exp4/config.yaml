@@ -1,0 +1,46 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+# Weights & Biases logging
+logging:
+  logger: "wandb" # wandb, sqlite, or disabled
+  project: "machine-unlearning"
+  name: "experiment_4"
+  group: "synthetic_data_evaluation"
+  dir: "./logs/wandb"
+  wandb: 
+    mode: "offline"
+
+
+# Data generation parameters
+data:
+  dataset_name: "MNIST"
+  subsample_size: 10000
+  n_forget_points: 10 #100
+  batch_size: 16
+  n_classes: 10
+
+trainer: 
+  lr: 0.001
+  n_epochs: 30
+  disable_tqdm: False
+  do_early_stopping: True
+
+sisa:
+  n_shards: 3
+  n_slices: 3
+
+amnesiac:
+  gradient_checkpoint_dir: /Users/michaelharborg/Desktop/Masters-thesis/exp4/weights #/work3/.../s204138/MachineUnlearning/
+
+model: 
+  seed: 42
+  device: "cpu"
+
+unlearn:
+  method: "retrain"
+

@@ -21,7 +21,7 @@ class SyntheticDataset(Dataset):
         # Convert features to float32
         self.X = torch.tensor(X, dtype=torch.float32).to(self.device)
         # Convert labels to long (integer)
-        self.y = torch.tensor(y, dtype=torch.long).to(self.device)
+        self.y = torch.tensor(y, dtype=torch.float32).to(self.device)
         self.indices = torch.arange(len(self.X), device=self.device) if use_indices else None
 
         self.onehot_labels = onehot_labels

@@ -22,7 +22,8 @@ class AmnesiacTrainer(BaseTrainer):
                  do_early_stopping: bool,
                  n_epochs: int = 20,
                  device: str = 'cpu',
-                 cache_gradients: bool = True) -> None:
+                 cache_gradients: bool = True,
+                 save_dir: str = 'results/amnesiac') -> None:
         self.model = model
         # Initialize optimizer
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -35,10 +36,12 @@ class AmnesiacTrainer(BaseTrainer):
         self.device = device
         self.cache_gradients = cache_gradients
         self.model.cache_gradients = cache_gradients
+        self.save_dir = save_dir
         # {epoch: {x_idx: batch_idx}}
         self.batch_mapping = {}
         # {epoch: {batch_idx: param_diff}}
         self.batch_params = {}
+
 
         super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, n_epochs, device)
 
@@ -241,10 +244,9 @@ class AmnesiacTrainer(BaseTrainer):
         """
         if not self.cache_gradients:    
             # Save difference to file, and save path to memory
-            param_diff_path = f"results/amnesiac/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
-            if not os.path.exists(os.path.dirname(param_diff_path)):
-                os.makedirs(os.path.dirname(param_diff_path))
-
+            param_diff_path = f"{self.save_dir}/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
+            os.makedirs(os.path.dirname(param_diff_path), exist_ok=True)
+            
             # save difference to file
             with open(param_diff_path, "wb") as f:
                 torch.save(param_diff, f)
@@ -263,9 +265,9 @@ class AmnesiacTrainer(BaseTrainer):
         Args:
             epoch (int): Current epoch number
         """
-        results_folder = "results/amnesiac"
-        checkpoint_folder = os.path.join(results_folder, "checkpoints")
-        checkpoint_path = f"{checkpoint_folder}/checkpoint_{epoch}.pth"
+        checkpoint_dir = f"{self.save_dir}/checkpoints"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        checkpoint_path = f"{checkpoint_dir}/checkpoint_{epoch}.pth"
         # create the directory if it doesn't exist
         os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
         torch.save({

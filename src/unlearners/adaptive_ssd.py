@@ -5,10 +5,8 @@ import pdb
 
 class AdaptiveSSD(BaseUnlearner):
     def __init__(self, 
-                 model, 
-                 criterion) -> None:
+                 model) -> None:
         super().__init__(model, {})
-        self.criterion = criterion
         
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -27,11 +25,12 @@ class AdaptiveSSD(BaseUnlearner):
             x, y = batch[0], batch[1]
             optimizer.zero_grad()
             # forward pass
-            logits = self.model(x)['logits']
+            out = self.model(x)
             # calculate loss
-            loss = self.criterion(logits, y)
+            loss = self.model.loss(out, y)
             # calculate gradients
             loss.backward()
+            # calculate FIM diagonal
             for i, (name, param) in enumerate(self.model.named_parameters()):
                 FIM[name] += param.grad.data.clone().pow(2) #optimizer.param_groups[0]['params'][i].grad.pow(2)  
         # account for batched inference
@@ -47,7 +46,6 @@ class AdaptiveSSD(BaseUnlearner):
             FIM_ratio = ratio[~torch.isnan(ratio) & ~torch.isinf(ratio)]
             FIM_ratio_dist.append(FIM_ratio)
             
-
         return torch.cat(FIM_ratio_dist)
 
     def calculate_alpha(self, FIM_full, FIM_forget, p):

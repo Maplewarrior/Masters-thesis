@@ -58,11 +58,11 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             return self(x, start_idx, stop_idx)
         
-    def loss(self, out: dict, y: torch.tensor):
+    def loss(self, out: dict, y: torch.tensor, reduction: str = 'mean'):
         """
         @param out: A dictionary containing the output of a forward pass.
                     - out should have a logits key where the value is a tensor of shape batch_size x n_classes.
         @param y: A tensor of shape batch_size x n_classes containing one-hot encoded class labels.
         """
-        return nn.functional.cross_entropy(input=out['logits'], target=y)
+        return nn.functional.cross_entropy(input=out['logits'], target=y, reduction=reduction)
     

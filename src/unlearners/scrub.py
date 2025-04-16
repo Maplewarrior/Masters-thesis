@@ -20,7 +20,7 @@ class ScrubR(BaseUnlearner):
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-2)
+        self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-3)
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def construct_validation_set(self, forget_dataloader, val_dataloader):
@@ -69,16 +69,16 @@ class ScrubR(BaseUnlearner):
     def calculate_error(self, model, dataloader, return_scalar=True):
         model.eval()
         losses = []
-        with torch.no_grad():
-            for batch in dataloader:
-                x, y = batch[0], batch[1]
-                logits = model(x)['logits']
-                loss = self.CE(logits, y)
-                losses.append(loss)
+        
+        for batch in dataloader:
+            x, y = batch[0], batch[1]
+            logits = model.inference(x)['logits']
+            loss = self.CE(logits, y)
+            losses.append(loss)
 
         if return_scalar:
             return torch.mean(torch.cat(losses))
-
+        
         return torch.cat(losses)
 
     def max_step(self, x, y):

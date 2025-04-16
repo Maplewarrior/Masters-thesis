@@ -54,7 +54,8 @@ class TeacherAscender:
         pass
 
     def calculate_ascend_term(self, model_out, y):
-        entropy = -(model_out['probabilities'] * model_out['probabilities'].log()).sum(dim=-1).mean()
+        log_probs = (model_out['probabilities'] + 1e-8).log()
+        entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
         model_loss = self.model.loss(model_out, y)
         return -(0.5 * entropy + 0.5 * model_loss)
         # return -model_loss
