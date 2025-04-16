@@ -58,20 +58,7 @@ TODO:
     - Check retrained performance på 100 forget punkter
 """
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg):
-    dataset_number = dataset_name.split("_")[1]
 
-    creator = DecisionBoundaryCreator(model, dataloader_retrain)
-    plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-    plot1.title("After unlearning")
-    plot1.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x", alpha=0.3)
-    plot1.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_unlearned.png")
-
-    creator = DecisionBoundaryCreator(original_model, dataloader_train)
-    plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-    plot2.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x")
-    plot2.title("Before unlearning")
-    plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
 
 def eval_single_model(model, 
                       dataloader_retain, 
@@ -82,7 +69,8 @@ def eval_single_model(model,
                       dataset_name: str,
                       model_name: str,
                       hyperparameters,
-                      seed: int):
+                      seed: int,
+                      device: str):
     if os.path.exists(f'{result_dir}/{dataset_name}/all_results.json'):
         with open(f'{result_dir}/{dataset_name}/all_results.json', 'r') as f:
             results = json.load(f)
@@ -97,8 +85,8 @@ def eval_single_model(model,
                    'seed': []
                     }
 
-    mia_model = MIA()
-    UE = UnlearningEvaluator()
+    mia_model = MIA(device=device)
+    UE = UnlearningEvaluator(device=device)
 
     retain_logits, y_retain = UE.get_model_logits(model, dataloader_retain)
     forget_logits, y_forget = UE.get_model_logits(model, dataloader_forget)
@@ -179,9 +167,11 @@ def create_simple_model_visualization(model, save_path, input_shape):
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
-    dataset_dir = os.path.join(os.path.dirname(__file__), 'data')
-    results_dir = os.path.join(os.path.dirname(__file__), 'results')
-    weights_dir = os.path.join(os.path.dirname(__file__), 'weights')
+    absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
+    DEVICE = 'mps' #('cuda' if torch.cuda.is_available() else 'cpu')
+    dataset_dir = os.path.join(absolute_root_path, 'data')
+    results_dir = os.path.join(absolute_root_path, 'results')
+    weights_dir = os.path.join(absolute_root_path, 'weights')
     os.makedirs(results_dir, exist_ok=True)
 
     # ============= Load data and prepare data =============
@@ -210,17 +200,16 @@ def main(cfg):
     else:
         raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
     
-
     # ============= Train/load original model =============
     os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model', exist_ok=True)
-    original_model = NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
+    original_model = NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed).to(DEVICE)
     if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=original_model, 
                              train_dataloader=dataloader_train, 
                              val_dataloader=dataloader_val, 
                              logger=logger, 
-                             device=cfg.model.device, 
+                             device=DEVICE, 
                              learning_rate=cfg.trainer.lr, 
                              n_epochs=cfg.trainer.n_epochs, 
                              disable_tqdm=cfg.trainer.disable_tqdm, 
@@ -230,7 +219,7 @@ def main(cfg):
         torch.save(original_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt')
         original_model_results = eval_single_model(original_model, dataloader_retain, dataloader_forget, dataloader_val, 
                                                    time=original_train_time, result_dir=results_dir, dataset_name=cfg["data"]["dataset_name"], 
-                                                   model_name='original_model', hyperparameters={}, seed=cfg.model.seed)
+                                                   model_name='original_model', hyperparameters={}, seed=cfg.model.seed, device=DEVICE)
     else:
         original_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt')
         original_model.load_state_dict(original_model_sd)
@@ -240,14 +229,14 @@ def main(cfg):
     
     # ============= Train/load retrained model =============
     os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model', exist_ok=True)
-    retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
+    retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed).to(DEVICE)
     if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=retrained_model, 
                              train_dataloader=dataloader_retain, 
                              val_dataloader=dataloader_val, 
                              logger=logger, 
-                             device=cfg.model.device, 
+                             device=DEVICE, 
                              learning_rate=cfg.trainer.lr, 
                              n_epochs=cfg.trainer.n_epochs, 
                              disable_tqdm=cfg.trainer.disable_tqdm, 
@@ -257,7 +246,7 @@ def main(cfg):
         torch.save(retrained_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt')
         retrained_model_results = eval_single_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 
                                                     time=retrain_time, result_dir=results_dir, dataset_name=cfg["data"]["dataset_name"], 
-                                                    model_name='retrained_model', hyperparameters={}, seed=cfg.model.seed)
+                                                    model_name='retrained_model', hyperparameters={}, seed=cfg.model.seed, device=DEVICE)
     else:
         retrained_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt')
         retrained_model.load_state_dict(retrained_model_sd)
@@ -277,14 +266,14 @@ def main(cfg):
         
         start = time.time()
         ssd = SelectiveSynapticDampening(unlearned_model, 
-                                    criterion=nn.CrossEntropyLoss(), 
                                     alpha=hyperparams["alpha"], 
-                                    _lambda=hyperparams["_lambda"])
+                                    _lambda=hyperparams["_lambda"],
+                                    device=DEVICE)
         ssd(dataloader_train, dataloader_forget)
         end = time.time()
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, unlearn_time, results_dir,
-                          cfg["data"]["dataset_name"], 'SSD', hyperparams, seed=cfg.model.seed)
+                          cfg["data"]["dataset_name"], 'SSD', hyperparams, seed=cfg.model.seed, device=DEVICE)
 
     elif cfg.unlearn.method == "scrubr":
         from src.unlearners.scrub import ScrubR
@@ -295,7 +284,8 @@ def main(cfg):
         ScrubR(model=unlearned_model, 
                original_model=original_model,
                alpha=hyperparams['alpha'],
-               gamma=hyperparams['gamma'])(
+               gamma=hyperparams['gamma'],
+               device=DEVICE)(
                                             retain_dataloader=dataloader_retain, 
                                             forget_dataloader=dataloader_forget, 
                                             val_dataloader=dataloader_val, 
@@ -305,32 +295,32 @@ def main(cfg):
         end = time.time()
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Scrub+R', hyperparams, seed=cfg.model.seed)
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Scrub+R', hyperparams, seed=cfg.model.seed, device=DEVICE)
         
     elif cfg.unlearn.method == 'assd':
         from src.unlearners.adaptive_ssd import AdaptiveSSD
         hyperparams = {}
-        adaptive_ssd = AdaptiveSSD(unlearned_model)
+        adaptive_ssd = AdaptiveSSD(unlearned_model, device=DEVICE)
         start = time.time()
         adaptive_ssd(dataloader_train, dataloader_forget)
         end = time.time()
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Adaptive SSD', hyperparams, seed=cfg.model.seed)
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Adaptive SSD', hyperparams, seed=cfg.model.seed, device=DEVICE)
 
         
     elif cfg.unlearn.method == 'ssd_v5':
         from src.unlearners.selective_synaptic_dampening_v5 import SelectiveSynapticDampening
         hyperparams = {'P': 3}
         start = time.time()
-        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'])
+        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'], device=DEVICE)
         learned_hyperparams = ssd(full_dataloader=dataloader_train, 
-                                                         forget_dataloader=dataloader_forget,
-                                                         validation_dataloader=dataloader_val)
+                                  forget_dataloader=dataloader_forget,
+                                  validation_dataloader=dataloader_val)
         end = time.time()
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SSD v5', hyperparams, seed=cfg.model.seed)
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SSD v5', hyperparams, seed=cfg.model.seed, device=DEVICE)
 
     elif cfg.unlearn.method == 'sae':
         from src.models.SAE import SAE
@@ -342,9 +332,9 @@ def main(cfg):
 
         start = time.time()
         # instantiate & train SAE
-        sae = SAE(d=unlearned_model.net[hyperparams['layer_num']-2].in_features, m=hyperparams['m'], _lambda=hyperparams['_lambda'])
+        sae = SAE(d=unlearned_model.net[hyperparams['layer_num']-2].in_features, m=hyperparams['m'], _lambda=hyperparams['_lambda']).to(DEVICE)
         unlearned_model = NeuralNetWithSAE(unlearned_model, sae, layer_num=hyperparams['layer_num'])
-        sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val)
+        sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, device=DEVICE)
         sae_trainer.train()
 
         # unlearn with feature dampening
@@ -354,43 +344,40 @@ def main(cfg):
         unlearn_time = end-start
 
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SAE', hyperparams, seed=cfg.model.seed)
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SAE', hyperparams, seed=cfg.model.seed, device=DEVICE)
 
     elif cfg.unlearn.method == 'amnesiac':
         from src.models.amnesiac_model import AmnesiacModelRS
         from src.trainers.amnesiac_trainer import AmnesiacTrainer
         from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
+        from src.utils.misc import check_statedict_equivalent
 
         hyperparams = {'repair': True}
         # "simulate original model training with saved gradients"
-        unlearned_model = AmnesiacModelRS(NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed))
-        pdb.set_trace()
+        unlearned_model = AmnesiacModelRS(NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)).to(DEVICE)
         AmnesiacTrainer(model=unlearned_model,
                         train_dataloader=dataloader_train, 
                         val_dataloader=dataloader_val, 
                         logger=logger, 
-                        device=cfg.model.device, 
+                        device=DEVICE, 
                         learning_rate=cfg.trainer.lr, 
                         n_epochs=cfg.trainer.n_epochs, 
                         disable_tqdm=cfg.trainer.disable_tqdm, 
                         do_early_stopping=cfg.trainer.do_early_stopping,
                         cache_gradients=False,
-                        
                         save_dir=os.path.join(cfg['amnesiac']['gradient_checkpoint_dir'], f"{cfg['data']['dataset_name']}/amnesiac/")
                         )(indices_to_forget=forget_idxs
                           )
         
-        from src.utils.misc import check_statedict_equivalent
         assert check_statedict_equivalent(unlearned_model.state_dict(), original_model.state_dict()), "Amnesiac model's state dict is not identical to the original model's!\nComparison with the other methods is unfair."
         
-        pdb.set_trace()
         start = time.time()
         AmnesiacUnlearner(model=unlearned_model, 
                           unlearn_parameters=cfg.unlearn)(indices_to_forget=forget_idxs)
         end=time.time()
         unlearn_time = end-start
-        eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Amnesiac', hyperparameters={'repair': False}, seed=cfg.model.seed)
+        eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, unlearn_time, results_dir, 
+                          cfg["data"]["dataset_name"], 'Amnesiac', hyperparameters={'repair': False}, seed=cfg.model.seed, device=DEVICE)
         
         if hyperparams['repair']: # run a repair phase after rolling back gradients
             start = time.time()
@@ -409,24 +396,22 @@ def main(cfg):
 
             end = time.time()
             unlearn_time = unlearn_time + end-start # accounts for the fact that MIA takes some time
-            eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
-                            unlearn_time, results_dir, cfg["data"]["dataset_name"], 'Amnesiac', hyperparams, seed=cfg.model.seed)
+            eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, unlearn_time, results_dir, 
+                              cfg["data"]["dataset_name"], 'Amnesiac', hyperparams, seed=cfg.model.seed, device=DEVICE)
     
     elif cfg.unlearn.method =='teacher-ascend':
         from src.unlearners.teacher_ascend import TeacherAscender
-        ta = TeacherAscender(unlearned_model, n_epochs=20)
-        ta(dataloader_retain, dataloader_forget)
+        ta = TeacherAscender(unlearned_model, n_epochs=20, device=DEVICE)
         
-        mia_model = MIA()
-        mia_prob_original = mia_model(original_model, dataloader_retain, dataloader_forget, dataloader_val)
-        mia_prob_unlearned = mia_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val)
-        mia_prob_retrained = mia_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val)
-        print(f'MIA prob original: {mia_prob_original}')
-        print(f'MIA prob unlearned: {mia_prob_unlearned}')
-        print(f'MIA prob retrained: {mia_prob_retrained}')
-        import pdb; pdb.set_trace()
-
-
+        start = time.time()
+        ta(dataloader_retain, dataloader_forget)
+        end = time.time()
+        unlearn_time = end-start
+        
+        eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, unlearn_time, results_dir, 
+                              cfg["data"]["dataset_name"], 'Teacher ascend', hyperparams, seed=cfg.model.seed, device=DEVICE)
+        
+        
     else:
         raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

@@ -1,4 +1,5 @@
 # @package _global_
+absolute_root_path: local #/work3/.../s204138 # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
 
 defaults:
   - _self_
@@ -20,7 +21,7 @@ logging:
 data:
   dataset_name: "MNIST"
   subsample_size: 10000
-  n_forget_points: 10 #100
+  n_forget_points: 100
   batch_size: 16
   n_classes: 10
 

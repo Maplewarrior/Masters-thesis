@@ -9,10 +9,11 @@ import pdb
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int) -> None:
+    def __init__(self, model, n_epochs: int, device: str = 'cpu') -> None:
         self.model = model
         self.n_epochs = n_epochs
         self._lambda = 4
+        self.device = device
 
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -78,8 +79,8 @@ class TeacherAscender:
         for _ in range(self.n_epochs):
             for batch in forget_loader:
                 optimizer.zero_grad()
-                x = batch[0]
-                y = batch[1]
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
                 model_out = self.model(x)
         
                 reg_term = self.calculate_reg_term(FIM_original, original_sd)

@@ -38,15 +38,14 @@ When can we compare
 
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
-                 model, 
-                 criterion,
+                 model,
                  alpha: float,
-                 _lambda: float) -> None:
+                 _lambda: float,
+                 device: str = 'cpu') -> None:
         super().__init__(model, {'alpha': alpha, '_lambda': _lambda})
-        self.criterion = criterion
         self.alpha = alpha
         self._lambda = _lambda
-        
+        self.device = device
     
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -62,12 +61,13 @@ class SelectiveSynapticDampening(BaseUnlearner):
         self.model.eval()
         
         for i, batch in enumerate(dataloader):
-            x, y = batch[0], batch[1]
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             optimizer.zero_grad()
             # forward pass
-            logits = self.model(x)['logits']
+            out = self.model(x)
             # calculate loss
-            loss = self.criterion(logits, y)
+            loss = self.model.loss(out, y)
             # calculate gradients
             loss.backward()
             for i, (name, param) in enumerate(self.model.named_parameters()):
@@ -78,17 +78,6 @@ class SelectiveSynapticDampening(BaseUnlearner):
         
         return FIM
     
-    def get_forget_loss_distribution(self, forget_loader):
-        losses = []
-        for batch in forget_loader:
-            x = batch[0]#.to(self.model.device)
-            y = batch[1]#.to(self.model.device)
-            out = self.model(x)
-            loss = self.model.loss(out, y)
-            losses.append(loss.item())
-        return losses
-    
-
     def __call__(self, 
                  full_dataloader,
                  forget_dataloader,
@@ -102,9 +91,7 @@ class SelectiveSynapticDampening(BaseUnlearner):
         
         if FIM_full is None:
             FIM_full = self.calculate_FIM(full_dataloader)
-        
-        # forget_losses = self.get_forget_loss_distribution(forget_dataloader)
-        
+                
         # go through the parameters
         with torch.no_grad():
             for name, param in self.model.named_parameters():

@@ -10,7 +10,7 @@ import os
 from src.unlearners.base_unlearner import BaseUnlearner
 
 class ScrubR(BaseUnlearner):
-    def __init__(self, model, original_model, alpha, gamma):
+    def __init__(self, model, original_model, alpha, gamma, device: str):
         super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()
@@ -19,6 +19,7 @@ class ScrubR(BaseUnlearner):
         self.KL = nn.KLDivLoss(reduction='batchmean')
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
+        self.device = device
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-3)
         self.log_softmax = nn.LogSoftmax(dim=-1)
@@ -72,7 +73,8 @@ class ScrubR(BaseUnlearner):
         losses = []
         
         for batch in dataloader:
-            x, y = batch[0], batch[1]
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             logits = model.inference(x)['logits']
             loss = self.CE(logits, y)
             losses.append(loss)
@@ -118,10 +120,12 @@ class ScrubR(BaseUnlearner):
         
         for i in range(n_rounds):
             for batch in forget_dataloader:
-                x, y = batch[0], batch[1]
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
                 self.max_step(x, y)
             for batch in retain_dataloader:
-                x, y = batch[0], batch[1]
+                x = batch[0].to(self.device)
+                y = batch[1].to(self.device)
                 self.min_step(x, y)
 
             err = self.calculate_error(self.model, forget_dataloader)
@@ -132,7 +136,7 @@ class ScrubR(BaseUnlearner):
         err_threshold = self.calculate_error(self.model, validate_err_dataloader)
         
         # choose best epoch as the latest one where the error was below threshold
-        best_epoch = torch.where(torch.tensor(forget_errors) < err_threshold)[0]
+        best_epoch = torch.where(torch.tensor(forget_errors, device=self.device) < err_threshold)[0]
         if len(best_epoch):
             best_epoch = (best_epoch[-1] + 1).item()
         else: # err_threshold lower than all elements in forget_errors

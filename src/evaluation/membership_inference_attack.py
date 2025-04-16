@@ -4,8 +4,8 @@ import torch.nn as nn
 from sklearn.linear_model import LogisticRegression
 
 class MIA:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, device: str = 'cpu') -> None:
+        self.device=device
 
     def entropy(self, probs: torch.tensor):
         """
@@ -21,7 +21,7 @@ class MIA:
     def collect_probs(self, model, dataloader):
         probs = []
         for batch in dataloader:
-            x = batch[0]
+            x = batch[0].to(self.device)
             out = model.inference(x)
             probs.append(out['probabilities'])
         return torch.cat(probs)

@@ -32,15 +32,14 @@ Bayesian Repair Optimization: BRO-SSD
 
 """
 
+from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
 
-class SelectiveSynapticDampening(BaseUnlearner):
+class SelectiveSynapticDampening(SSD):
     def __init__(self, 
                  model,
-                 P: int = 2) -> None:
-        """
-        Hyperparameter P: How many pairs of (alpha, lambda) values to learn
-        """
-        super().__init__(model, {'P': P})
+                 P: int,
+                 device: str = 'cpu') -> None:
+        super().__init__(model, alpha=None, _lambda=None, device=device)
         self.P = P
         self.n_param_groups = len(list(self.model.parameters()))
         # assuming all layers have both weight & bias terms
@@ -48,36 +47,6 @@ class SelectiveSynapticDampening(BaseUnlearner):
 
     def layer_idx_to_parameter_idx(self, idx):
         return floor((idx * self.P) / (self.n_param_groups + 1))
-    
-    def calculate_FIM(self, dataloader) -> dict:
-        """
-        A function that calculates the diagonal of the Fisher Information of a model for a specific dataset.
-
-        @param dataloader: An iterable dataloader for which the FIM diagonal should be calculated.
-        returns: A dictionary where keys are the names of parameters and values are the FIM of that parameter
-        """
-        FIM = {k: 0 for k in self.model.state_dict().keys()}
-        # define optimizer to allow gradient computation
-        optimizer = optim.SGD(self.model.parameters())
-        # turn of dropout if applicable
-        self.model.eval()
-        
-        for i, batch in enumerate(dataloader):
-            x, y = batch[0], batch[1]
-            optimizer.zero_grad()
-            # forward pass
-            out = self.model(x)
-            # calculate loss
-            loss = self.model.loss(out, y)
-            # calculate gradients
-            loss.backward()
-            for i, (name, param) in enumerate(self.model.named_parameters()):
-                FIM[name] += param.grad.data.clone().pow(2) #optimizer.param_groups[0]['params'][i].grad.pow(2)  
-        # account for batched inference
-        for k in FIM.keys():
-            FIM[k] = FIM[k] / len(dataloader)
-        
-        return FIM
     
     def construct_validation_set(self, forget_dataloader, val_dataloader):
         """
@@ -97,9 +66,9 @@ class SelectiveSynapticDampening(BaseUnlearner):
         y_val = y_val_ohe.argmax(dim=-1)
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
         forget_labels, forget_counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+        forget_labels = forget_labels.to(self.device)
         
         sample_sizes = []
-
         X_values = []
         y_values = []
         
@@ -167,8 +136,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
         losses = {i: [] for i in range(n_classes)}
 
         for batch in dataloader:
-            x = batch[0]
-            y = batch[1]
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             out = self.model.inference(x)
             loss = self.model.loss(out, y, reduction='none')
             entropy = -(out['probabilities'] * torch.log(out['probabilities'] +1e-8)).sum(dim=-1)
@@ -202,8 +171,8 @@ class SelectiveSynapticDampening(BaseUnlearner):
         ys = []
         entropies = []
         for batch in test_dataloader:
-            x = batch[0]
-            y = batch[1]
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             probs = self.model.inference(x)['probabilities']
             entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1)
             xs.append(x)
@@ -295,12 +264,11 @@ class SelectiveSynapticDampening(BaseUnlearner):
             FIM_full = self.calculate_FIM(full_dataloader)
         
         sd_original = copy.deepcopy(self.model.state_dict())
+        n_classes = torch.unique(validation_dataloader.dataset.y, dim=0).size(0)
 
-        
         generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
-
-        n_classes = torch.unique(validation_dataloader.dataset.y, dim=0).size(0)
+        
         n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
         if n_classes != n_forget_classes:
             forget_dataloader_old = copy.deepcopy(forget_dataloader)

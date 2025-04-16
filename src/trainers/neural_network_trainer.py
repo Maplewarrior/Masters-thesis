@@ -31,5 +31,6 @@ class NeuralNetworkTrainer(BaseTrainer):
             logger=logger,
             n_epochs=n_epochs,
             disable_tqdm=disable_tqdm,
-            do_early_stopping=do_early_stopping
+            do_early_stopping=do_early_stopping,
+            device=device
         )

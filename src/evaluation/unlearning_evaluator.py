@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from src.data_utils.synthetic_data import SyntheticDataset
 from src.evaluation.membership_inference_attack import MIA
 class UnlearningEvaluator:
-    def __init__(self) -> None:
+    def __init__(self, device: str = 'cpu') -> None:
         
         self.log_softmax = torch.nn.LogSoftmax(dim=-1)
         self.softmax = torch.nn.Softmax(dim=-1)
@@ -16,20 +16,21 @@ class UnlearningEvaluator:
                                     'avg norm prediction difference': self.avg_norm_pred_diff,
                                     'KL divergence': self.KL_divergence,
                                     'JS divergence': self.JS_divergence,}
-
+        self.device = device
+        
     def get_model_logits(self, 
                          model,
                          dataloader: DataLoader[SyntheticDataset]):
         logits = []
         ys = []
         for batch in dataloader:
-            x = batch[0]
-            y = batch[1]          
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             logits.append(model.inference(x)['logits'])
 
             # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
             if hasattr(dataloader, 'dataset') and hasattr(dataloader.dataset, 'onehot_labels') and not dataloader.dataset.onehot_labels:
-                y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes)
+                y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes).to(self.device)
             ys.append(y)
 
         logits = torch.cat(logits)

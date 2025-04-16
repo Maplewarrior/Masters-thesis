@@ -161,8 +161,9 @@ class SISA(BaseModel):
         os.remove(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth")
 
     def dynamic_epochs(self, slice_id):
-        return int((2*slice_id) / (self.n_slices + 1) * self.n_epochs)
-
+        # return int((2*slice_id) / (self.n_slices + 1) * self.n_epochs)
+        return int((2 * self.n_epochs) / (self.n_slices + 1))
+    
     def train_model_on_shard(self, shard_id: int, start_slice: int = 0):
         """
         We train the model on a distinct shard.
