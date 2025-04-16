@@ -42,13 +42,18 @@ class DecisionBoundaryCreator:
         
         return xx, yy, decision_boundary.float()  # Convert back to float for plotting
 
-    def plot_decision_boundary(self, x_interval: tuple[float, float], y_interval: tuple[float, float]):
+    # ... existing code ...
+
+    def plot_decision_boundary(self, x_interval: tuple[float, float], y_interval: tuple[float, float], 
+                              alpha=0.4, custom_colors=None):
         """
         Plot the decision boundary and data points.
         
         Args:
             x_interval: Tuple of (min_x, max_x) for plotting
             y_interval: Tuple of (min_y, max_y) for plotting
+            alpha: Transparency level for the decision boundary (default: 0.4)
+            custom_colors: Optional list of custom colors for classes
         """
         # Get decision boundary
         xx, yy, decision_boundary = self.create_decision_boundary(x_interval, y_interval)
@@ -68,28 +73,71 @@ class DecisionBoundaryCreator:
 
         print("There are ", num_classes, " classes")
 
-        colors = plt.cm.viridis(np.linspace(0, 1, len(classes)))
+        # Use professional colors if provided, otherwise use viridis
+        if custom_colors is None:
+            # Professional color palette
+            professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
+            # If we have more classes than colors, fall back to viridis
+            if len(classes) <= len(professional_colors):
+                colors = [professional_colors[i % len(professional_colors)] for i in range(len(classes))]
+                # Convert hex to RGBA for easier manipulation
+                colors = [plt.matplotlib.colors.to_rgba(color) for color in colors]
+            else:
+                colors = plt.cm.viridis(np.linspace(0, 1, len(classes)))
+        else:
+            # Use provided custom colors
+            colors = [plt.matplotlib.colors.to_rgba(color) for color in custom_colors[:len(classes)]]
+        
         custom_cmap = ListedColormap(colors)
 
-
-        # Plot decision boundary
-        # plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary.numpy(), 
-        #             alpha=0.4, cmap=custom_cmap, levels=num_classes)
+        # Plot decision boundary with the specified alpha
         plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary.numpy(), 
-                      alpha=0.4, cmap=custom_cmap, shading='auto')        
+                    alpha=alpha, cmap=custom_cmap, shading='auto')        
 
         for class_idx, color in zip(classes, colors):
-            plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=color, s=10, label=f"Class {class_idx}", alpha=0.5)
+            # Use a slightly darker color for the edge
+            if isinstance(color, str):
+                # Convert hex to RGBA if it's a string
+                color = plt.matplotlib.colors.to_rgba(color)
+            
+            # Create darker version for edge
+            edge_color = np.array(color) * 0.7  # Multiply by 0.7 to make it darker
+            edge_color[3] = 1.0  # Keep alpha at 1.0 for the edge
+            
+            plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], 
+                    color=color, 
+                    s=70,  # Larger point size
+                    label=f"Class {class_idx}", 
+                    alpha=0.8,
+                    edgecolor=edge_color,
+                    linewidth=0.8)
         
-        
-        plt.xlabel('Feature 1')
-        plt.ylabel('Feature 2')
-        plt.title('Decision Boundary')
-        plt.legend()
+        plt.xlabel('Feature 1', fontsize=12)
+        plt.ylabel('Feature 2', fontsize=12)
+        plt.title('Decision Boundary', fontsize=14, fontweight='bold')
+        plt.legend(
+            frameon=True,
+            framealpha=0.95,
+            facecolor='white',
+            edgecolor='lightgray',
+            loc='best',
+            fontsize=10
+        )
         plt.grid(True, alpha=0.3)
         
+        # Set white background
+        ax = plt.gca()
+        ax.set_facecolor('white')
+        
+        # Improve ticks
+        plt.tick_params(direction='out', length=6, width=1)
+        
+        # Add a subtle border
+        for spine in plt.gca().spines.values():
+            spine.set_visible(True)
+            spine.set_color('lightgray')
+        
         return plt
-
 
 if __name__ == "__main__":
     from src.modelling.neural_network import NeuralNet

@@ -39,3 +39,4 @@ model:
 unlearn:
   method: "retrain"
 
+compress_pdfs: false
