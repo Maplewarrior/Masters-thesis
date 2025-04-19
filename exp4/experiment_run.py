@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 import os
 import numpy as np
+import pandas as pd
 from omegaconf import OmegaConf
 from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
@@ -13,7 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.colors import TwoSlopeNorm
 
-from src.models.neural_network import NeuralNetRS
+from src.models.neural_network import NeuralNetRS#2 as NeuralNetRS
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from src.evaluation.membership_inference_attack import MIA
@@ -71,6 +72,7 @@ def eval_single_model(model,
                       hyperparameters,
                       seed: int,
                       device: str):
+    os.makedirs(f'{result_dir}/{dataset_name}', exist_ok=True)
     if os.path.exists(f'{result_dir}/{dataset_name}/all_results.json'):
         with open(f'{result_dir}/{dataset_name}/all_results.json', 'r') as f:
             results = json.load(f)
@@ -111,12 +113,15 @@ def eval_single_model(model,
         - 
     
     """
+    df_subset = pd.DataFrame.from_dict(results)[['model-name', 'MIA-probability', 'retain-accuracy', 
+                                                'forget-accuracy', 'val-accuracy', 'time (sec)']]
+    print(f"Successfully updated the results! The file now looks like:\n{df_subset}")
 
     import pdb; pdb.set_trace()
     
     with open(f'{result_dir}/{dataset_name}/all_results.json', 'w') as f:
         json.dump(results, f)
-        
+    
     return results
     
 def create_simple_model_visualization(model, save_path, input_shape):
@@ -168,7 +173,14 @@ def create_simple_model_visualization(model, save_path, input_shape):
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
-    DEVICE = 'mps' #('cuda' if torch.cuda.is_available() else 'cpu')
+    DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
+    if DEVICE == 'cuda':
+        torch.cuda.manual_seed(cfg.model.seed)
+        torch.cuda.manual_seed_all(cfg.model.seed)
+        torch.backends.cudnn.deterministic = True
+    
+    print(f'Running experiment 4 on device "{DEVICE}"!')
+    print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
     results_dir = os.path.join(absolute_root_path, 'results')
     weights_dir = os.path.join(absolute_root_path, 'weights')
@@ -178,10 +190,10 @@ def main(cfg):
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
                                                                                                     dataset_name=cfg['data']['dataset_name'],
                                                                                                     n_forget_points=cfg.data.n_forget_points,
+                                                                                                    subsample_size=cfg.data.subsample_size,
                                                                                                     batch_size=cfg.data.batch_size,
                                                                                                     seed=cfg.model.seed)
     
-
     assert (dataloader_train.dataset.y[forget_idxs] == dataloader_forget.dataset.y).all(), 'Forget indices applied to train do not correspond to the forget data!'
 
     # ============= Initialize logger =============
@@ -202,7 +214,7 @@ def main(cfg):
     
     # ============= Train/load original model =============
     os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model', exist_ok=True)
-    original_model = NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed).to(DEVICE)
+    original_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, n_layers=cfg.model.n_layers, width_factor=cfg.model.width_factor, seed=cfg.model.seed).to(DEVICE)
     if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=original_model, 
@@ -216,10 +228,11 @@ def main(cfg):
                              do_early_stopping=cfg.trainer.do_early_stopping)()
         end = time.time()
         original_train_time = end-start
-        torch.save(original_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt')
         original_model_results = eval_single_model(original_model, dataloader_retain, dataloader_forget, dataloader_val, 
                                                    time=original_train_time, result_dir=results_dir, dataset_name=cfg["data"]["dataset_name"], 
                                                    model_name='original_model', hyperparameters={}, seed=cfg.model.seed, device=DEVICE)
+        import pdb; pdb.set_trace()
+        torch.save(original_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt')
     else:
         original_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt')
         original_model.load_state_dict(original_model_sd)
@@ -229,33 +242,34 @@ def main(cfg):
     
     # ============= Train/load retrained model =============
     os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model', exist_ok=True)
-    retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed).to(DEVICE)
+    retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, n_layers=cfg.model.n_layers, width_factor=cfg.model.width_factor, seed=cfg.model.seed).to(DEVICE)
     if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=retrained_model, 
-                             train_dataloader=dataloader_retain, 
-                             val_dataloader=dataloader_val, 
-                             logger=logger, 
-                             device=DEVICE, 
-                             learning_rate=cfg.trainer.lr, 
-                             n_epochs=cfg.trainer.n_epochs, 
-                             disable_tqdm=cfg.trainer.disable_tqdm, 
-                             do_early_stopping=cfg.trainer.do_early_stopping)()
+                                train_dataloader=dataloader_retain, 
+                                val_dataloader=dataloader_val,
+                                logger=logger, 
+                                device=DEVICE, 
+                                learning_rate=cfg.trainer.lr, 
+                                n_epochs=cfg.trainer.n_epochs, 
+                                disable_tqdm=cfg.trainer.disable_tqdm, 
+                                do_early_stopping=cfg.trainer.do_early_stopping)()
         end=time.time()
         retrain_time = end-start
-        torch.save(retrained_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt')
         retrained_model_results = eval_single_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 
                                                     time=retrain_time, result_dir=results_dir, dataset_name=cfg["data"]["dataset_name"], 
                                                     model_name='retrained_model', hyperparameters={}, seed=cfg.model.seed, device=DEVICE)
+        torch.save(retrained_model.state_dict(), f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt')
+        
     else:
         retrained_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt')
         retrained_model.load_state_dict(retrained_model_sd)
 
-    import pandas as pd
-    with open(f'{results_dir}/{cfg["data"]["dataset_name"]}/all_results.json', 'r') as f:
-        res_dict = json.load(f)
-    df_results = pd.DataFrame.from_dict(res_dict)
-    import pdb; pdb.set_trace()
+    # import pandas as pd
+    # with open(f'{results_dir}/{cfg["data"]["dataset_name"]}/all_results.json', 'r') as f:
+    #     res_dict = json.load(f)
+    # df_results = pd.DataFrame.from_dict(res_dict)
+    # import pdb; pdb.set_trace()
 
     if cfg.unlearn.method == "ssd":
         from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
@@ -286,12 +300,11 @@ def main(cfg):
                alpha=hyperparams['alpha'],
                gamma=hyperparams['gamma'],
                device=DEVICE)(
-                                            retain_dataloader=dataloader_retain, 
-                                            forget_dataloader=dataloader_forget, 
-                                            val_dataloader=dataloader_val, 
-                                            n_rounds=hyperparams['nrounds']
-                                          )
-        
+                              retain_dataloader=dataloader_retain, 
+                              forget_dataloader=dataloader_forget, 
+                              val_dataloader=dataloader_val, 
+                              n_rounds=hyperparams['nrounds']
+                             )
         end = time.time()
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
@@ -321,14 +334,42 @@ def main(cfg):
         unlearn_time = end-start
         eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
                           unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SSD v5', hyperparams, seed=cfg.model.seed, device=DEVICE)
+    
+    elif cfg.unlearn.method == 'ssd_v6':
+        from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+        hyperparams = {'P': 5, 'k': 0.75, 'smooth_dampening': True, 'n_bo_iter': 25}
+        start = time.time()
+        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
+                                         smooth_dampening=hyperparams['smooth_dampening'], n_bo_iter=hyperparams['n_bo_iter'], 
+                                         device=DEVICE)
+        learned_hyperparams = ssd(full_dataloader=dataloader_train, 
+                                  forget_dataloader=dataloader_forget,
+                                  validation_dataloader=dataloader_val)
+        end = time.time()
+        unlearn_time = end-start
+        eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SSD v6', hyperparams, seed=cfg.model.seed, device=DEVICE)
+
+    elif cfg.unlearn.method == 'ssd_v7':
+        from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
+        hyperparams = {'P': 5, 'k': 0.75}
+        start = time.time()
+        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'],k=hyperparams['k'], device=DEVICE)
+        learned_hyperparams = ssd(full_dataloader=dataloader_train, 
+                                  forget_dataloader=dataloader_forget,
+                                  validation_dataloader=dataloader_val)
+        end = time.time()
+        unlearn_time = end-start
+        eval_single_model(unlearned_model, dataloader_retain, dataloader_forget, dataloader_val, 
+                          unlearn_time, results_dir, cfg["data"]["dataset_name"], 'SSD v7', hyperparams, seed=cfg.model.seed, device=DEVICE)
 
     elif cfg.unlearn.method == 'sae':
         from src.models.SAE import SAE
         from src.models.neural_net_with_sae import NeuralNetWithSAE
         from src.trainers.sae_trainer import SAETrainer
         from src.unlearners.sae_unlearner import SAEUnlearner
-        hyperparams = {'layer_num': 6, '_lambda': 1, 'alpha': 0.9}
-        hyperparams.update({'m': 4 * unlearned_model.net[hyperparams['layer_num']-2].lin_layer.out_features})
+        hyperparams = {'layer_num': 6, '_lambda': 0.01, 'alpha': 0.5}
+        hyperparams.update({'m': 6 * unlearned_model.net[hyperparams['layer_num']-2].lin_layer.out_features})
 
         start = time.time()
         # instantiate & train SAE
@@ -338,7 +379,7 @@ def main(cfg):
         sae_trainer.train()
 
         # unlearn with feature dampening
-        sae_unlearner = SAEUnlearner(unlearned_model, alpha=hyperparams['alpha'])
+        sae_unlearner = SAEUnlearner(unlearned_model, alpha=hyperparams['alpha'], device=DEVICE)
         sae_unlearner(dataloader_retain, dataloader_forget)
         end = time.time()
         unlearn_time = end-start
@@ -352,13 +393,15 @@ def main(cfg):
         from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
         from src.utils.misc import check_statedict_equivalent
 
-        hyperparams = {'repair': True}
+        hyperparams = {'repair': False}
         # "simulate original model training with saved gradients"
-        unlearned_model = AmnesiacModelRS(NeuralNetRS(M=dataloader_train.dataset.X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)).to(DEVICE)
+        unlearned_model = AmnesiacModelRS(NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], 
+                                                      n_classes=cfg.data.n_classes, n_layers=cfg.model.n_layers,
+                                                      width_factor=cfg.model.width_factor, seed=cfg.model.seed).to(DEVICE))
         AmnesiacTrainer(model=unlearned_model,
                         train_dataloader=dataloader_train, 
                         val_dataloader=dataloader_val, 
-                        logger=logger, 
+                        logger=logger,
                         device=DEVICE, 
                         learning_rate=cfg.trainer.lr, 
                         n_epochs=cfg.trainer.n_epochs, 

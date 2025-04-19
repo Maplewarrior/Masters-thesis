@@ -12,6 +12,7 @@ class CustomSAECriterion(nn.Module):
         self.CE = nn.CrossEntropyLoss()
         self.penalty_terms = penalty_terms
         self._lambda = _lambda
+        
     
     def forward(self, logits, label, z):
         fit_term = self.CE(logits, label)
@@ -19,17 +20,18 @@ class CustomSAECriterion(nn.Module):
         return fit_term + reg_term
 
 class SAEUnlearner(BaseUnlearner):
-    def __init__(self, model, alpha: float = 0.9) -> None:
+    def __init__(self, model, alpha: float = 0.9, device : str = 'cpu') -> None:
         super().__init__(model, {'alpha': alpha})
         self.model = model
         self.alpha = alpha # the higher alpha, the lower the dampening
+        self.device = device
 
     def get_Z_matrix(self, dataloader):
         Z = []
         self.model.sae.eval()
         with torch.no_grad():
             for batch in dataloader:
-                x = batch[0]
+                x = batch[0].to(self.device)
                 z = self.model(x)['z']
                 Z.append(z)
         return torch.cat(Z)

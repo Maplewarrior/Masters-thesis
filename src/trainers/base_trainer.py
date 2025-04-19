@@ -71,8 +71,8 @@ class BaseTrainer:
                 val_metrics = self.eval()
                 
                 # update train/val dynamics
-                self.update_train_metrics(train_metrics, train_epoch_metrics, epoch_type='train')
-                self.update_train_metrics(train_metrics, val_metrics, epoch_type='val')
+                train_metrics = self.update_train_metrics(train_metrics, train_epoch_metrics, epoch_type='train')
+                train_metrics = self.update_train_metrics(train_metrics, val_metrics, epoch_type='val')
                 train_metrics['epoch'].append(int(epoch + 1))
 
                 train_dataset_name = self.train_dataloader.dataset.name

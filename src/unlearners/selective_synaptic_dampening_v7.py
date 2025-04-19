@@ -10,6 +10,8 @@ from functools import partial
 from math import floor
 import copy
 import pdb
+import optuna
+
 
 """
 This version of SSD automatically determines the optimal values of the hyperparameters lambda and alpha.
@@ -38,9 +40,11 @@ class SelectiveSynapticDampening(SSD):
     def __init__(self, 
                  model,
                  P: int,
+                 k: int,
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha=None, _lambda=None, device=device)
         self.P = P
+        self.k = k
         self.n_param_groups = len(list(self.model.parameters()))
         # assuming all layers have both weight & bias terms
         assert self.n_param_groups // 2 >= self.P, 'Cannot have more pairs of (alpha, lambda) values than the number of layers!'
@@ -58,12 +62,19 @@ class SelectiveSynapticDampening(SSD):
         """
         
         forget_dataset = forget_dataloader.dataset
-        # val_dataset = val_dataloader.dataset
-        # X_val = val_dataset.X
-        # y_val_ohe = val_dataset.y
-        # y_val = val_dataset.y.argmax(dim=1)
+        val_dataset = val_dataloader.dataset
+        # X_val = val_dataset.X.to(self.device)
+        # y_val_ohe = val_dataset.y.to(self.device)
+        # y_val = val_dataset.y.argmax(dim=1).to(self.device)
         X_val, y_val_ohe, entropies = self.entropy_sampling(val_dataloader)
         y_val = y_val_ohe.argmax(dim=-1)
+        # draw random samples from the top k% highest entropy test samples
+        k = int(len(X_val) * self.k)
+        idx_shuffle = torch.randperm(k)
+        X_val = X_val[:k][idx_shuffle]
+        y_val = y_val[:k][idx_shuffle]
+        y_val_ohe = y_val_ohe[:k][idx_shuffle]
+
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
         forget_labels, forget_counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
         forget_labels = forget_labels.to(self.device)
@@ -133,41 +144,29 @@ class SelectiveSynapticDampening(SSD):
         return generalization_dataloader, None
     
     def calculate_loss(self, dataloader, n_classes = int):
-        losses = {i: [] for i in range(n_classes)}
+        class_sums = torch.zeros(n_classes, device=self.device)
+        class_counts = torch.zeros(n_classes, device=self.device)
+
         for batch in dataloader:
             x = batch[0].to(self.device)
-            y = batch[1].to(self.device)
+            y = batch[1].to(self.device)  # assumed one-hot encoded
             out = self.model.inference(x)
-            loss = self.model.loss(out, y, reduction='none')
-            entropy = -(out['probabilities'] * torch.log(out['probabilities'] +1e-8)).sum(dim=-1)
-            for i in range(y.size(0)):
-                losses[y[i].argmax(dim=-1).item()].append((loss[i] + entropy[i]).item())
-                # losses[y[i].argmax(dim=-1).item()].append(loss[i].item())
-        losses = np.array([np.mean(e) if len(e) else 0 for e in losses.values()])
-        return losses
-        # class_sums = torch.zeros(n_classes, device=self.device)
-        # class_counts = torch.zeros(n_classes, device=self.device)
 
-        # for batch in dataloader:
-        #     x = batch[0].to(self.device)
-        #     y = batch[1].to(self.device)  # assumed one-hot encoded
-        #     out = self.model.inference(x)
-            
-        #     # Compute loss and entropy
-        #     loss = self.model.loss(out, y, reduction='none')  # shape: (batch_size,)
-        #     entropy = -(out['probabilities'] * torch.log(out['probabilities'] + 1e-8)).sum(dim=-1)  # shape: (batch_size,)
-        #     total_loss = loss + entropy  # shape: (batch_size,)
+            # Compute loss and entropy
+            loss = self.model.loss(out, y, reduction='none')  # shape: (batch_size,)
+            entropy = -(out['probabilities'] * torch.log(out['probabilities'] + 1e-8)).sum(dim=-1)  # shape: (batch_size,)
+            total_loss = loss + entropy  # shape: (batch_size,)
 
-        #     # Get class indices from one-hot labels
-        #     class_indices = y.argmax(dim=-1)  # shape: (batch_size,)
+            # Get class indices from one-hot labels
+            class_indices = y.argmax(dim=-1)  # shape: (batch_size,)
 
-        #     # Accumulate total_loss per class
-        #     class_sums += torch.bincount(class_indices, weights=total_loss, minlength=n_classes)
-        #     class_counts += torch.bincount(class_indices, minlength=n_classes)
+            # Accumulate total_loss per class
+            class_sums += torch.bincount(class_indices, weights=total_loss, minlength=n_classes)
+            class_counts += torch.bincount(class_indices, minlength=n_classes)
 
-        # # Avoid division by zero
-        # class_means = torch.where(class_counts > 0, class_sums / class_counts, torch.zeros_like(class_sums))
-        # return class_means
+        # Avoid division by zero
+        class_means = torch.where(class_counts > 0, class_sums / class_counts, torch.zeros_like(class_sums))
+        return class_means
     
     def update_parameters(self, FIM_full, FIM_forget, **kwargs):
         # go through the parameters
@@ -208,14 +207,14 @@ class SelectiveSynapticDampening(SSD):
         ys = ys[idxs]
         return xs, ys, entropies
 
-    def bo_objective_function(self,
-                              FIM_full,
-                              FIM_forget,
-                              forget_loader: DataLoader,
-                              gen_losses: dict,
-                              sd_original,
-                              n_classes: int,
-                              **kwargs):
+    def objective_function(self,
+                           FIM_full,
+                           FIM_forget,
+                           forget_loader: DataLoader,
+                           gen_losses: dict,
+                           sd_original,
+                           n_classes: int,
+                           **kwargs):
         # load original weights
         self.model.load_state_dict(sd_original)
         # make sure parameters were reset
@@ -226,10 +225,10 @@ class SelectiveSynapticDampening(SSD):
         forget_losses = self.calculate_loss(forget_loader, n_classes)
         # pdb.set_trace()
         # calculate squared error between forget an generalization loss
-        diff = ((forget_losses - gen_losses)**2).mean()
-        return -diff
+        diff = diff = ((forget_losses - gen_losses)**2).mean()
+        return diff
 
-    def search_hyperparameters_bo(self,
+    def search_hyperparameters_TPE(self,
                                   FIM_full,
                                   FIM_forget,
                                   forget_loader: DataLoader,
@@ -237,27 +236,42 @@ class SelectiveSynapticDampening(SSD):
                                   sd_original,
                                   n_classes: int,
                                   ):
-        # For justification of pbounds see: https://arxiv.org/pdf/2308.07707 under the "Experimental Setup" section
-        pbounds = {f'alpha_{i}': (0.1, 100) for i in range(self.P)}
-        pbounds_lambda = {f'_lambda_{i}': (0.1, 5) for i in range(self.P)}
-        pbounds.update(pbounds_lambda)
+        # remove logging
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-        objective_func = partial(self.bo_objective_function,
-                            FIM_full=FIM_full,
-                            FIM_forget=FIM_forget,
-                            forget_loader=forget_loader,
-                            gen_losses=gen_losses,
-                            sd_original=sd_original,
-                            n_classes=n_classes)
-        bayesian_optimizer = BayesianOptimization(
-            f=objective_func,
-            pbounds=pbounds,
-            random_state=self.model.seed,
-            verbose=2
-        )
-        bayesian_optimizer.maximize(n_iter=100)
+        objective_func = partial(self.objective_function,
+                                FIM_full=FIM_full,
+                                FIM_forget=FIM_forget,
+                                forget_loader=forget_loader,
+                                gen_losses=gen_losses,
+                                sd_original=sd_original,
+                                n_classes=n_classes)
         
-        return {'result': bayesian_optimizer.res, 'max': bayesian_optimizer.max}
+        def objective(trial):
+            params = {f'alpha_{i}': trial.suggest_float(f"alpha_{i}", 0.01, 100.0, log=False) for i in range(self.P)}
+            params.update({f'_lambda_{i}': trial.suggest_float(f"_lambda_{i}", 0.01, 5.0, log=False) for i in range(self.P)})
+            
+            # Run your dampening + evaluation logic on the GPU
+            loss = objective_func(**params)  # Must return a scalar loss (torch or float)
+            return float(loss)  # Optuna needs a float, not a tensor
+
+        
+        study = optuna.create_study(direction="minimize", 
+                                    sampler=optuna.samplers.TPESampler(),
+                                    pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10))
+        
+        study.optimize(objective, n_trials=100)
+        
+        ### unpack result
+        # values = [trial.value for trial in study.trials]
+        # params = [trial.params for trial in study.trials]
+        opt_trial = {'target': study.best_trial.value,
+                     'params': study.best_trial.params}
+
+        
+        
+        return {'max': opt_trial}
+        # return {'result': bayesian_optimizer.res, 'max': bayesian_optimizer.max}
     
     def select_optimal_parameters(self, bo_result: dict):
         """
@@ -277,20 +291,17 @@ class SelectiveSynapticDampening(SSD):
                  FIM_full: dict = None, 
                  FIM_forget: dict = None
                  ):
-        import time
-        start = time.time()
+                         
         # calculate FIM matrices if necessary
         if FIM_forget is None:
             FIM_forget = self.calculate_FIM(forget_dataloader)
         
         if FIM_full is None:
             FIM_full = self.calculate_FIM(full_dataloader)
-        end=time.time()
-        print(f'FIM computation time: {end-start:.4f} sec.')
+        
         sd_original = copy.deepcopy(self.model.state_dict())
         n_classes = torch.unique(validation_dataloader.dataset.y, dim=0).size(0)
-        
-        start = time.time()
+
         generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
         
@@ -299,20 +310,14 @@ class SelectiveSynapticDampening(SSD):
             forget_dataloader_old = copy.deepcopy(forget_dataloader)
             forget_dataloader = updated_forget_loader
         
-        end=time.time()
-        print(f'repair set time: {end-start:.4f} sec.')
-        
-        start = time.time()
         # find optimal alpha and lambda values via bayesian optimization
-        bo_result = self.search_hyperparameters_bo(FIM_full, FIM_forget, forget_dataloader, generalization_losses, sd_original, n_classes)
-        best_params = self.select_optimal_parameters(bo_result)
-        end=time.time()
-        print(f'bayesian opt time: {end-start:.4f} sec.')
-
+        opt_result = self.search_hyperparameters_TPE(FIM_full, FIM_forget, forget_dataloader, generalization_losses, sd_original, n_classes)
+        best_params = opt_result['max']['params']
+        # best_params = self.select_optimal_parameters(opt_result)
+        
         # go through the parameters
         self.model.load_state_dict(sd_original)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
         self.update_parameters(FIM_full, FIM_forget, **best_params)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
-        pdb.set_trace()
         return best_params

@@ -9,7 +9,13 @@ class NeuralNetWithSAE(BaseModel):
         self.sae = sae
         self.layer_num = layer_num # where to apply the SAE on the neural network's forward pass 
 
-    def forward(self, x):
+    def forward(self, x, start_idx = None, stop_idx = None):
+        """
+        Computes a forward pass through the neural network up to layer num.
+        This is followed by the SAE reconstructing the output activation at layer num.
+        The forward pass of the neural is continued using the SAE reconstruction.
+        NOTE: start_idx and stop_idx args are provided for backwards compatibility.
+        """
         # compute forward pass up to layer_num
         x_act = self.neural_net.inference(x, start_idx=0, stop_idx=self.layer_num)['logits']
         # compute sae reconstruction

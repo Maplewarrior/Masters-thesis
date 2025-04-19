@@ -105,4 +105,4 @@ class SelectiveSynapticDampening(BaseUnlearner):
                 # update parameter in the model
                 param.copy_(updated_parameter)
                 # print(f'Updated parameter: {param}')
-        
+    

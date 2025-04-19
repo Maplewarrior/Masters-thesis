@@ -1,5 +1,5 @@
 # @package _global_
-absolute_root_path: local #/work3/.../s204138 # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
+absolute_root_path: /work3/s204138/MachineUnlearning #local # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
 
 defaults:
   - _self_
@@ -19,28 +19,30 @@ logging:
 
 # Data generation parameters
 data:
-  dataset_name: "MNIST"
-  subsample_size: 10000
-  n_forget_points: 100
-  batch_size: 16
+  dataset_name: "MNIST" #"CIFAR10" #"MNIST"
+  subsample_size: #10000
+  n_forget_points: 150
+  batch_size: 16 #16
   n_classes: 10
 
 trainer: 
   lr: 0.001
-  n_epochs: 30
+  n_epochs: 30 #50
   disable_tqdm: False
-  do_early_stopping: True
+  do_early_stopping: False
 
 sisa:
   n_shards: 3
   n_slices: 3
 
 amnesiac:
-  gradient_checkpoint_dir: /Users/michaelharborg/Desktop/Masters-thesis/exp4/weights #/work3/.../s204138/MachineUnlearning/
+  gradient_checkpoint_dir: /work3/s204138/MachineUnlearning #/Users/michaelharborg/Desktop/Masters-thesis/exp4/weights
 
 model: 
   seed: 42
   device: "cpu"
+  width_factor: 4 #4
+  n_layers: 3 #3
 
 unlearn:
   method: "retrain"
