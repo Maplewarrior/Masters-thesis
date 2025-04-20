@@ -25,6 +25,7 @@ data:
   batch_size: 16 #16
   n_classes: 10
 
+
 trainer: 
   lr: 0.001
   n_epochs: 30 #50
@@ -41,8 +42,18 @@ amnesiac:
 model: 
   seed: 42
   device: "cpu"
-  width_factor: 4 #4
-  n_layers: 3 #3
+  model_type: 'neural-network'
+  neural-network-parameters:
+    width_factor: 4 #4
+    n_layers: 3 #3
+  vision_transformer_parameters:
+    d_hidden: 384
+    d_ff: 768
+    d_k: 36
+    n_layers: 4
+    n_heads: 6
+    tau: 36
+
 
 unlearn:
   method: "retrain"

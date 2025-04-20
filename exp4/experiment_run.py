@@ -188,11 +188,11 @@ def main(cfg):
 
     # ============= Load data and prepare data =============
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
-                                                                                                    dataset_name=cfg['data']['dataset_name'],
-                                                                                                    n_forget_points=cfg.data.n_forget_points,
-                                                                                                    subsample_size=cfg.data.subsample_size,
-                                                                                                    batch_size=cfg.data.batch_size,
-                                                                                                    seed=cfg.model.seed)
+                                                                                                                 dataset_name=cfg['data']['dataset_name'],
+                                                                                                                 n_forget_points=cfg.data.n_forget_points,
+                                                                                                                 subsample_size=cfg.data.subsample_size,
+                                                                                                                 batch_size=cfg.data.batch_size,
+                                                                                                                 seed=cfg.model.seed)
     
     assert (dataloader_train.dataset.y[forget_idxs] == dataloader_forget.dataset.y).all(), 'Forget indices applied to train do not correspond to the forget data!'
 
@@ -213,9 +213,16 @@ def main(cfg):
         raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
     
     # ============= Train/load original model =============
-    os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model', exist_ok=True)
-    original_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, n_layers=cfg.model.n_layers, width_factor=cfg.model.width_factor, seed=cfg.model.seed).to(DEVICE)
-    if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_weights.pt'):
+    os.makedirs(f'{weights_dir}/{cfg.data.dataset_name}/original_model', exist_ok=True)
+    if cfg.model.model_type == 'neural-network':
+        original_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, 
+                                      n_layers=cfg.model.neural_network_parameters.n_layers, 
+                                      width_factor=cfg.model.neural_network_parameters.width_factor, 
+                                      seed=cfg.model.seed).to(DEVICE)
+    elif cfg.model.model_type == 'vision-transformer':
+        original_model = None
+    
+    if not os.path.exists(f'{weights_dir}/{cfg.data.dataset_name}/original_model/original_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=original_model, 
                              train_dataloader=dataloader_train, 
@@ -241,9 +248,17 @@ def main(cfg):
     unlearned_model = copy.deepcopy(original_model)
     
     # ============= Train/load retrained model =============
-    os.makedirs(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model', exist_ok=True)
-    retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, n_layers=cfg.model.n_layers, width_factor=cfg.model.width_factor, seed=cfg.model.seed).to(DEVICE)
-    if not os.path.exists(f'{weights_dir}/{cfg["data"]["dataset_name"]}/retrained_model/retrained_model_weights.pt'):
+    os.makedirs(f'{weights_dir}/{cfg.data.dataset_name}/retrained_model', exist_ok=True)
+    if cfg.model.model_type == 'neural-network':
+        retrained_model = NeuralNetRS(M=dataloader_retain.dataset.X.shape[1], n_classes=cfg.data.n_classes, 
+                                      n_layers=cfg.model.neural_network_parameters.n_layers, 
+                                      width_factor=cfg.model.neural_network_parameters.width_factor, 
+                                      seed=cfg.model.seed).to(DEVICE)
+    elif cfg.model.model_type == 'vision-transformer':
+        retrained_model = None
+
+
+    if not os.path.exists(f'{weights_dir}/{cfg.data.dataset_name}/retrained_model/retrained_model_weights.pt'):
         start = time.time()
         NeuralNetworkTrainer(model=retrained_model, 
                                 train_dataloader=dataloader_retain, 
