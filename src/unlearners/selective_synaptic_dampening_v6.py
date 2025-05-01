@@ -111,7 +111,8 @@ class SelectiveSynapticDampening(SSD):
             # find val set indexes that correspond to the label
             val_label_idx = torch.where(y_val == label)[0]
             # find sample size
-            sample_size = min(forget_counts[i].item(), len(val_label_idx))
+            # sample_size = min(forget_counts[i].item(), len(val_label_idx))
+            sample_size = max(forget_counts[i].item(), len(val_label_idx))
             sample_sizes.append(sample_size)
             # draw random samples
             idxs = list(range(sample_size)) #torch.randperm(len(val_label_idx))[:sample_size]
@@ -122,8 +123,11 @@ class SelectiveSynapticDampening(SSD):
             y_values.append(y)
 
         # check if exact distribution could be constructed..
-        if not (torch.tensor(sample_sizes) == forget_counts).all():
-            print("Exact distribution could not be constructed..")
+        # if not (torch.tensor(sample_sizes) == forget_counts).all():
+        #     print("Exact distribution could not be constructed..")
+
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
 
         val_labels, val_counts = torch.unique(y_val, return_counts=True)
         # not all classes are represented in the forget set --> this may lead to catastrophic forgetting when choosing the best param update
@@ -154,13 +158,13 @@ class SelectiveSynapticDampening(SSD):
             X_forget = torch.cat(X_forget_add)
             y_forget = torch.cat(y_forget_add)
             forget_dataset = SyntheticDataset(X_forget, y_forget, n_classes=n_classes)
-            updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4)
+            updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4, generator=generator)
 
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
 
         dataset = SyntheticDataset(X_values.clone().detach(), y_values.clone().detach(), n_classes=n_classes)
-        generalization_dataloader = DataLoader(dataset, batch_size=32)
+        generalization_dataloader = DataLoader(dataset, batch_size=32, generator=generator)
 
         if len(X_forget_add): # if additions to forget dataset were made, return it
             return generalization_dataloader, updated_forget_dataloader
@@ -324,7 +328,7 @@ class SelectiveSynapticDampening(SSD):
             )
 
         # Use Sobol sequence for better initial coverage of the search space
-        n_initial = 25
+        n_initial = 30
         sobol_engine = torch.quasirandom.SobolEngine(dimension=2*self.P, scramble=True)
         train_x = sobol_engine.draw(n_initial).to(dtype=torch.double, device=self.device)
 
@@ -385,17 +389,17 @@ class SelectiveSynapticDampening(SSD):
             iter_start = time.time()
 
             # Define acquisition function - LogEI often works better than regular EI
-            # EI = LogExpectedImprovement(model=gp, best_f=train_obj.max())
-            UCB = UpperConfidenceBound(model=gp, beta=10.)
+            EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
+            # UCB = UpperConfidenceBound(model=gp, beta=10.)
 
             # Use higher num_restarts for better convergence and better GPU utilization
             candidate, acq_value = optimize_acqf(
-                acq_function=UCB,
+                acq_function=EI,
                 bounds=bounds,
                 q=1,
                 num_restarts=num_restarts,
                 raw_samples=raw_samples,
-                options={"batch_limit": 5, "maxiter": 100},
+                options={"batch_limit": 10, "maxiter": 100},
             )
 
             # Extract parameters for the new candidate point
@@ -419,8 +423,8 @@ class SelectiveSynapticDampening(SSD):
             # train_obj = standardize(train_obj)
 
             # update GP with new observations
-            gp.set_train_data(train_x, train_obj, strict=False)
-            # gp = gp.condition_on_observations(candidate, new_obj) # TODO: find out what difference between this and above is... "fantasy model"
+            # gp.set_train_data(train_x, train_obj, strict=False)
+            gp = gp.condition_on_observations(candidate, new_obj) # TODO: find out what difference between this and above is... "fantasy model"
 
             # # re-learn optimal hyperparameters of GP
             # gp = SingleTaskGP(

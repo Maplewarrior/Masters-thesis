@@ -13,6 +13,8 @@ class BaseTrainer:
                  logger,
                  disable_tqdm: bool,
                  do_early_stopping: bool,
+                 save_checkpoints: bool = False,
+                 checkpoint_dir: str = None,
                  n_epochs: int = 20,
                  device: str = 'cpu') -> None:
         self.model = model
@@ -24,6 +26,8 @@ class BaseTrainer:
         self.do_early_stopping = do_early_stopping
         self.n_epochs = n_epochs
         self.device = device
+        self.save_checkpoints = save_checkpoints
+        self.checkpoint_dir = checkpoint_dir
     
     def init_epoch_metrics(self):
         return {'accuracy': 0, 'loss': 0}
@@ -81,8 +85,8 @@ class BaseTrainer:
                 # log validation loss and accuracy
                 if self.logger:
                     self.logger.log({
-                        f"train/loss/{train_dataset_name}": train_epoch_metrics['accuracy'],
-                        f"train/accuracy/{train_dataset_name}": train_epoch_metrics['loss'],
+                        f"train/loss/{train_dataset_name}": train_epoch_metrics['loss'],
+                        f"train/accuracy/{train_dataset_name}": train_epoch_metrics['accuracy'],
                         f"validation/loss/{validation_dataset_name}": val_metrics['loss'],
                         f"validation/accuracy/{validation_dataset_name}": val_metrics['accuracy'],
                         "epoch": epoch
@@ -92,6 +96,12 @@ class BaseTrainer:
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
                         
+                if self.save_checkpoints and epoch > 10 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
+                    self.save_state_dict(self.checkpoint_dir, 
+                                         model_name=self.checkpoint_dir.split('/')[-1],
+                                         val_acc=train_metrics['val/accuracy'][-1],
+                                         epoch=epoch
+                                         )
                 
                 if self.do_early_stopping and epoch > 4 and not train_metrics['val/loss'][-1] <= np.mean(train_metrics['val/loss'][:-4:-1]):
                     print("\Ending due to early stopping")
@@ -136,3 +146,6 @@ class BaseTrainer:
     
     def __call__(self):
         return self.train()
+    
+    def save_state_dict(self, save_dir: str, model_name: str, val_acc: float, epoch: int):
+        torch.save(self.model.state_dict(), f'{save_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt')

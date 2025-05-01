@@ -76,18 +76,20 @@ class SelectiveSynapticDampening(SSD):
         y_val_ohe = y_val_ohe[:k][idx_shuffle]
 
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
-        forget_labels, forget_counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+        forget_labels, forget_counts = torch.unique(y_val, return_counts=True)
         forget_labels = forget_labels.to(self.device)
         
         sample_sizes = []
         X_values = []
         y_values = []
-        
+        # [5, 11, 8, 4, 8, 12, 11, 14, 15, 12]
+        # max_x (15 * x) < forget_counts[argmax(15)]
         for i, label in enumerate(forget_labels):
             # find val set indexes that correspond to the label
             val_label_idx = torch.where(y_val == label)[0]
             # find sample size
-            sample_size = min(forget_counts[i].item(), len(val_label_idx))
+            # sample_size = min(forget_counts[i].item(), len(val_label_idx))
+            sample_size = max(forget_counts[i].item(), len(val_label_idx))
             sample_sizes.append(sample_size)
             # draw random samples
             idxs = list(range(sample_size)) #torch.randperm(len(val_label_idx))[:sample_size]
@@ -98,13 +100,15 @@ class SelectiveSynapticDampening(SSD):
             y_values.append(y)
 
         # check if exact distribution could be constructed..
-        if not (torch.tensor(sample_sizes) == forget_counts).all():
-            print("Exact distribution could not be constructed..")
+        # if not (torch.tensor(sample_sizes) == forget_counts).all():
+        #     print("Exact distribution could not be constructed..")
         
         val_labels, val_counts = torch.unique(y_val, return_counts=True)
         # not all classes are represented in the forget set --> this may lead to catastrophic forgetting when choosing the best param update
         X_forget_add = []
         y_forget_add = []
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
         if not (val_labels == forget_labels).all():
             X_forget_add.append(forget_dataloader.dataset.X)
             y_forget_add.append(forget_dataloader.dataset.y)
@@ -130,13 +134,14 @@ class SelectiveSynapticDampening(SSD):
             X_forget = torch.cat(X_forget_add)
             y_forget = torch.cat(y_forget_add)
             forget_dataset = SyntheticDataset(X_forget, y_forget, n_classes=n_classes)
-            updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4)
+
+            updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4, generator=generator)
 
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
         
         dataset = SyntheticDataset(X_values.clone().detach(), y_values.clone().detach(), n_classes=n_classes)
-        generalization_dataloader = DataLoader(dataset, batch_size=32)
+        generalization_dataloader = DataLoader(dataset, batch_size=32, generator=generator)
         
         if len(X_forget_add): # if additions to forget dataset were made, return it
             return generalization_dataloader, updated_forget_dataloader
@@ -255,9 +260,8 @@ class SelectiveSynapticDampening(SSD):
             loss = objective_func(**params)  # Must return a scalar loss (torch or float)
             return float(loss)  # Optuna needs a float, not a tensor
 
-        
         study = optuna.create_study(direction="minimize", 
-                                    sampler=optuna.samplers.TPESampler(),
+                                    sampler=optuna.samplers.TPESampler(seed=self.model.seed),
                                     pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10))
         
         study.optimize(objective, n_trials=100)

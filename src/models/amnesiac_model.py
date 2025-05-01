@@ -16,8 +16,12 @@ class AmnesiacModelRS(NeuralNetRS):
             raise ValueError("base_model must be a NeuralNet")
         
         # Unpack params of the neural net and pass to init of NeuralNet
-        M, n_classes, seed = base_model.M, base_model.n_classes, base_model.seed
-        super().__init__(M, n_classes, seed)
+        M = base_model.M
+        n_classes = base_model.n_classes
+        seed = base_model.seed
+        width_factor = base_model.width_factor
+        n_layers = base_model.n_layers
+        super().__init__(M, n_classes, n_layers, width_factor, seed)
         # self.base_model = base_model
 
         # Set these empty parameters to be set later

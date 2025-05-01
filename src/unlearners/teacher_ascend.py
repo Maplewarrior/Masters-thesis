@@ -9,10 +9,10 @@ import pdb
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int, device: str = 'cpu') -> None:
+    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu') -> None:
         self.model = model
         self.n_epochs = n_epochs
-        self._lambda = 4
+        self._lambda = _lambda
         self.device = device
 
     def calculate_FIM(self, dataloader) -> dict:
@@ -29,7 +29,8 @@ class TeacherAscender:
         self.model.eval()
         
         for i, batch in enumerate(dataloader):
-            x, y = batch[0], batch[1]
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
             optimizer.zero_grad()
             # forward pass
             model_out = self.model(x)

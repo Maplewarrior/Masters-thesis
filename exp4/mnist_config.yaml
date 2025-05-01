@@ -16,15 +16,15 @@ logging:
   wandb: 
     mode: offline #"offline"
 
-
 # Data generation parameters
 data:
-  dataset_name: "CIFAR10" #"MNIST"
-  subsample_size: #MNIST: 10000
-  n_forget_points: 150 # MNIST: 150
-  batch_size: 128 #MNIST: 16
+  dataset_name: "MNIST"
+  subsample_size: 10000
+  n_forget_points: 100
+  batch_size: 16
   n_classes: 10
   n_channels: 3
+  # cifar parameters
   image_size:
     - 32
     - 32
@@ -32,28 +32,27 @@ data:
     - 4
     - 4
 
-
 trainer: 
-  lr: 0.0002 #MNIST: 0.001
-  n_epochs: 200 # MNIST: 30
+  lr: 0.001
+  n_epochs: 30
   disable_tqdm: False
-  do_early_stopping: False # MNIST: True
-  weight_decay: 0.0001 # MNIST: 0.0
+  do_early_stopping: True
+  weight_decay: 0.0
 
 sisa:
-  n_shards: 5
-  n_slices: 5
-  model_type: #'neural-network' # vision-transformer
+  n_shards: 10 #5
+  n_slices: 10 #5
+  model_type: 'neural-network' # vision-transformer
   neural_network_parameters: # constituent model parameters
-    width_factor: 2 # MNIST: 4
-    n_layers: 3 # MNIST: 3
+    width_factor: 0.5
+    n_layers: 3
 
 amnesiac:
   gradient_checkpoint_dir: /work3/s204138/MachineUnlearning #/Users/michaelharborg/Desktop/Masters-thesis/exp4/weights
 
 model: 
   seed: 42 #MNIST: 42
-  model_type: vision-transformer #'neural-network'
+  model_type: 'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4
     n_layers: 3 # MNIST: 3

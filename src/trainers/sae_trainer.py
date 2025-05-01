@@ -13,6 +13,8 @@ class SAETrainer(BaseTrainer):
                  logger=None,
                  device="cpu",
                  learning_rate=0.001,
+                 save_checkpoints: bool = False,
+                 checkpoint_dir: str = '/work3/204138/MachineUnlearning/weights/CIFAR10/original_model',
                  n_epochs=100,
                  disable_tqdm=False,
                  do_early_stopping=True,
@@ -22,9 +24,8 @@ class SAETrainer(BaseTrainer):
         This class is compatible with the SAEUnlearner class.
         """
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        super().__init__(model, self.optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, n_epochs, device)
+        super().__init__(model, self.optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints, checkpoint_dir, n_epochs, device)
 
-    
     
     def init_epoch_metrics(self):
         return {'accuracy': 0, 'loss': 0, 'l0-norm': 0}

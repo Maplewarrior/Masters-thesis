@@ -20,13 +20,15 @@ class AmnesiacTrainer(BaseTrainer):
                  logger,
                  disable_tqdm: bool,
                  do_early_stopping: bool,
+                 weight_decay: float = 0.0,
                  n_epochs: int = 20,
                  device: str = 'cpu',
                  cache_gradients: bool = True,
                  save_dir: str = 'results/amnesiac') -> None:
         self.model = model
         # Initialize optimizer
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints=False, checkpoint_dir=None, n_epochs=n_epochs, device=device)
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.logger = logger
@@ -41,9 +43,8 @@ class AmnesiacTrainer(BaseTrainer):
         self.batch_mapping = {}
         # {epoch: {batch_idx: param_diff}}
         self.batch_params = {}
-
-
-        super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, n_epochs, device)
+        os.makedirs(f"{self.save_dir}/gradients/", exist_ok=True) # gradient save directory
+        
 
     def init_epoch_metrics(self):
         return {'accuracy': 0, 'loss': 0}
@@ -81,17 +82,18 @@ class AmnesiacTrainer(BaseTrainer):
         epoch_metrics = self.init_epoch_metrics()
         # total_loss = 0.0
 
-        for batch_idx, batch in enumerate(self.train_dataloader):
+        for batch_idx, batch in enumerate(self.train_dataloader):            
             assert len(batch) == 3, f"Batch must contain x, y, and indices. Got length {len(batch)}"
             x, y, indices = batch[0], batch[1], batch[2]
             x = x.to(self.device)
             y = y.to(self.device)
             out, loss, param_diff = self.step(x, y)
-
+            
             # Save batch mapping and param diff if either:
             # 1. We're not targeting a specific class (class_to_forget is None)
             # 2. The batch contains samples from the class we want to forget
             # 3. The batch contains indices we want to forget
+            
             should_save = ((class_to_forget is None) and (indices_to_forget is None)) or \
                         ((class_to_forget is not None) and (class_to_forget in y)) or \
                         ((indices_to_forget is not None) and any(idx.item() in indices_to_forget for idx in indices))
@@ -100,6 +102,7 @@ class AmnesiacTrainer(BaseTrainer):
                 should_save = False
             
             if should_save:
+                # print(f'Saving gradients due to idxs: {[idx.item() for idx in indices if idx.item() in indices_to_forget]}')
                 self.batch_mapping.setdefault(epoch, {}).update({idx.item(): batch_idx for idx in indices})
 
                 # Update the model's batch mapping and param diff
@@ -192,8 +195,8 @@ class AmnesiacTrainer(BaseTrainer):
             loss: Loss tensor
             param_diff: Difference in parameters
         """
-        self.optimizer.zero_grad()
-            
+        
+        self.optimizer.zero_grad()    
         before_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
         
         out = self.model(x)
@@ -201,7 +204,7 @@ class AmnesiacTrainer(BaseTrainer):
         loss = self.model.loss(out, y)
         loss.backward()
         self.optimizer.step()
-        
+
         after_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
         param_diff = {name: after_params[name] - before_params[name] for name in before_params}
 
@@ -210,7 +213,6 @@ class AmnesiacTrainer(BaseTrainer):
     def eval(self):
         self.model.eval()
         losses = []
-        
         epoch_metrics = self.init_epoch_metrics()
         
         with torch.no_grad():
@@ -242,11 +244,12 @@ class AmnesiacTrainer(BaseTrainer):
         Returns:
             str: Path to saved gradients if cache_gradients is False, else empty string
         """
-        if not self.cache_gradients:    
+        
+        if not self.cache_gradients:
             # Save difference to file, and save path to memory
             param_diff_path = f"{self.save_dir}/gradients/epoch_{epoch}/gradients_{epoch}_{batch_idx}.pth"
-            os.makedirs(os.path.dirname(param_diff_path), exist_ok=True)
-            
+            if not os.path.exists(f"{self.save_dir}/gradients/epoch_{epoch}"):
+                os.mkdir(f"{self.save_dir}/gradients/epoch_{epoch}")
             # save difference to file
             with open(param_diff_path, "wb") as f:
                 torch.save(param_diff, f)

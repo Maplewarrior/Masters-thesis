@@ -53,9 +53,9 @@ class SAEUnlearner(BaseUnlearner):
             retain_idx = torch.where(forget_idx == retain_feature_idxs)[0]
             if len(retain_idx): # feature is also used in retain
                 # dampening_factors.append(torch.min(alpha * normalized_forget_counts[i] / normalized_retain_counts[retain_idx], torch.tensor(1.)))
-                dampening_factors.append(torch.min(self.alpha * mean_retain_activations[retain_idx] / mean_forget_activations[i], torch.tensor(1.)))
+                dampening_factors.append(torch.min(self.alpha * mean_retain_activations[retain_idx] / mean_forget_activations[i], torch.tensor(1., device=self.device)))
             else:
-                dampening_factors.append(torch.tensor([0.]))
+                dampening_factors.append(torch.tensor([0.], device=self.device))
                 
         dampening_factors = torch.cat(dampening_factors)
 

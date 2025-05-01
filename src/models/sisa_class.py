@@ -24,59 +24,75 @@ class ShardsDict(PydanticBaseModel):
     shards: dict[str, Shard]
 
 class SISA(BaseModel):
-    def __init__(self, dataloader: DataLoader,
-                 n_shards: int = 10, n_slices: int = 10,
-                 n_features: int = 2, n_classes: int = 2,
-                 n_epochs: int = 10,
-                 save_dir: str = None,
-                 disable_tqdm: bool = True):
+    def __init__(self, 
+                 train_dataloader: DataLoader,
+                 val_dataloader: DataLoader = None,
+                 n_shards: int = 10, 
+                 n_slices: int = 10,
+                 model_fn: callable = NeuralNet,
+                 model_params: dict = {'M': 2, 'n_classes': 10},
+                 optimizer_parms: dict = {'lr': 0.001},
+                 n_classes: int = 10,
+                 n_epochs: int = 10, # number of epochs without slicing
+                 batch_size: int = 32,
+                 save_dir: str = None, # constituent model checkpoint directory
+                 device: str = 'cpu',
+                 do_early_stopping: bool = False,
+                 disable_tqdm: bool = True,
+                 seed: int = 42,
+                 ):
         
         super().__init__()
-        
+        assert not (do_early_stopping == True and val_dataloader == None), 'Cannot do early stopping without passing a validation dataloader!'
         self.disable_tqdm = disable_tqdm
+        self.device = device
+        self.seed = seed
+
         self.experiment_id = str(uuid4())
         if save_dir is None:
-            self.save_dir = f'./src/sisa_implementation/checkpoints/SISA'
+            self.root_save_dir = f'./src/sisa_implementation/checkpoints/SISA'
         else:
-            self.save_dir = save_dir
-        self.root_save_dir = self.save_dir
-        # We add uuid to the save_dir
-        self.save_dir = f"{self.save_dir}/{self.experiment_id}"
+            self.root_save_dir = save_dir
         
-        self.dataloader = dataloader
+        # Create experiment directory
+        self.experiment_dir = f"{self.root_save_dir}/{self.experiment_id}"        
+        os.makedirs(self.experiment_dir, exist_ok=True)
 
-        self.dataset = self.dataloader.dataset if self.dataloader is not None else None
-
-        self.shard_models_path = self.save_dir
-        os.makedirs(self.shard_models_path, exist_ok=True)
-        self.n_classes = n_classes
-        self.n_features = n_features
-
+        self.val_dataloader = val_dataloader
+        self.train_dataloader = train_dataloader
+        self.train_dataset = self.train_dataloader.dataset if self.train_dataloader is not None else None        
         self.shards_dict = ShardsDict(shards={})
-
+        self.generator = torch.Generator()
+        self.generator.manual_seed(self.seed)
+        
+        self.n_classes = n_classes
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
         self.n_shards = n_shards
         self.n_slices = n_slices
-        self.shard_size = len(self.dataset.X) // self.n_shards
+        
+        self.shard_size = len(self.train_dataset.X) // self.n_shards
         self.slice_size = self.shard_size // self.n_slices
 
-        self.n_epochs = n_epochs
-
-        self.model = NeuralNet(M=self.n_features, n_classes=self.n_classes)
+        # define model object and parameters
+        self.model_fn = model_fn
+        self.model_params = model_params
+        self.optimizer_params = optimizer_parms
+        self.constituent_models = None
 
         # We need this to be able to call the trainer.train() method.
         self.trainer = BaseTrainer(
-            model=self.model, 
+            model=None, 
             optimizer=None,
             train_dataloader=None,
             val_dataloader=None,
             logger=None,
-            device="cpu",
+            device=device,
             n_epochs=None,
             disable_tqdm=self.disable_tqdm,
-            do_early_stopping=False)
+            do_early_stopping=do_early_stopping)
         
         self.process_data()
-
         """
         We could save all the shards in files, but we want to save them in memory for now.
         Thus, we create a dictionary on the form: 
@@ -95,9 +111,8 @@ class SISA(BaseModel):
         import copy, shutil
         copy_dir = self.root_save_dir + '/' + str(uuid4())
         new_model = copy.deepcopy(self)
-        new_model.save_dir = copy_dir
-        new_model.shard_models_path = copy_dir
-        shutil.copytree(self.save_dir, copy_dir)
+        new_model.experiment_dir = copy_dir
+        shutil.copytree(self.experiment_dir, copy_dir)
         return new_model
        
     def shard_data(self):
@@ -106,11 +121,11 @@ class SISA(BaseModel):
         We create a Shard object for each shard and add it to the shards_dict.
         """
         # Shuffle the data
-        indices = np.arange(len(self.dataset.X))
+        indices = np.arange(len(self.train_dataset.X))
         np.random.shuffle(indices)
         splits = np.array_split(indices, self.n_shards)
         for shard_id, shard_indices in enumerate(splits):
-            os.makedirs(f"{self.shard_models_path}/shard_{shard_id}", exist_ok=True)
+            os.makedirs(f"{self.experiment_dir}/shard_{shard_id}", exist_ok=True)
             self.shards_dict.shards[f"shard_{shard_id}"] = Shard(shard_id=shard_id, shard_indices=shard_indices.tolist())
 
     def slice_shards(self):
@@ -122,7 +137,7 @@ class SISA(BaseModel):
             shard_indices = shard.shard_indices
             splits = np.array_split(shard_indices, self.n_slices)
             for slice_id, slice_indices in enumerate(splits):
-                os.makedirs(f"{self.shard_models_path}/shard_{shard.shard_id}/slice_{slice_id}", exist_ok=True)
+                os.makedirs(f"{self.experiment_dir}/shard_{shard.shard_id}/slice_{slice_id}", exist_ok=True)
                 shard.slices.append(slice_indices.tolist())
 
     def process_data(self):
@@ -144,23 +159,23 @@ class SISA(BaseModel):
         # from pprint import pprint; pprint(self.shards_dict.model_dump())
         return self.shards_dict
     
-    def save_model(self, model: NeuralNet, shard_id: int, slice_id: int):
+    def save_model(self, model: torch.nn.Module, shard_id: int, slice_id: int):
         """
         We save the models for a shard and slice.
         """
-        with open(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "wb") as f:
+        with open(f"{self.experiment_dir}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "wb") as f:
             torch.save(model.state_dict(), f)
 
     def load_model(self, shard_id: int, slice_id: int):
-        model = NeuralNet(M=self.n_features, n_classes=self.n_classes)
-        with open(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "rb") as f:
-            model.load_state_dict(torch.load(f))
+        model = self.model_fn(**self.model_params).to(self.device)
+        with open(f"{self.experiment_dir}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth", "rb") as f:
+            model.load_state_dict(torch.load(f, map_location=self.device))
         return model
     
     def remove_model(self, shard_id: int, slice_id: int):
-        os.remove(f"{self.shard_models_path}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth")
+        os.remove(f"{self.experiment_dir}/shard_{shard_id}/slice_{slice_id}/{slice_id}.pth")
 
-    def dynamic_epochs(self, slice_id):
+    def dynamic_epochs(self):
         # return int((2*slice_id) / (self.n_slices + 1) * self.n_epochs)
         return int((2 * self.n_epochs) / (self.n_slices + 1))
     
@@ -182,9 +197,8 @@ class SISA(BaseModel):
         Returns:
             model (NeuralNet): The trained model.
         """
-
-        model = NeuralNet(M=self.n_features, n_classes=self.n_classes) # new model
-
+        model = self.model_fn(**self.model_params)
+        
         shard = self.shards_dict.shards[f"shard_{shard_id}"] # This might be unclear to some
         shard_slices = shard.slices[start_slice:] # We only train on the slices that are left
 
@@ -193,8 +207,9 @@ class SISA(BaseModel):
         if start_slice > 0:
             model = self.load_model(shard_id, start_slice-1)
             print(f"Model found for slice {start_slice-1} of shard {shard_id}, rewinding model and re-training")
-
-        self.trainer.optimizer = optim.Adam(model.parameters(), lr=0.001)
+        
+        model = model.to(self.device)
+        self.trainer.optimizer = optim.Adam(model.parameters(), **self.optimizer_params)
         
         # Here we incrementally increase the amount of slices we train on.
         # M_k,1 uses 1 slice, M_k,2 uses 1:2 slices, ..., M_k,k uses 1:k slices.
@@ -202,23 +217,23 @@ class SISA(BaseModel):
             # Below looks wierd because we need to handle different slice sizes.
             # We flatten the slices and concatenate them.
             slice_indices = np.concatenate([np.asarray(slice_arr).flatten() for slice_arr in shard_slices[:slice_id+1]])
-            n_epochs = self.dynamic_epochs(slice_id)
+            n_epochs = self.dynamic_epochs()
             
             slice_id = start_slice + slice_id
             
-            slice_data = self.dataset.X[slice_indices]
-            slice_labels = self.dataset.y[slice_indices]
+            slice_data = self.train_dataset.X[slice_indices]
+            slice_labels = self.train_dataset.y[slice_indices]
             # print(f"training on slices {slice_indices}")
             # # onehot encode the labels
             # slice_labels = torch.nn.functional.one_hot(slice_labels, num_classes=self.n_classes)
             # slice_labels = slice_labels.to(torch.float32)
-            
+
             slice_dataset = torch.utils.data.TensorDataset(slice_data, slice_labels)
             assert len(slice_dataset) > 0, f"Slice dataset is empty for shard {shard_id} slice {slice_id}"
             # Set dataset name
             slice_dataset.name = f'shard_{shard_id}_slice_{slice_id}'
-            self.trainer.train_dataloader = DataLoader(slice_dataset, batch_size=32, shuffle=True)
-            self.trainer.val_dataloader = DataLoader(slice_dataset, batch_size=32, shuffle=False) # Just for making it work with logging
+            self.trainer.train_dataloader = DataLoader(slice_dataset, batch_size=self.batch_size, shuffle=True, generator=self.generator)
+            self.trainer.val_dataloader = self.val_dataloader if self.val_dataloader is not None else DataLoader(slice_dataset, batch_size=self.batch_size, shuffle=False) # Just for making it work with logging
             self.trainer.model = model
             
             # self.trainer.logger = create_logger(project_name='sisa', experiment_name=f'shard_{shard_id}_slice_{start_slice}')
@@ -234,7 +249,6 @@ class SISA(BaseModel):
     def train_client_models(self):    
         for shard_id in range(self.n_shards):
             self.train_model_on_shard(shard_id)
-
         return
 
     def predict(self, X: np.ndarray):
@@ -261,7 +275,7 @@ class SISA(BaseModel):
             last_model = self.load_model(shard_id, self.n_slices - 1) # Assumes that there are models for all slices
             # Modify your NeuralNetwork class to return probabilities instead of argmax
             probs = last_model.inference(X)  # This should return softmax outputs
-            shard_outputs[idx] = probs['probabilities'].detach().numpy()
+            shard_outputs[idx] = probs['probabilities'].detach().cpu().numpy()
 
         # Use uniform weights for now
         weights = np.ones(self.n_shards) / self.n_shards
@@ -285,28 +299,42 @@ class SISA(BaseModel):
         @param x: A torch tensor of shape (batch_size x n_features)
         returns: A tensor of size (batch_size x n_classes) with the averaged logits of all client models for x.
         """
-        
-        all_model_logits = []
-        for idx, shard_id in tqdm(enumerate(range(self.n_shards)),disable=self.disable_tqdm):
-            last_model = self.load_model(shard_id, self.n_slices - 1)
+        # a bit ugly but gets the job done
+        if self.constituent_models is None:
+            self.constituent_models = {shard_id: self.load_model(shard_id, self.n_slices - 1) for shard_id in range(self.n_shards)}
 
+        all_model_logits = []
+        all_model_probs = []
+        for idx, shard_id in tqdm(enumerate(range(self.n_shards)),disable=self.disable_tqdm):
+            last_model = self.constituent_models[shard_id] #self.load_model(shard_id, self.n_slices - 1)
             # Modify your NeuralNetwork class to return probabilities instead of argmax
             with torch.no_grad():
-                logits = last_model(x)['logits']  # This should return softmax outputs
+                out = last_model(x)  # This should return softmax outputs
+                logits = out['logits']
+                probs = out['probabilities']
             all_model_logits.append(logits)
+            all_model_probs.append(probs)
         
         all_model_logits = torch.stack(all_model_logits)
+        all_model_probs = torch.stack(all_model_probs)
+        
+        agg_model_probs = all_model_probs.mean(dim=0) # average probabilities across models
+        preds = agg_model_probs.argmax(dim=-1)
 
-        preds, weighted_probs = self.predict(x)
-        # convert to torch
-        weighted_probs = torch.tensor(weighted_probs) # shape: 1, len(x), n_classes
-        weighted_probs = weighted_probs.reshape(len(x), self.n_classes)
-        preds = torch.tensor(preds)
+        # preds, weighted_probs = self.predict(x)
+        
+        # import pdb; pdb.set_trace()
 
-        return {'logits': all_model_logits.mean(dim=0), 'predictions': preds, 'probabilities': weighted_probs}
+        # # convert to torch
+        # weighted_probs = torch.tensor(weighted_probs) # shape: 1, len(x), n_classes
+        # weighted_probs = weighted_probs.reshape(len(x), self.n_classes)
+        # preds = torch.tensor(preds)
+
+        return {'logits': all_model_logits.mean(dim=0), 'predictions': preds, 'probabilities': agg_model_probs}
         
     def inference(self, x: torch.tensor) -> dict:
-        return self(x)
+        with torch.no_grad():
+            return self(x)
 
     def find_slice_for_datapoint(self, datapoint_idx: int):
         """
@@ -369,8 +397,6 @@ class SISA(BaseModel):
             self.train_model_on_shard(shard_id, start_slice=slice_idx)
 
         return
-
-
 
 def are_sisa_models_different(model1: torch.nn.Module, model2: torch.nn.Module) -> bool:
     """Check if two SISA models have different parameters.

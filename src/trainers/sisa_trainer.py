@@ -17,12 +17,12 @@ class SISATrainer(BaseTrainer):
                  do_early_stopping=True,
                  **kwargs) -> None:
         
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        # optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         self.sisa = sisa
 
         super().__init__(
             model=model,
-            optimizer=optimizer,
+            optimizer=None,
             train_dataloader=train_dataloader,
             val_dataloader=val_dataloader,
             logger=logger,

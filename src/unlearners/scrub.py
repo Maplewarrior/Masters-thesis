@@ -62,6 +62,9 @@ class ScrubR(BaseUnlearner):
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
 
+        # set generator for reproducibility
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
         # Ensure we're using Python native types, not torch.int64
         dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=int(n_classes))
         dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
