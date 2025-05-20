@@ -8,6 +8,7 @@ class PositionalEncoding(nn.Module):
     def __init__(self, n_patches: int, d_hidden: int) -> None:
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(1, n_patches, d_hidden))
+        nn.init.trunc_normal_(self.positional_embedding, std=0.02)
     
     def forward(self, x):
         return x + self.positional_embedding
@@ -15,12 +16,13 @@ class PositionalEncoding(nn.Module):
 class Embedding(nn.Module):
     def __init__(self, d_patch: int, d_hidden: int) -> None:
         super().__init__()
-        self.layer_norm1 = nn.LayerNorm(d_patch)
+        self.layer_norm = nn.LayerNorm(d_patch)
         self.embedding_projection = nn.Linear(d_patch, d_hidden, bias=False)
-        self.layer_norm2 = nn.LayerNorm(d_hidden)
+        # self.layer_norm2 = nn.LayerNorm(d_hidden)
     
     def forward(self, x):
-        x_emb = self.layer_norm2(self.embedding_projection(self.layer_norm1(x)))
+        # x_emb = self.layer_norm2(self.embedding_projection(self.layer_norm1(x)))
+        x_emb = self.embedding_projection(self.layer_norm(x))
         return x_emb
 
 class MultiHeadAttention(nn.Module):
@@ -80,6 +82,17 @@ class EncoderBlock(nn.Module):
         x = self.ffn(self.layer_norm2(x)) + x # pre-norm + feed forward + skip-connection  
         return x
 
+class ClassificationHead(nn.Module):
+    def __init__(self, d_hidden: int, n_classes: int):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(d_hidden, d_hidden),
+                                 nn.GELU(),
+                                 nn.Linear(d_hidden, n_classes))
+    
+    def forward(self, x):
+        x = self.net(x)
+        return x
+
 class ViT(BaseModel):
     def __init__(self, 
                  d_patch: int,
@@ -107,26 +120,27 @@ class ViT(BaseModel):
         self.tau = tau
         self.pooling_type = pooling_type
 
-        if self.pooling_type == 'cls':
-            self.cls_token = nn.Parameter(torch.randn((1, 1, d_patch)))
-            self.n_patches = n_patches + 1 # add one m
-
         self.positional_encoding = PositionalEncoding(self.n_patches, self.d_hidden)
         self.embed = Embedding(d_patch, d_hidden)
+        if self.pooling_type == 'cls':
+            self.cls_token = nn.Parameter(torch.randn((1, 1, d_hidden)))
+            self.n_patches = n_patches + 1 # add CLS token
+        
         encoder_block = EncoderBlock(self.n_patches, self.n_heads, self.d_k, self.d_hidden, self.d_ff, self.tau)
         self.encoder_blocks = nn.Sequential(*[copy.deepcopy(encoder_block) for _ in range(self.n_layers)])
         
         self.layer_norm_L = nn.LayerNorm(self.d_hidden)
-        self.linear_probe = nn.Linear(self.d_hidden, self.n_classes)
+        self.mlp_head = nn.Linear(d_hidden, n_classes) #ClassificationHead(d_hidden, n_classes)
         self.dropout = nn.Dropout(self.dropout_prob)
         self.softmax = nn.Softmax(dim=-1)        
     
     def forward(self, x, start_idx: int = 0, stop_idx: int = None):
         
-        if self.pooling_type == 'cls':
-            x = torch.cat([self.cls_token.repeat((x.size(0), 1, 1)), x], dim=1)
         # embed the input and add positional encodings 
         x = self.positional_encoding(self.embed(x))
+        if self.pooling_type == 'cls': # prepend CLS token
+            x = torch.cat([self.cls_token.repeat((x.size(0), 1, 1)), x], dim=1)
+        
         x = self.dropout(x)
         # pass embedded image through encoder
         x = self.encoder_blocks[start_idx:stop_idx](x)
@@ -139,10 +153,15 @@ class ViT(BaseModel):
             if self.pooling_type == 'max':
                 # max pooling
                 x = x.max(dim=1)[0]
+            
             elif self.pooling_type == 'mean':
                 x = x.mean(dim=1)
+            
             elif self.pooling_type == 'cls':
                 x = x[:, 0]
-
-            logits = self.linear_probe(x)
+            
+            else:
+                raise NotImplementedError(f"Pooling type {self.pooling_type} not supported.")
+            
+            logits = self.mlp_head(x)
             return {'logits': logits, 'probabilities': self.softmax(logits)}

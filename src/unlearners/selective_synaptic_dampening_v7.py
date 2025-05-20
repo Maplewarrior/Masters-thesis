@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader
 from src.unlearners.base_unlearner import BaseUnlearner
 from src.datasets.synthetic_dataset import SyntheticDataset
 from src.utils.misc import check_statedict_equivalent
-from bayes_opt import BayesianOptimization
 from functools import partial
 from math import floor
 import copy
@@ -41,10 +40,12 @@ class SelectiveSynapticDampening(SSD):
                  model,
                  P: int,
                  k: int,
+                 n_trials: int = 100,
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha=None, _lambda=None, device=device)
         self.P = P
         self.k = k
+        self.n_trials = n_trials
         self.n_param_groups = len(list(self.model.parameters()))
         # assuming all layers have both weight & bias terms
         assert self.n_param_groups // 2 >= self.P, 'Cannot have more pairs of (alpha, lambda) values than the number of layers!'
@@ -231,7 +232,7 @@ class SelectiveSynapticDampening(SSD):
         # pdb.set_trace()
         # calculate squared error between forget an generalization loss
         diff = diff = ((forget_losses - gen_losses)**2).mean()
-        return diff
+        return -diff
 
     def search_hyperparameters_TPE(self,
                                   FIM_full,
@@ -260,28 +261,28 @@ class SelectiveSynapticDampening(SSD):
             loss = objective_func(**params)  # Must return a scalar loss (torch or float)
             return float(loss)  # Optuna needs a float, not a tensor
 
-        study = optuna.create_study(direction="minimize", 
+        study = optuna.create_study(direction="maximize", 
                                     sampler=optuna.samplers.TPESampler(seed=self.model.seed),
                                     pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10))
         
-        study.optimize(objective, n_trials=100)
+        study.optimize(objective, n_trials=self.n_trials)
         
         ### unpack result
-        # values = [trial.value for trial in study.trials]
-        # params = [trial.params for trial in study.trials]
+        values = [trial.value for trial in study.trials]
+        params = [trial.params for trial in study.trials]
+        result = [{'target': values[i], 'params': params[i]} for i in range(self.n_trials)]
         opt_trial = {'target': study.best_trial.value,
-                     'params': study.best_trial.params}
-
+                     'params': study.best_trial.params}        
         
-        
-        return {'max': opt_trial}
+        return {'result': result,
+                'max': opt_trial}
         # return {'result': bayesian_optimizer.res, 'max': bayesian_optimizer.max}
     
     def select_optimal_parameters(self, bo_result: dict):
         """
         If there are multiple optimal parameters: Choose the one which changes the original model the least.
         """
-        scores = [e['target'] for e in bo_result['result']]
+        scores = np.array([e['target'] for e in bo_result['result']])
         best_scores_idxs = np.where(scores == max(scores))[0]
         best_params = [bo_result['result'][i]['params'] for i in best_scores_idxs]
         param_sums = [sum(e.values()) for e in best_params]
@@ -311,7 +312,7 @@ class SelectiveSynapticDampening(SSD):
         
         n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
         if n_classes != n_forget_classes:
-            forget_dataloader_old = copy.deepcopy(forget_dataloader)
+            # forget_dataloader_old = copy.deepcopy(forget_dataloader)
             forget_dataloader = updated_forget_loader
         
         # find optimal alpha and lambda values via bayesian optimization

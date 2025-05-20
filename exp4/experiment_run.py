@@ -16,7 +16,7 @@ from matplotlib.colors import TwoSlopeNorm
 from torch.utils.data import RandomSampler, SequentialSampler
 
 from src.models.neural_network import NeuralNetRS
-from src.models.vision_transformer import ViT
+from src.models.vision_transformer_tiny import ViT
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from src.evaluation.membership_inference_attack import MIA
@@ -104,17 +104,17 @@ def build_vit(cfg: dict) -> nn.Module:
     d_patch = int(cfg.data.patch_size[0] * cfg.data.patch_size[1] * cfg.data.n_channels)
     n_patches = int(cfg.data.image_size[0] // cfg.data.patch_size[0] * cfg.data.image_size[1] // cfg.data.patch_size[1])
     vit_model = ViT(d_patch=d_patch,
-                            d_hidden=vit_params.d_hidden,
-                            d_ff=vit_params.d_ff,
-                            d_k = vit_params.d_k,
-                            n_layers=vit_params.n_layers,
-                            n_heads=vit_params.n_heads,
-                            n_classes=cfg.data.n_classes,
-                            n_patches=n_patches,
-                            dropout_prob=vit_params.dropout_prob,
-                            tau=vit_params.tau,
-                            pooling_type=vit_params.pooling_type
-                            )
+                    d_hidden=vit_params.d_hidden,
+                    d_ff=vit_params.d_ff,
+                    d_k = vit_params.d_k,
+                    n_layers=vit_params.n_layers,
+                    n_heads=vit_params.n_heads,
+                    n_classes=cfg.data.n_classes,
+                    n_patches=n_patches,
+                    dropout_prob=vit_params.dropout_prob,
+                    tau=vit_params.tau,
+                    pooling_type=vit_params.pooling_type
+                    )
     return vit_model
 
 def build_nn(M: int, cfg: dict) -> nn.Module:
@@ -181,7 +181,7 @@ def eval_single_model(model,
     wrong_preds['model-name'].append(model_name)
     wrong_preds['wrong-preds'].append(disagree_idxs)
 
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 
     with open(f'{result_dir}/all_results.json', 'w') as f:
         json.dump(results, f)
@@ -295,6 +295,7 @@ def run_and_eval(func: callable, experiment_specs: object):
                       experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
                       experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
     
+# @hydra.main(config_path=".", config_name="cifar_config")
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
@@ -347,17 +348,20 @@ def main(cfg):
     else:
         raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
     
-    # ============= Train/load original model =============
+    # ============= Instantiate original model =============
     os.makedirs(f'{weights_dir}/original_model', exist_ok=True)
-
     if cfg.model.model_type == 'neural-network':
         original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
+        save_checkpoints = False
+    
     elif cfg.model.model_type == 'vision-transformer':
         original_model = build_vit(cfg).to(DEVICE)
-        
+        save_checkpoints = True
+    
     else:
         raise NotImplementedError(f"The model type {cfg.model.model_type} is not supported!")
     
+    # ============= Train/load original model =============
     if not os.path.exists(f'{weights_dir}/original_model/original_model_weights.pt'):
         hyperparams = {}
         # re-initialize dataloaders
@@ -372,8 +376,10 @@ def main(cfg):
                                         learning_rate=cfg.trainer.lr,
                                         weight_decay=cfg.trainer.weight_decay,
                                         n_epochs=cfg.trainer.n_epochs,
-                                        save_checkpoints=True, 
-                                        checkpoint_dir = f'{weights_dir}/{cfg.data.dataset_name}/original_model',
+                                        optimizer_name=cfg.trainer.optimizer_name,
+                                        lr_scheduler=cfg.trainer.lr_scheduler,
+                                        save_checkpoints=save_checkpoints,
+                                        checkpoint_dir = f'{weights_dir}/original_model',
                                         disable_tqdm=cfg.trainer.disable_tqdm, 
                                         do_early_stopping=cfg.trainer.do_early_stopping)
         original_train_fn = lambda: trainer()
@@ -382,6 +388,7 @@ def main(cfg):
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
         torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
+        
     else:
         # original_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_val-acc=0.7525712025316458_epoch=164.pt', map_location=DEVICE)
         original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt')
@@ -390,14 +397,17 @@ def main(cfg):
     ## Copy original model
     unlearned_model = copy.deepcopy(original_model)
     
-    # ============= Train/load retrained model =============
+    # ============= Initialize retrained model =============
     os.makedirs(f'{weights_dir}/retrained_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
+        save_checkpoints = False
     
     elif cfg.model.model_type == 'vision-transformer':
         retrained_model = build_vit(cfg)
-
+        save_checkpoints = True
+    
+    # ============= Train/load retrained model =============
     if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights.pt'):
         hyperparams = {}
         # re-initialize dataloaders
@@ -405,15 +415,20 @@ def main(cfg):
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
         trainer = NeuralNetworkTrainer(model=retrained_model, 
-                                       train_dataloader=dataloader_retain, 
-                                       val_dataloader=dataloader_val,
-                                       logger=logger, 
-                                       device=DEVICE, 
-                                       learning_rate=cfg.trainer.lr,
-                                       weight_decay=cfg.trainer.weight_decay,
-                                       n_epochs=cfg.trainer.n_epochs, 
-                                       disable_tqdm=cfg.trainer.disable_tqdm, 
-                                       do_early_stopping=cfg.trainer.do_early_stopping)
+                                        train_dataloader=dataloader_retain, 
+                                        val_dataloader=dataloader_val, 
+                                        logger=logger, 
+                                        device=DEVICE, 
+                                        learning_rate=cfg.trainer.lr,
+                                        weight_decay=cfg.trainer.weight_decay,
+                                        n_epochs=cfg.trainer.n_epochs,
+                                        optimizer_name=cfg.trainer.optimizer_name,
+                                        lr_scheduler=cfg.trainer.lr_scheduler,
+                                        save_checkpoints=save_checkpoints,
+                                        checkpoint_dir = f'{weights_dir}/retrained_model',
+                                        disable_tqdm=cfg.trainer.disable_tqdm, 
+                                        do_early_stopping=cfg.trainer.do_early_stopping)
+        
         retrained_train_fn = lambda: trainer()
         retrained_experiment_specs = ExperimentSpecs(retrained_model, dataloader_train, dataloader_retain, 
                                                     dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
@@ -511,11 +526,11 @@ def main(cfg):
     
     elif cfg.unlearn.method == 'ssd_v7':
         from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
-        hyperparams = {'P': 3, 'k': 0.75, 'n_bo_iter': 20}
+        hyperparams = {'P': 1, 'k': 0.75, 'n_trials': 100}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'],k=hyperparams['k'], device=DEVICE)
+        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'],k=hyperparams['k'],n_trials=hyperparams['n_trials'], device=DEVICE)
         ssd_v7_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
         ssd_v7_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'SSD v7', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
@@ -680,7 +695,7 @@ def main(cfg):
 
     elif cfg.unlearn.method =='teacher-ascend':
         from src.unlearners.teacher_ascend import TeacherAscender
-        hyperparams = {'n_epochs': 1, '_lambda': 4}
+        hyperparams = {'n_epochs': 15, '_lambda': 8}
         ta = TeacherAscender(unlearned_model, n_epochs=hyperparams['n_epochs'], 
                              _lambda=hyperparams['_lambda'], device=DEVICE)
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
@@ -690,7 +705,73 @@ def main(cfg):
         ta_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'Teacher Ascend', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(ta_fn, ta_experiment_specs)
+    
+    elif cfg.unlearn.method == "visualize-bo-v6":
+        from src.unlearners.ssd_v6_bo_visualizer import SSDVisualizer
+
+        hyperparams = {'P': 1, 'k': 0.75, 'smooth_dampening': False, 'n_bo_iter': 150}
+        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                            dataloader_forget, dataloader_val,
+                                                                                                            cfg.model.seed)
+        ssd = SSDVisualizer(unlearned_model, 
+                            P=hyperparams['P'], 
+                            k=hyperparams['k'], 
+                            smooth_dampening=hyperparams['smooth_dampening'], 
+                            n_bo_iter=hyperparams['n_bo_iter'], 
+                            device=DEVICE)
+        ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
+        bo_result = ssd_v6_fn()
+
+        alphas = np.array([bo_result['result'][i]['params']['alpha_0'] for i in range(len(bo_result['result']))])
+        targets = np.array([bo_result['result'][i]['target'] for i in range(len(bo_result['result']))])
+        # sorted_idx = np.argsort(alphas)
         
+        sampling_order = np.linspace(0, 1, len(alphas))
+
+        plt.figure()
+        sc = plt.scatter(alphas, targets, c=sampling_order, cmap='coolwarm', s=50, edgecolor='k')
+        # plt.plot(alphas[sorted_idx], targets[sorted_idx], marker='o', linestyle='-')
+        # plt.scatter(alphas, targets)
+        plt.xlabel('alpha')
+        plt.ylabel('neg. difference')
+        plt.title("Objective function vs. alpha (λ=1, P=1)")
+        cbar = plt.colorbar(sc)
+        cbar.set_label('Sampling order (0 = early, 1 = late)')
+        plt.savefig(f'bo_ojective_function.png')
+        
+        # ssd_v6_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
+        #                                        results_dir, 'SSD v6', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+        # run_and_eval(ssd_v6_fn, ssd_v6_experiment_specs)
+
+    elif cfg.unlearn.method == "visualize-bo-v7":
+        from src.unlearners.ssd_v7_bo_visualizer import SSDVisualizer
+
+        hyperparams = {'P': 1, 'k': 0.75, 'n_trials': 150}
+        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                            dataloader_forget, dataloader_val,
+                                                                                                            cfg.model.seed)
+        ssd = SSDVisualizer(unlearned_model, 
+                            P=hyperparams['P'], 
+                            k=hyperparams['k'], 
+                            n_trials=hyperparams['n_trials'], 
+                            device=DEVICE)
+        ssd_v7_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
+        bo_result = ssd_v7_fn()
+
+        alphas = np.array([bo_result['result'][i]['params']['alpha_0'] for i in range(len(bo_result['result']))])
+        targets = np.array([bo_result['result'][i]['target'] for i in range(len(bo_result['result']))])
+        # sorted_idx = np.argsort(alphas)
+        sampling_order = np.linspace(0, 1, len(alphas))
+        plt.figure()
+        sc = plt.scatter(alphas, targets, c=sampling_order, cmap='coolwarm', s=50, edgecolor='k')
+        # plt.plot(alphas[sorted_idx], targets[sorted_idx], marker='o', linestyle='-')
+        # plt.scatter(alphas, targets)
+        plt.xlabel('alpha')
+        plt.ylabel('neg. difference')
+        plt.title("Objective function vs. alpha (λ=1, P=1)")
+        cbar = plt.colorbar(sc)
+        cbar.set_label('Sampling order (0 = early, 1 = late)')
+        plt.savefig(f'bo_ojective_function.png')
     else:
         raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")
 

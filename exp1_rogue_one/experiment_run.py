@@ -253,7 +253,7 @@ def create_simple_model_visualization(model, save_path, input_shape):
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
-
+    DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
     results_dir = os.path.join(os.path.dirname(__file__), "results")
     os.makedirs(results_dir, exist_ok=True)
 
@@ -363,22 +363,24 @@ def main(cfg):
             ScrubR(model=unlearned_model, 
                            original_model=original_model,
                            alpha=1,
-                           gamma=1)(retain_dataloader=dataloader_retain, 
-                                    forget_dataloader=dataloader_forget, 
-                                    val_dataloader=dataloader_val, 
-                                    n_rounds=10)
+                           gamma=1,
+                           device=DEVICE)(retain_dataloader=dataloader_retain, 
+                                          forget_dataloader=dataloader_forget, 
+                                          val_dataloader=dataloader_val, 
+                                          n_rounds=10)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
                                   compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
+        
         elif cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
 
 
             SelectiveSynapticDampening(unlearned_model, 
-                                       criterion=nn.CrossEntropyLoss(), 
                                        alpha=1, 
-                                       _lambda=1)(full_dataloader=dataloader_train, 
-                                                 forget_dataloader=dataloader_forget)
+                                       _lambda=1,
+                                       device=DEVICE)(full_dataloader=dataloader_train, 
+                                                      forget_dataloader=dataloader_forget)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
                                   compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
@@ -396,27 +398,22 @@ def main(cfg):
             original_model = copy.deepcopy(neural_net)
             
             # instantiate & train SAE
-            sae = SAE(d=8, m=32, _lambda=1.)
+            sae = SAE(d=8, m=32, _lambda=1.).to(DEVICE)
             unlearned_model = NeuralNetWithSAE(neural_net, sae, layer_num=6)
-            sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val)
+            sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, DEVICE)
             sae_trainer.train()
 
             # unlearn with feature dampening
-            sae_unlearner = SAEUnlearner(unlearned_model, alpha=0.9)
+            sae_unlearner = SAEUnlearner(unlearned_model, alpha=0.9, device=DEVICE)
             sae_unlearner(dataloader_retain, dataloader_forget)
 
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
                                   compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
-
-            
+     
         elif cfg.unlearn.method == "amnesiac":
             from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
             from src.models.amnesiac_model import AmnesiacModel
             from src.trainers.amnesiac_trainer import AmnesiacTrainer
-
-
-            # Wrap the unlearned model in an AmnesiacModel
-            unlearned_model = AmnesiacModel(unlearned_model)
 
             # Train the unlearned model
             AmnesiacTrainer(model=unlearned_model, 
@@ -425,39 +422,48 @@ def main(cfg):
                             logger=logger, 
                             device=cfg.model.device,
                             learning_rate=cfg.trainer.lr,
+                            weight_decay=cfg.trainer.weight_decay,
                             cache_gradients=True,
                             disable_tqdm=cfg.trainer.disable_tqdm,
                             do_early_stopping=cfg.trainer.do_early_stopping,
-                            n_epochs=cfg.trainer.n_epochs)(indices_to_forget=[forget_idx])
+                            n_epochs=cfg.trainer.n_epochs,
+                            save_dir=None)(indices_to_forget=[forget_idx])
 
             original_model = copy.deepcopy(unlearned_model)
 
             AmnesiacUnlearner(model=unlearned_model, 
                               unlearn_parameters=cfg.unlearn)(indices_to_forget=[forget_idx])
-
+            
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
                                   compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))
-
 
         elif cfg.unlearn.method == "sisa":
             from src.unlearners.sisa_unlearner import SISAUnlearner
             from src.models.sisa_class import SISA
             from src.trainers.sisa_trainer import SISATrainer
-            import matplotlib.pyplot as plt
-            from matplotlib.colors import ListedColormap
-        
-
+            
             weights_dir = os.path.join(os.path.dirname(__file__), "weights")
-            sisa = SISA(dataloader_train, 
+            sisa_model_fn = NeuralNet
+            sisa_model_parameters = {'M': X.shape[1],
+                                     'n_classes': cfg.data.n_classes,
+                                     'seed': cfg.model.seed}
+            sisa_optimzier_parameters = {'lr': cfg.trainer.lr}
+
+            sisa = SISA(dataloader_train,
+                        dataloader_val,
+                        model_fn=sisa_model_fn,
+                        model_params=sisa_model_parameters,
+                        optimizer_parms=sisa_optimzier_parameters,
                         n_classes=cfg.data.n_classes, 
                         n_features=X.shape[1], 
                         n_epochs=cfg.trainer.n_epochs, 
                         n_shards=cfg.sisa.n_shards, 
                         n_slices=cfg.sisa.n_slices,
-                        save_dir=weights_dir+'/sisa')
+                        save_dir=weights_dir+'/sisa',
+                        device=DEVICE)
             
             SISATrainer(
-                model=sisa.model, 
+                model=None, 
                 sisa=sisa, 
                 train_dataloader=dataloader_train, 
                 val_dataloader=dataloader_val, 
@@ -468,11 +474,10 @@ def main(cfg):
                 disable_tqdm=cfg.trainer.disable_tqdm, 
                 do_early_stopping=cfg.trainer.do_early_stopping)()
             
+            # original SISA model
             sisa_pre_unlearning = sisa.copy()
 
-            batch = next(iter(dataloader_retain))
-            X_batch, y_batch, _ = batch
-
+            # get unlearned SISA model
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=[forget_idx])
 

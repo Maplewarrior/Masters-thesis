@@ -423,9 +423,8 @@ class SelectiveSynapticDampening(SSD):
             # train_obj = standardize(train_obj)
 
             # update GP with new observations
-            # gp.set_train_data(train_x, train_obj, strict=False)
-            gp = gp.condition_on_observations(candidate, new_obj) # TODO: find out what difference between this and above is... "fantasy model"
-
+            gp.set_train_data(train_x, train_obj, strict=False)
+            
             # # re-learn optimal hyperparameters of GP
             # gp = SingleTaskGP(
             # train_x,
@@ -522,7 +521,6 @@ class SelectiveSynapticDampening(SSD):
         bo_result = self.search_hyperparameters_bo(FIM_full, FIM_forget, forget_dataloader, generalization_losses, sd_original, n_classes)
         end=time.time()
         print(f'bayesian opt time: {end-start:.4f} sec.')
-
         best_params = self.select_optimal_parameters(bo_result)
 
         # apply original parameters
@@ -537,4 +535,5 @@ class SelectiveSynapticDampening(SSD):
         else:
             self.update_gpu_parameters(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas})
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
-        return best_params
+        # return best_params
+        return bo_result

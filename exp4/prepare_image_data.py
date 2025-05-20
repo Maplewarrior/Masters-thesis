@@ -3,10 +3,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import MNIST, CIFAR10
 from torchvision import transforms
-from torchvision.transforms.v2 import AutoAugment
-import torchvision.transforms.functional as F
+from torchvision.transforms import v2
+from torchvision.utils import save_image
+import torch.nn.functional as F
 import numpy as np
 import pdb
+
 
 def download_dataset(root_dir: str, dataset_name: str):
     if dataset_name == 'MNIST':
@@ -87,20 +89,40 @@ def preprocess_cifar_data(train_dataset, test_dataset):
 
     # compute dataset properties
     n_classes = len(y_train.unique())
-    # img_size = (X_train.size(1), X_train.size(2))
-    # n_channels = X_train.size(3)
+    
+    X_train = X_train / 255
+    X_test = X_test / 255
 
-    # n_h = img_size[0] // patch_size[0]
-    # n_w = img_size[1] // patch_size[1]
-    # n_patches = n_h * n_w
     
     train_channel_mean = X_train.mean(dim=(0, 1, 2)).tolist()
     train_channel_std = X_train.std(dim=(0, 1, 2)).tolist()
 
     # reshape: [N x H x W x C] --> [N x C x H x W]
-    X_train = X_train.reshape(X_train.size(0), X_train.size(3), X_train.size(1), X_train.size(2))
-    X_test = X_test.reshape(X_test.size(0), X_test.size(3), X_test.size(1), X_test.size(2))
+    X_train = X_train.permute(0, 3, 1, 2)#.reshape(X_train.size(0), X_train.size(3), X_train.size(1), X_train.size(2))
+    X_test = X_test.permute(0, 3, 1, 2)#.reshape(X_test.size(0), X_test.size(3), X_test.size(1), X_test.size(2))
 
+    save_image(X_train[:16], 'train_images.png')
+    save_image(X_test[:16], 'test_images.png')
+
+    # resize images
+    train_resized_batches = []
+    batch_size = 200
+    for i in range(0, X_train.size(0), batch_size):
+        train_batch = X_train[i:i+batch_size]
+        resized_batch = F.interpolate(train_batch, size=(224, 224), mode='bilinear', align_corners=False)
+        train_resized_batches.append(resized_batch)
+    X_train = torch.cat(train_resized_batches, dim=0)
+
+    test_resized_batches = []
+    batch_size = 200
+    for i in range(0, X_test.size(0), batch_size):
+        test_batch = X_test[i:i+batch_size]
+        resized_batch = F.interpolate(test_batch, size=(224, 224), mode='bilinear', align_corners=False)
+        test_resized_batches.append(resized_batch)
+    X_test = torch.cat(test_resized_batches, dim=0)
+
+    save_image(X_train[:16], 'train_images_interp.png')
+    save_image(X_test[:16], 'test_images_interp.png')
     # # normalize train and test images
     # X_train = (X_train - train_channel_mean) / train_channel_std
     # X_test = (X_test - train_channel_mean) / train_channel_std
@@ -128,7 +150,6 @@ def preprocess_cifar_data(train_dataset, test_dataset):
 
     # X_train_patched = X_train.contiguous().view(X_train.size(0), -1, patch_size[0], patch_size[1], n_channels)
     # import matplotlib.pyplot as plt
-    
     
     # # plt.imshow(X_train[-2].numpy())
     # # plt.show()
@@ -216,9 +237,17 @@ class CIFARDataset(Dataset):
 
         self.indices = self.indices = torch.arange(len(self.X)) if use_indices else None
 
-        cifar_image_augments = AutoAugment(policy = transforms.AutoAugmentPolicy.CIFAR10)
         if dataset_type == 'train':
-            self.augmentations = transforms.Compose([cifar_image_augments, 
+            # self.augmentations = transforms.Compose([
+            #                                         v2.RandomResizedCrop(size=32, scale=(0.8, 1.0)),  # Works on tensors
+            #                                         v2.RandomHorizontalFlip(p=0.5),
+            #                                         v2.RandAugment(num_ops=2, magnitude=9),
+            #                                         v2.RandomErasing(p=0.25, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
+            #                                         transforms.Normalize(train_channel_means, train_channel_std)
+            #                                         ])
+            cifar_image_augments = v2.AutoAugment(policy = transforms.AutoAugmentPolicy.CIFAR10)
+            self.augmentations = transforms.Compose([
+                                                     cifar_image_augments, 
                                                      transforms.Normalize(train_channel_means, train_channel_std)])
         else:
             self.augmentations = transforms.Compose([transforms.Normalize(train_channel_means, train_channel_std)])
@@ -228,10 +257,11 @@ class CIFARDataset(Dataset):
         x = self.augmentations(x)
         # pdb.set_trace()
         ### Dimension mapping: [C x H x W] --> [n_patches x patch_h x patch_w x C]
-        x = x.reshape(self.n_h, self.patch_size[0], self.n_w, self.patch_size[1], self.n_channels)
-        x = x.permute(0, 2, 1, 3, 4).reshape(self.n_patches, self.patch_size[0], self.patch_size[1], self.n_channels)
-        ### map to [n_patches x n_channels * patch_h * patch_w
-        x = x.reshape(self.n_patches, -1)
+        # NOTE: Handled internally in transformers!
+        # x = x.reshape(self.n_h, self.patch_size[0], self.n_w, self.patch_size[1], self.n_channels)
+        # x = x.permute(0, 2, 1, 3, 4).reshape(self.n_patches, self.patch_size[0], self.patch_size[1], self.n_channels)
+        # ### map to [n_patches x n_channels * patch_h * patch_w
+        # x = x.reshape(self.n_patches, -1)
     
         if self.use_indices:
             return x, self.y[index], self.indices[index]

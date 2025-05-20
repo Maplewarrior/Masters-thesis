@@ -10,18 +10,25 @@ class AdaptiveSSD(SSD):
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha=None, _lambda=None, device=device)
     
-        
     
     def calculate_FIM_ratio(self, FIM_full, FIM_forget):
         FIM_ratio_dist = []
         for key in self.model.state_dict().keys():
-            ratio = FIM_full[key] / FIM_forget[key] #torch.nan_to_num(FIM_full[key] / FIM_forget[key], 0.0)
+            """
+            NOTE: 
+            - In their paper they use the formula: FIM_full / FIM_forget
+            - In their code, they use the formula: FIM_forget / FIM_full
+            The latter makes more sense, so we evaluate against that.
+            """
+            # ratio = FIM_full[key] / FIM_forget[key] #torch.nan_to_num(FIM_full[key] / FIM_forget[key], 0.0)
+            ratio = FIM_forget[key] / FIM_full[key]
             FIM_ratio = ratio[~torch.isnan(ratio) & ~torch.isinf(ratio)]
             FIM_ratio_dist.append(FIM_ratio)
             
         return torch.cat(FIM_ratio_dist)
 
     def calculate_alpha(self, FIM_full, FIM_forget, p):
+        # 
         FIM_ratio_dist = self.calculate_FIM_ratio(FIM_full, FIM_forget)
         alpha = FIM_ratio_dist.quantile(p/100)
         return alpha

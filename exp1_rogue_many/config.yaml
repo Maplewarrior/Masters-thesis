@@ -27,6 +27,9 @@ trainer:
   n_epochs: 30
   disable_tqdm: False
   do_early_stopping: True
+  weight_decay: 0.0 # MNIST: 0.0
+  optimizer_name: Adam
+  lr_scheduler: 
 
 sisa:
   n_shards: 3

@@ -55,11 +55,13 @@ class TeacherAscender:
     def schedule_reg_term_calculation(self):
         pass
 
-    def calculate_ascend_term(self, model_out, y):
-        log_probs = (model_out['probabilities'] + 1e-8).log()
-        entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
+    def calculate_fit_term(self, model_out, y):
         model_loss = self.model.loss(model_out, y)
-        return -(0.5 * entropy + 0.5 * model_loss)
+        return model_loss
+        # log_probs = (model_out['probabilities'] + 1e-8).log()
+        # entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
+        # model_loss = self.model.loss(model_out, y)
+        # return -(0.5 * entropy + 0.5 * model_loss)
         # return -model_loss
         # return -entropy
 
@@ -78,15 +80,17 @@ class TeacherAscender:
         FIM_original = self.calculate_FIM(retain_loader)
         optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
         for _ in range(self.n_epochs):
-            for batch in forget_loader:
+            # for batch in forget_loader:
+            for batch in retain_loader:
                 optimizer.zero_grad()
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
                 model_out = self.model(x)
         
                 reg_term = self.calculate_reg_term(FIM_original, original_sd)
-                ascend_term = self.calculate_ascend_term(model_out, y)
-                loss = ascend_term + self._lambda / 2 * reg_term
+                fit_term = self.calculate_fit_term(model_out, y)
+                loss = fit_term - self._lambda / 2 * reg_term # minimize CE, maximize reg term
+                # loss = -fit_term + self._lambda / 2 * reg_term # # maximize CE, minimize reg term
                 loss.backward()
                 optimizer.step()
                 

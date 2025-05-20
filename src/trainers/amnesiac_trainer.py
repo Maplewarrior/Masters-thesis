@@ -28,6 +28,7 @@ class AmnesiacTrainer(BaseTrainer):
         self.model = model
         # Initialize optimizer
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        
         super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints=False, checkpoint_dir=None, n_epochs=n_epochs, device=device)
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader

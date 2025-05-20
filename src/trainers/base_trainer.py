@@ -13,6 +13,7 @@ class BaseTrainer:
                  logger,
                  disable_tqdm: bool,
                  do_early_stopping: bool,
+                 lr_scheduler = None,
                  save_checkpoints: bool = False,
                  checkpoint_dir: str = None,
                  n_epochs: int = 20,
@@ -24,6 +25,7 @@ class BaseTrainer:
         self.logger = logger
         self.disable_tqdm = disable_tqdm
         self.do_early_stopping = do_early_stopping
+        self.lr_scheduler = lr_scheduler
         self.n_epochs = n_epochs
         self.device = device
         self.save_checkpoints = save_checkpoints
@@ -71,6 +73,9 @@ class BaseTrainer:
             for epoch in epoch_pbar:
                 # train one epoch
                 train_epoch_metrics = self.train_one_epoch()
+                if self.lr_scheduler is not None:
+                    self.lr_scheduler.step()
+                
                 # run inference on validation set
                 val_metrics = self.eval()
                 
@@ -78,7 +83,6 @@ class BaseTrainer:
                 train_metrics = self.update_train_metrics(train_metrics, train_epoch_metrics, epoch_type='train')
                 train_metrics = self.update_train_metrics(train_metrics, val_metrics, epoch_type='val')
                 train_metrics['epoch'].append(int(epoch + 1))
-
                 train_dataset_name = self.train_dataloader.dataset.name
                 validation_dataset_name = self.val_dataloader.dataset.name
 
@@ -96,7 +100,7 @@ class BaseTrainer:
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
                         
-                if self.save_checkpoints and epoch > 10 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
+                if self.save_checkpoints and epoch > 2 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
                     self.save_state_dict(self.checkpoint_dir, 
                                          model_name=self.checkpoint_dir.split('/')[-1],
                                          val_acc=train_metrics['val/accuracy'][-1],
