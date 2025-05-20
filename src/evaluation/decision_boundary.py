@@ -44,6 +44,25 @@ class DecisionBoundaryCreator:
 
     # ... existing code ...
 
+    def plot_retain_data(self, X, y, classes, colors):
+        for class_idx, color in zip(classes, colors):
+            # Use a slightly darker color for the edge
+            if isinstance(color, str):
+                # Convert hex to RGBA if it's a string
+                color = plt.matplotlib.colors.to_rgba(color)
+            
+            # Create darker version for edge
+            edge_color = np.array(color) * 0.7  # Multiply by 0.7 to make it darker
+            edge_color[3] = 1.0  # Keep alpha at 1.0 for the edge
+            
+            plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], 
+                    color=color, 
+                    s=70,  # Larger point size
+                    label=f"Class {class_idx}", 
+                    alpha=0.8,
+                    edgecolor=edge_color,
+                    linewidth=0.8)
+
     def plot_decision_boundary(self, x_interval: tuple[float, float], y_interval: tuple[float, float], 
                               alpha=0.4, custom_colors=None):
         """
@@ -94,23 +113,7 @@ class DecisionBoundaryCreator:
         plt.pcolormesh(xx.numpy(), yy.numpy(), decision_boundary.numpy(), 
                     alpha=alpha, cmap=custom_cmap, shading='auto')        
 
-        for class_idx, color in zip(classes, colors):
-            # Use a slightly darker color for the edge
-            if isinstance(color, str):
-                # Convert hex to RGBA if it's a string
-                color = plt.matplotlib.colors.to_rgba(color)
-            
-            # Create darker version for edge
-            edge_color = np.array(color) * 0.7  # Multiply by 0.7 to make it darker
-            edge_color[3] = 1.0  # Keep alpha at 1.0 for the edge
-            
-            plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], 
-                    color=color, 
-                    s=70,  # Larger point size
-                    label=f"Class {class_idx}", 
-                    alpha=0.8,
-                    edgecolor=edge_color,
-                    linewidth=0.8)
+        self.plot_retain_data(X, y, classes, colors)
         
         plt.xlabel('Feature 1', fontsize=12)
         plt.ylabel('Feature 2', fontsize=12)

@@ -30,7 +30,7 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
+def decision_boundary_plot_old(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
     dataset_number = dataset_name.split("_")[1]
     
     # Set common plot styling
@@ -192,6 +192,190 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
     # Further compress PDFs with Ghostscript if enabled
     if compress_pdfs:
+        try:
+            from src.utils.pdf_compression import compress_pdf_with_ghostscript
+            
+            print("Further compressing PDFs with Ghostscript...")
+            for pdf_file in pdf_files:
+                compress_pdf_with_ghostscript(pdf_file, quality='ebook')
+        except ImportError:
+            print("PDF compression module not found. PDFs saved with basic compression only.")
+        except Exception as e:
+            print(f"Error during PDF compression: {e}")
+            print("PDFs saved with basic compression only.")
+
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
+    dataset_number = dataset_name.split("_")[1]
+    
+    # Set common plot styling
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    # Get the classes of the rogue points
+    X, y = dataloader_train.dataset.X, dataloader_train.dataset.y
+    X_retain, y_retain = dataloader_retrain.dataset.X, dataloader_retrain.dataset.y
+    
+    # If y is onehot, convert it to class indices
+    if len(y.shape) == 2 and y.shape[1] > 1:
+        y = torch.argmax(y, dim=1)
+        y_retain = torch.argmax(y_retain, dim=1)
+    
+    # Professional color palette
+    professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
+    
+    # Find the classes of the rogue points
+    rogue_classes = []
+    rogue_colors = []
+    for i in range(X_forget.shape[0]):
+        distances = np.sum((X.numpy() - X_forget[i].numpy())**2, axis=1)
+        rogue_class = y[np.argmin(distances)].item()
+        rogue_classes.append(rogue_class)
+        rogue_colors.append(professional_colors[rogue_class % len(professional_colors)])
+    
+    # List to store PDF files for later compression
+    pdf_files = []
+    
+    # Create creators for both models
+    unlearned_creator = DecisionBoundaryCreator(model, dataloader_retrain)
+    original_creator = DecisionBoundaryCreator(original_model, dataloader_train)
+    
+    # Get the decision boundaries but don't plot them yet
+    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    
+    # Create a single figure
+    plt.figure(figsize=(8, 7), dpi=120)
+    
+    # Get number of unique classes
+    classes = np.unique(y)
+    num_classes = len(classes)
+    
+    # Professional color palette for classes
+    colors = [professional_colors[i % len(professional_colors)] for i in range(len(classes))]
+    colors = [plt.matplotlib.colors.to_rgba(color) for color in colors]
+    custom_cmap = plt.matplotlib.colors.ListedColormap(colors)
+    
+    # Plot the original decision boundary with higher opacity
+    plt.pcolormesh(xx_o.numpy(), yy_o.numpy(), decision_boundary_original.numpy(),
+                 alpha=0.4, cmap=custom_cmap, shading='auto')
+    
+    # Plot the unlearned decision boundary with lower opacity
+    plt.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
+                 alpha=0.4, cmap=custom_cmap, shading='auto')
+    
+    unlearned_creator.plot_retain_data(X_retain, y_retain, classes, colors)
+
+
+    for class_idx in range(num_classes):
+        for neighbor_class in range(class_idx + 1, num_classes):
+            # Original model boundaries - dashed lines
+            original_mask = np.logical_or(
+                decision_boundary_original.numpy() == class_idx,
+                decision_boundary_original.numpy() == neighbor_class
+            )
+            # --- Before Unlearning ---
+            contour_o = plt.contour(
+                xx_o.numpy(), yy_o.numpy(), original_mask,
+                levels=[0.5],
+                colors=['#606060'],  # Blue
+                linestyles=['solid'],
+                linewidths=[1.5],
+                alpha=0.4
+            )
+            
+            # Unlearned model boundaries - solid lines
+            unlearned_mask = np.logical_or(
+                decision_boundary_unlearned.numpy() == class_idx,
+                decision_boundary_unlearned.numpy() == neighbor_class
+            )
+            # --- After Unlearning ---
+            contour_u = plt.contour(
+                xx_u.numpy(), yy_u.numpy(), unlearned_mask,
+                levels=[0.5],
+                colors=['#6A0DAD'],  # Red
+                linestyles=['solid'],
+                linewidths=[2],
+                alpha=0.4
+            )
+            
+    # Get the axis to enhance
+    ax = plt.gca()
+    ax.set_facecolor('white')
+    
+    # Store the handles for legend
+    legend_handles = []
+    
+    # Add custom legend entries for the two boundaries
+    from matplotlib.lines import Line2D    
+    original_legend = Line2D([0], [0], color='#606060', lw=2.5, linestyle='solid', label='Before Unlearning')
+    unlearned_legend = Line2D([0], [0], color='#6A0DAD', lw=3, linestyle='solid', label='After Unlearning')
+    legend_handles.extend([original_legend, unlearned_legend])
+    
+    # Add rogue points with two different styles
+    for i, (x_point, rogue_class, rogue_color) in enumerate(zip(X_forget, rogue_classes, rogue_colors)):
+        rogue_point = plt.scatter(
+            x_point[0], x_point[1], 
+            color=rogue_color, 
+            marker="X", 
+            s=150,
+            linewidth=1.5,
+            edgecolor='white',
+            zorder=10,  # Higher zorder to ensure visibility
+            label=f"Forget observations (Class {rogue_class})" if i == 0 else "_nolegend_"
+        )
+        if i == 0:
+            legend_handles.append(rogue_point)
+    
+    # Improve title and labels
+    plt.title(f"Decision Boundary Before and After Unlearning ({cfg.unlearn.method})", 
+              fontsize=16, fontweight='bold')
+    plt.xlabel('Feature 1', fontsize=14)
+    plt.ylabel('Feature 2', fontsize=14)
+    
+    # Add legend with box and all custom entries
+    legend = plt.legend(
+        handles=legend_handles,
+        frameon=True,
+        framealpha=0.95,
+        facecolor='white',
+        edgecolor='lightgray',
+        loc='best',
+        fontsize=12
+    )
+    
+    # Improve ticks
+    ax.tick_params(direction='out', length=6, width=1)
+    
+    # Add a subtle border
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color('lightgray')
+    
+    # Add grid with light alpha
+    plt.grid(True, alpha=0.3)
+    
+    # Ensure tight layout
+    plt.tight_layout()
+    
+    # Save with high DPI as PNG
+    superimposed_filename = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.png"
+    plt.savefig(superimposed_filename, dpi=300, bbox_inches='tight')
+    
+    # Save as PDF if enabled
+    if make_pdfs:
+        pdf_file = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.pdf"
+        
+        plt.savefig(pdf_file, 
+                   bbox_inches='tight', 
+                   format='pdf',
+                   dpi=150)  # Reduced DPI for PDF
+        
+        # Add to list for later compression if enabled
+        pdf_files.append(pdf_file)
+    
+    plt.close()
+    
+    # Further compress PDFs with Ghostscript if enabled
+    if compress_pdfs and pdf_files:
         try:
             from src.utils.pdf_compression import compress_pdf_with_ghostscript
             
@@ -415,6 +599,9 @@ def main(cfg):
             from src.models.amnesiac_model import AmnesiacModel
             from src.trainers.amnesiac_trainer import AmnesiacTrainer
 
+            # Wrap the unlearned model in an AmnesiacModel
+            unlearned_model = AmnesiacModel(unlearned_model)
+            
             # Train the unlearned model
             AmnesiacTrainer(model=unlearned_model, 
                             train_dataloader=dataloader_train, 

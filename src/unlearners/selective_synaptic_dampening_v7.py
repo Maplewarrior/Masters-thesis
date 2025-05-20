@@ -160,8 +160,8 @@ class SelectiveSynapticDampening(SSD):
 
             # Compute loss and entropy
             loss = self.model.loss(out, y, reduction='none')  # shape: (batch_size,)
-            entropy = -(out['probabilities'] * torch.log(out['probabilities'] + 1e-8)).sum(dim=-1)  # shape: (batch_size,)
-            total_loss = loss + entropy  # shape: (batch_size,)
+            # entropy = -(out['probabilities'] * torch.log(out['probabilities'] + 1e-8)).sum(dim=-1)  # shape: (batch_size,)
+            total_loss = loss #+ entropy  # shape: (batch_size,)
 
             # Get class indices from one-hot labels
             class_indices = y.argmax(dim=-1)  # shape: (batch_size,)
@@ -310,10 +310,11 @@ class SelectiveSynapticDampening(SSD):
         generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
         
-        n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
-        if n_classes != n_forget_classes:
+        # n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
+        # if n_classes != n_forget_classes:
+        #     pass
             # forget_dataloader_old = copy.deepcopy(forget_dataloader)
-            forget_dataloader = updated_forget_loader
+            # forget_dataloader = updated_forget_loader
         
         # find optimal alpha and lambda values via bayesian optimization
         opt_result = self.search_hyperparameters_TPE(FIM_full, FIM_forget, forget_dataloader, generalization_losses, sd_original, n_classes)

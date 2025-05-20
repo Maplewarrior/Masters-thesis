@@ -75,7 +75,7 @@ if __name__ == "__main__":
     sizes = np.array([20, 20, 20])
     validation_sizes = np.array([10, 10, 10])
 
-    data_folder = 'exp2/data'
+    data_folder = 'exp2_rogue_one/data'
     data_plots_folder = os.path.join(data_folder, 'plots')
     os.makedirs(data_plots_folder, exist_ok=True)
 
