@@ -64,23 +64,28 @@ class SelectiveSynapticDampening(SSD):
         dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
         return dataloader
     
-    def update_parameters(self, FIM_full, FIM_forget, alpha, _lambda):
-        
+    def update_parameters(self, FIM_full, FIM_forget, alpha, _lambda, return_dampening: bool = False):
+        all_dampenings = {}
         # go through the parameters
         with torch.no_grad():
             for name, param in self.model.named_parameters():
                 if int(name.split('.')[1]) <= 2: # only dampen on the final layer
+                    all_dampenings[name] = torch.ones_like(param)
                     continue
                 updated_parameter = param.data.clone()
                 dampen_mask = FIM_forget[name] > alpha * FIM_full[name] # find which paramters to dampen
-                # print(f'Original parameter: {param}')
-                # print(f'Dampen mask: {dampen_mask}')
                 # calculate dampening factors and apply them
                 beta = torch.min((_lambda * FIM_full[name][dampen_mask] / FIM_forget[name][dampen_mask]), torch.tensor(1))
                 updated_parameter[dampen_mask] = beta * updated_parameter[dampen_mask]
                 # update parameter in the model
                 param.copy_(updated_parameter)
-                # print(f'Updated parameter: {param}')
+                if return_dampening:
+                    dampen_values = torch.ones_like(dampen_mask, dtype = beta.dtype)
+                    dampen_values[dampen_mask] = beta
+                    all_dampenings[name] = dampen_values
+                
+        if return_dampening:
+            return all_dampenings
         
     def search_hyperparams_exhaustive(self, 
                            alphas: list[float], 
@@ -197,7 +202,8 @@ class SelectiveSynapticDampening(SSD):
                  forget_dataloader,
                  validation_dataloader,
                  FIM_full: dict = None, 
-                 FIM_forget: dict = None
+                 FIM_forget: dict = None,
+                 return_dampening: bool = False
                  ):
         
         # calculate FIM matrices if necessary
@@ -227,9 +233,9 @@ class SelectiveSynapticDampening(SSD):
         # reset state dict
         self.model.load_state_dict(sd_original)
         # update parameters
-        self.update_parameters(FIM_full, FIM_forget, alpha_opt, lambda_opt)
+        all_dampenings = self.update_parameters(FIM_full, FIM_forget, alpha_opt, lambda_opt, return_dampening)
         
-        return best_params
+        return best_params, all_dampenings
     
         # alpha_opt = bo_result['max']['params']['alpha']
         # lambda_opt = bo_result['max']['params']['_lambda']

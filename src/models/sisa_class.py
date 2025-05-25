@@ -120,6 +120,7 @@ class SISA(BaseModel):
         We shard the data into n_shards shards.
         We create a Shard object for each shard and add it to the shards_dict.
         """
+        np.random.seed(42)
         # Shuffle the data
         indices = np.arange(len(self.train_dataset.X))
         np.random.shuffle(indices)
@@ -320,7 +321,7 @@ class SISA(BaseModel):
         
         agg_model_probs = all_model_probs.mean(dim=0) # average probabilities across models
         preds = agg_model_probs.argmax(dim=-1)
-
+        
         # preds, weighted_probs = self.predict(x)
         
         # import pdb; pdb.set_trace()

@@ -235,7 +235,8 @@ class SelectiveSynapticDampening(SSD):
         diff = ((forget_losses - gen_losses)**2).mean()
         return -diff
 
-    def update_gpu_parameters(self, FIM_full, FIM_forget, alphas, lambdas):
+    def update_gpu_parameters(self, FIM_full, FIM_forget, alphas, lambdas, return_dampening: bool = False):
+        all_dampenings = {}
         """GPU-optimized version of update_parameters that avoids .item() calls"""
         with torch.no_grad():
             for i, (name, param) in enumerate(self.model.named_parameters()):
@@ -256,8 +257,16 @@ class SelectiveSynapticDampening(SSD):
 
                 # update parameter in the model
                 param.copy_(updated_parameter)
+                if return_dampening:
+                    dampen_values = torch.ones_like(dampen_mask, dtype = torch.float)
+                    if dampen_mask.any():
+                        dampen_values[dampen_mask] = beta
+                    all_dampenings[name] = dampen_values
+        
+        if return_dampening:
+            return all_dampenings
     
-    def update_gpu_parameters_smooth(self, FIM_full, FIM_forget, alphas, lambdas):
+    def update_gpu_parameters_smooth(self, FIM_full, FIM_forget, alphas, lambdas, return_dampening: bool = False):
         
         """
         A more smooth variant of the SSD update. Trades off the selectiveness to get a more smooth objective function surface.
@@ -270,6 +279,7 @@ class SelectiveSynapticDampening(SSD):
         - If lambda is very high, the update becomes more selective.
         - If the ratio FIM(D_forget) / FIM(D_train) is very high then we remove those parameters entriely.
         """
+        all_dampenings = {}
         with torch.no_grad():
             for i, (name, param) in enumerate(self.model.named_parameters()):
                 param_idx = self.layer_idx_to_parameter_idx(i)
@@ -291,6 +301,11 @@ class SelectiveSynapticDampening(SSD):
 
                 # update parameter in the model
                 param.copy_(updated_parameter)
+                if return_dampening:
+                    all_dampenings[name] = dampen_factor
+        
+        if return_dampening:
+            return all_dampenings
 
     def search_hyperparameters_bo(self,
                                 FIM_full,
@@ -311,7 +326,7 @@ class SelectiveSynapticDampening(SSD):
         # Define raw bounds for the problem
         bounds = torch.tensor([
             [0.1] * self.P + [0.1] * self.P,  # Lower bounds
-            [100.0] * self.P + [5.0] * self.P  # Upper bounds
+            [1000.0] * self.P + [100.0] * self.P  # Upper bounds
         ], dtype=torch.double, device=self.device)
 
         # Prepare objective function wrapper with GPU optimization
@@ -366,8 +381,8 @@ class SelectiveSynapticDampening(SSD):
         n_iterations = self.n_bo_iter  # You can adjust this based on your needs
 
         # For better performance on GPU
-        num_restarts = 40  # Increased for better exploration
-        raw_samples = 512  # Increased for better initial points in acquisition optimization
+        num_restarts = 20  # Increased for better exploration
+        raw_samples = 256  # Increased for better initial points in acquisition optimization
 
         # Keep track of all evaluated points
         all_x = train_x.clone()
@@ -389,12 +404,12 @@ class SelectiveSynapticDampening(SSD):
             iter_start = time.time()
 
             # Define acquisition function - LogEI often works better than regular EI
-            EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
-            # UCB = UpperConfidenceBound(model=gp, beta=10.)
+            # EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
+            UCB = UpperConfidenceBound(model=gp, beta=2.5)
 
             # Use higher num_restarts for better convergence and better GPU utilization
             candidate, acq_value = optimize_acqf(
-                acq_function=EI,
+                acq_function=UCB,#EI,
                 bounds=bounds,
                 q=1,
                 num_restarts=num_restarts,
@@ -489,7 +504,8 @@ class SelectiveSynapticDampening(SSD):
                  forget_dataloader,
                  validation_dataloader,
                  FIM_full: dict = None,
-                 FIM_forget: dict = None
+                 FIM_forget: dict = None,
+                 return_dampening: bool = False
                  ):
 
         start = time.time()
@@ -531,9 +547,9 @@ class SelectiveSynapticDampening(SSD):
         
         # update with optimal parameters
         if self.smooth_dampening:
-            self.update_gpu_parameters_smooth(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas})
+            all_dampenings = self.update_gpu_parameters_smooth(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas}, return_dampening=return_dampening)
         else:
-            self.update_gpu_parameters(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas})
+            all_dampenings = self.update_gpu_parameters(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas}, return_dampening=return_dampening)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
         # return best_params
-        return bo_result
+        return bo_result, all_dampenings

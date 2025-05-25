@@ -5,10 +5,10 @@ from tqdm import tqdm
 import pdb
 
 class BaseTrainer:
-    def __init__(self, 
+    def __init__(self,
                  model: nn.Module,
-                 optimizer, 
-                 train_dataloader, 
+                 optimizer,
+                 train_dataloader,
                  val_dataloader,
                  logger,
                  disable_tqdm: bool,
@@ -30,10 +30,10 @@ class BaseTrainer:
         self.device = device
         self.save_checkpoints = save_checkpoints
         self.checkpoint_dir = checkpoint_dir
-    
+
     def init_epoch_metrics(self):
         return {'accuracy': 0, 'loss': 0}
-    
+
     def init_train_metrics(self):
         return {'train/accuracy': [], 'train/loss': [],
                 'val/accuracy': [], 'val/loss': [], 'epoch': []}
@@ -51,11 +51,11 @@ class BaseTrainer:
             # Update/store metrics
             epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y, N_steps)
             epoch_losses.append(loss.item())
-        
+
         epoch_metrics['loss'] = sum(epoch_losses) / N_steps
         # epoch_metrics['accuracy'] = epoch_metrics['accuracy']
         return epoch_metrics
-    
+
     def update_epoch_metrics(self, metrics: dict, out: dict, y, N: int):
         metrics['accuracy'] += (out['probabilities'].argmax(dim=1) == y.argmax(dim=1)).sum().item() / (y.size(0) * N)
         return metrics
@@ -75,10 +75,10 @@ class BaseTrainer:
                 train_epoch_metrics = self.train_one_epoch()
                 if self.lr_scheduler is not None:
                     self.lr_scheduler.step()
-                
+
                 # run inference on validation set
                 val_metrics = self.eval()
-                
+
                 # update train/val dynamics
                 train_metrics = self.update_train_metrics(train_metrics, train_epoch_metrics, epoch_type='train')
                 train_metrics = self.update_train_metrics(train_metrics, val_metrics, epoch_type='val')
@@ -99,18 +99,18 @@ class BaseTrainer:
                 # Update progress bar
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
-                        
+                # import pdb; pdb.set_trace()
                 if self.save_checkpoints and epoch > 2 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
-                    self.save_state_dict(self.checkpoint_dir, 
+                    self.save_state_dict(self.checkpoint_dir,
                                          model_name=self.checkpoint_dir.split('/')[-1],
                                          val_acc=train_metrics['val/accuracy'][-1],
                                          epoch=epoch
                                          )
-                
+
                 if self.do_early_stopping and epoch > 4 and not train_metrics['val/loss'][-1] <= np.mean(train_metrics['val/loss'][:-4:-1]):
                     print("\Ending due to early stopping")
                     return train_metrics
-                
+
         return train_metrics
 
     def step(self, x: torch.tensor, y: torch.tensor) -> tuple[dict, torch.tensor]:
@@ -121,35 +121,35 @@ class BaseTrainer:
         loss.backward()
         self.optimizer.step()
         return out, loss
-    
+
     def eval_step(self, x):
         return self.model(x)
-    
+
     def eval(self):
         self.model.eval()
         losses = []
         N_steps = len(self.val_dataloader)
         epoch_metrics = self.init_epoch_metrics()
-        
+
         with torch.no_grad():
             for batch in self.val_dataloader:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
-                
+
                 # forward pass and calculate loss
                 # out = self.model(x)
                 out = self.eval_step(x)
                 loss = self.model.loss(out, y)
-                
+
                 # update metrics
                 epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y, N_steps)
                 losses.append(loss.item())
-        
+
         epoch_metrics['loss'] = sum(losses) / len(losses)
         return epoch_metrics
-    
+
     def __call__(self):
         return self.train()
-    
+
     def save_state_dict(self, save_dir: str, model_name: str, val_acc: float, epoch: int):
         torch.save(self.model.state_dict(), f'{save_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt')

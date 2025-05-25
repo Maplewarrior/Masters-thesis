@@ -397,7 +397,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
 
-
 def create_simple_model_visualization(model, save_path, input_shape):
     """Create a simple flowchart visualization of the model architecture.
     
@@ -448,7 +447,6 @@ def create_simple_model_visualization(model, save_path, input_shape):
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
-    results_dir = os.path.join(os.path.dirname(__file__), "results")
     os.makedirs(results_dir, exist_ok=True)
 
     # ============= Load data and prepare data =============
@@ -511,8 +509,17 @@ def main(cfg):
 
         original_model = copy.deepcopy(model)
 
-        # TODO Train a model on the retrain dataset, X_retrain, y_retrain
         print("Epochs: ", cfg.trainer.n_epochs)
+        trainer = NeuralNetworkTrainer(model=original_model, 
+                                       train_dataloader=dataloader_train, 
+                                       val_dataloader=dataloader_val, 
+                                       logger=logger,
+                                       device=cfg.model.device,
+                                       learning_rate=cfg.trainer.lr,
+                                       n_epochs=cfg.trainer.n_epochs, 
+                                       disable_tqdm=cfg.trainer.disable_tqdm, 
+                                       do_early_stopping=cfg.trainer.do_early_stopping)()
+        
         # We train on retrain as it is the Retrain unlearning method
         trainer = NeuralNetworkTrainer(model=model, 
                                        train_dataloader=dataloader_retain, 
@@ -524,32 +531,22 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        trainer = NeuralNetworkTrainer(model=original_model, 
-                                       train_dataloader=dataloader_train, 
-                                       val_dataloader=dataloader_val, 
-                                       logger=logger, 
-                                       device=cfg.model.device, 
-                                       learning_rate=cfg.trainer.lr, 
-                                       n_epochs=cfg.trainer.n_epochs, 
-                                       disable_tqdm=cfg.trainer.disable_tqdm, 
-                                       do_early_stopping=cfg.trainer.do_early_stopping)()
-
-
         decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
 
     else:
-        unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
-        NeuralNetworkTrainer(model=unlearned_model, 
-                             train_dataloader=dataloader_train, 
-                             val_dataloader=dataloader_val, 
-                             logger=logger, 
-                             device=cfg.model.device, 
-                             learning_rate=cfg.trainer.lr, 
-                             n_epochs=cfg.trainer.n_epochs, 
-                             disable_tqdm=cfg.trainer.disable_tqdm, 
-                             do_early_stopping=cfg.trainer.do_early_stopping)()
+        if cfg.unlearn.method not in ['amnesiac', 'sisa']:
+            unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
+            NeuralNetworkTrainer(model=unlearned_model, 
+                                 train_dataloader=dataloader_train, 
+                                 val_dataloader=dataloader_val, 
+                                 logger=logger, 
+                                 device=cfg.model.device, 
+                                 learning_rate=cfg.trainer.lr, 
+                                 n_epochs=cfg.trainer.n_epochs, 
+                                 disable_tqdm=cfg.trainer.disable_tqdm, 
+                                 do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        original_model = copy.deepcopy(unlearned_model)
+            original_model = copy.deepcopy(unlearned_model)
         
         if cfg.unlearn.method == "scrubr":
 
@@ -590,7 +587,7 @@ def main(cfg):
             # instantiate & train SAE
             sae = SAE(d=8, m=32, _lambda=1.).to(DEVICE)
             unlearned_model = NeuralNetWithSAE(neural_net, sae, layer_num=6)
-            sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, DEVICE)
+            sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, logger=None, device=DEVICE)            
             sae_trainer.train()
 
             # unlearn with feature dampening
@@ -603,8 +600,8 @@ def main(cfg):
             from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
             from src.models.amnesiac_model import AmnesiacModel
             from src.trainers.amnesiac_trainer import AmnesiacTrainer
-
-
+            
+            unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
             # Wrap the unlearned model in an AmnesiacModel
             unlearned_model = AmnesiacModel(unlearned_model)
 
@@ -630,10 +627,11 @@ def main(cfg):
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
 
         elif cfg.unlearn.method == "sisa":
+            import shutil
             from src.unlearners.sisa_unlearner import SISAUnlearner
             from src.models.sisa_class import SISA
             from src.trainers.sisa_trainer import SISATrainer
-        
+            
             weights_dir = os.path.join(os.path.dirname(__file__), "weights")
             sisa_model_fn = NeuralNet
             sisa_model_parameters = {'M': X.shape[1],
@@ -643,16 +641,17 @@ def main(cfg):
 
             sisa = SISA(dataloader_train,
                         dataloader_val,
+                        n_shards=cfg.sisa.n_shards, 
+                        n_slices=cfg.sisa.n_slices,
                         model_fn=sisa_model_fn,
                         model_params=sisa_model_parameters,
                         optimizer_parms=sisa_optimzier_parameters,
                         n_classes=cfg.data.n_classes, 
-                        n_features=X.shape[1], 
-                        n_epochs=cfg.trainer.n_epochs, 
-                        n_shards=cfg.sisa.n_shards, 
-                        n_slices=cfg.sisa.n_slices,
+                        n_epochs=cfg.trainer.n_epochs,
+                        batch_size=cfg.data.batch_size,
                         save_dir=weights_dir+'/sisa',
-                        device=DEVICE)
+                        device=DEVICE,
+                        seed=cfg.model.seed) 
             
             SISATrainer(
                 model=None, 
@@ -665,7 +664,7 @@ def main(cfg):
                 n_epochs=cfg.trainer.n_epochs, 
                 disable_tqdm=cfg.trainer.disable_tqdm, 
                 do_early_stopping=cfg.trainer.do_early_stopping)()
-            
+        
             # original SISA model
             sisa_pre_unlearning = sisa.copy()
 
@@ -673,7 +672,11 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=forget_idxs)
 
-            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
+                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=True)#   cfg.get('make_pdfs',True))
+                                
+            # remove saved SISA weights
+            shutil.rmtree(f'{weights_dir}/sisa/{sisa.experiment_id}')
 
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")

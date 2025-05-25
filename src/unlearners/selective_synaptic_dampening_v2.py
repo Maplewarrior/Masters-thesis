@@ -2,12 +2,12 @@ import torch
 import torch.optim as optim
 from src.unlearners.base_unlearner import BaseUnlearner
 import pdb
+from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
 
 """
 This version of SSD only applies dampening in the final layer of the model
 """
 
-from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
 
 class SelectiveSynapticDampening(SSD):
     def __init__(self, 
@@ -22,9 +22,10 @@ class SelectiveSynapticDampening(SSD):
                  full_dataloader,
                  forget_dataloader,
                  FIM_full: dict = None, 
-                 FIM_forget: dict = None
+                 FIM_forget: dict = None,
+                 return_dampening: bool = False
                  ):
-        
+        all_dampenings = {}
         # calculate FIM matrices if necessary
         if FIM_forget is None:
             FIM_forget = self.calculate_FIM(forget_dataloader)
@@ -37,6 +38,7 @@ class SelectiveSynapticDampening(SSD):
             for name, param in self.model.named_parameters():
                 # skip the first layers :D
                 if int(name.split('.')[1]) <= 2:
+                    all_dampenings[name] = torch.ones_like(param)
                     continue
                 updated_parameter = param.data.clone()
                 dampen_mask = FIM_forget[name] > self.alpha * FIM_full[name] # find which paramters to dampen
@@ -48,5 +50,13 @@ class SelectiveSynapticDampening(SSD):
                
                 # update parameter in the model
                 param.copy_(updated_parameter)
-                # print(f'Updated parameter: {param}')
+
+                if return_dampening:
+                    dampen_values = torch.ones_like(dampen_mask, dtype = beta.dtype)
+                    dampen_values[dampen_mask] = beta
+                    all_dampenings[name] = dampen_values
+        
+        if return_dampening:
+            return all_dampenings
+
         

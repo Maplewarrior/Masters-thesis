@@ -17,25 +17,6 @@ Evaluation
 When can we compare 
 """
 
-import torch
-import torch.optim as optim
-from src.unlearners.base_unlearner import BaseUnlearner
-import pdb
-
-"""
-How will the input space be partitioned based on the neural network.
-mad max: affine spline insights into deep learning.
-
-Use for func equivalence: If two NN's create the same partitioning in input space, then they are roughly the same
-
-More convex in deeper layers...
-Maybe dampening in last layer the model is 
-
-Evaluation
------------
-When can we compare 
-"""
-
 class SelectiveSynapticDampening(BaseUnlearner):
     def __init__(self, 
                  model,
@@ -82,16 +63,17 @@ class SelectiveSynapticDampening(BaseUnlearner):
                  full_dataloader,
                  forget_dataloader,
                  FIM_full: dict = None, 
-                 FIM_forget: dict = None
+                 FIM_forget: dict = None,
+                 return_dampening: bool = False
                  ):
-        
+        all_dampenings = {}
         # calculate FIM matrices if necessary
         if FIM_forget is None:
             FIM_forget = self.calculate_FIM(forget_dataloader)
         
         if FIM_full is None:
             FIM_full = self.calculate_FIM(full_dataloader)
-                
+        
         # go through the parameters
         with torch.no_grad():
             for name, param in self.model.named_parameters():
@@ -104,5 +86,11 @@ class SelectiveSynapticDampening(BaseUnlearner):
                 updated_parameter[dampen_mask] = beta * updated_parameter[dampen_mask]
                 # update parameter in the model
                 param.copy_(updated_parameter)
-                # print(f'Updated parameter: {param}')
-    
+                if return_dampening:
+                    dampen_values = torch.ones_like(dampen_mask, dtype = beta.dtype)
+                    dampen_values[dampen_mask] = beta
+                    all_dampenings[name] = dampen_values
+                
+        if return_dampening:
+            return all_dampenings
+        

@@ -37,7 +37,8 @@ class AdaptiveSSD(SSD):
                  full_dataloader,
                  forget_dataloader,
                  FIM_full: dict = None, 
-                 FIM_forget: dict = None
+                 FIM_forget: dict = None,
+                 return_dampening: bool = False,
                  ):
         
         # calculate FIM matrices if necessary
@@ -51,6 +52,7 @@ class AdaptiveSSD(SSD):
         alpha = self.calculate_alpha(FIM_full, FIM_forget, p)
 
         # go through the parameters
+        all_dampenings = {}
         with torch.no_grad():
             for name, param in self.model.named_parameters():
                 updated_parameter = param.data.clone()
@@ -63,6 +65,10 @@ class AdaptiveSSD(SSD):
                 # update parameter in the model
                 param.copy_(updated_parameter)
                 # print(f'Updated parameter: {param}')
+                if return_dampening:
+                    dampen_values = torch.ones_like(dampen_mask, dtype = beta.dtype)
+                    dampen_values[dampen_mask] = beta
+                    all_dampenings[name] = dampen_values
         
-        return {'alpha': alpha, '_lambda': 1}
+        return {'alpha': alpha, '_lambda': 1}, all_dampenings
         

@@ -14,8 +14,21 @@ import torch.nn as nn
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
+from src.visualization.dampening_visualization import visualize_parameter_dampening
 
 results_dir = os.path.join(os.path.dirname(__file__), "results")
+
+"""
+python exp1_rogue_one/experiment_run.py 
+data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" 
+unlearn.method="amnesiac,ssd,retrain,scrubr,sae,sisa" 
+hydra/launcher=ray --multirun 
+
+python3 exp2_rogue_one/experiment_run.py 
+data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" 
+unlearn.method="retrain,ssd,ssd_v2,ssd_v3,ssd_v4,ssd_v6,ssd_v7,assd" 
+hydra/launcher=ray --multirun
+"""
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
@@ -60,7 +73,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     dataset_number = dataset_name.split("_")[1]
     title = f"{cfg.unlearn.method}"
     savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-    if 'ssd' in cfg.unlearn.method:
+    if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
         if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
             title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
             savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
@@ -70,6 +83,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
                 savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
             else:
                 savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+    else:
+        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+    
     superimposed_filename = savepath + '.png'
     
     dataset_number = dataset_name.split("_")[1]
@@ -300,6 +316,7 @@ def create_simple_model_visualization(model, save_path, input_shape):
     dot.render(save_path, format='png')
     return dot
 
+
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
@@ -401,75 +418,129 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-            hyperparams = {'alpha': 5.,
-                           '_lambda': 3.}
-            SelectiveSynapticDampening(unlearned_model,
+            # hyperparams = {'alpha': 5.,
+            #                '_lambda': 3.}
+            hyperparams = {'alpha': 1.,
+                           '_lambda': 1.}
+            dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
                                        device=DEVICE)(
                                                  full_dataloader=dataloader_train, 
-                                                 forget_dataloader=dataloader_forget)
+                                                 forget_dataloader=dataloader_forget,
+                                                 return_dampening=True)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_alpha={hyperparams["alpha"]}_lambda={hyperparams["_lambda"]}_dampening.png')
+            
         
         elif cfg.unlearn.method == "ssd_v2":
-            hyperparams = {'alpha': 5.,
-                           '_lambda': 3.}
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
-            SelectiveSynapticDampening(unlearned_model,
+            # hyperparams = {'alpha': 5.,
+            #                '_lambda': 3.}
+            hyperparams = {'alpha': 1.,
+                           '_lambda': 1.}
+            dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
                                        device=DEVICE)(full_dataloader=dataloader_train, 
-                                                      forget_dataloader=dataloader_forget)
+                                                      forget_dataloader=dataloader_forget,
+                                                      return_dampening=True)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_alpha={hyperparams["alpha"]}_lambda={hyperparams["_lambda"]}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v3":
             from src.unlearners.selective_synaptic_dampening_v3 import SelectiveSynapticDampening
             # from src.unlearners.selective_synaptic_dampening_v3_old import SelectiveSynapticDampening
-            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model, 
                                                      device=DEVICE)(full_dataloader=dataloader_train, 
                                                                     forget_dataloader=dataloader_forget,
-                                                                    validation_dataloader=dataloader_val)
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v4":
             from src.unlearners.selective_synaptic_dampening_v4 import SelectiveSynapticDampening
-            hyperparams = SelectiveSynapticDampening(unlearned_model, 
+            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model, 
                                                      device=DEVICE)(full_dataloader=dataloader_train, 
-                                                                forget_dataloader=dataloader_forget,
-                                                                validation_dataloader=dataloader_val)
+                                                                    forget_dataloader=dataloader_forget,
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v6":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
-            hyperparams = SelectiveSynapticDampening(unlearned_model,
+            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
                                                      P=2,
                                                      k=0.999,
                                                      smooth_dampening=False,
-                                                     n_bo_iter=25,
+                                                     n_bo_iter=100,
                                                      device=DEVICE)(full_dataloader=dataloader_train, 
                                                                     forget_dataloader=dataloader_forget,
-                                                                    validation_dataloader=dataloader_val)
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max'])
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
+        
+        elif cfg.unlearn.method == "ssd_v6_smooth":
+            from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
+                                                     P=2,
+                                                     k=0.999,
+                                                     smooth_dampening=True,
+                                                     n_bo_iter=100,
+                                                     device=DEVICE)(full_dataloader=dataloader_train, 
+                                                                    forget_dataloader=dataloader_forget,
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max'])
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v7":
             from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
-            hyperparams = SelectiveSynapticDampening(unlearned_model,
+            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
                                                      P=2,
                                                      k=0.999,
-                                                     n_trials=100,
+                                                     n_trials=500,
                                                      device=DEVICE)(full_dataloader=dataloader_train, 
                                                                     forget_dataloader=dataloader_forget,
-                                                                    validation_dataloader=dataloader_val)
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
+            
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max']['params'])
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
         
         elif cfg.unlearn.method == "assd":
             from src.unlearners.adaptive_ssd import AdaptiveSSD
-            hyperparams = AdaptiveSSD(unlearned_model, device=DEVICE)(dataloader_train, dataloader_forget)
+            hyperparams, dampenings = AdaptiveSSD(unlearned_model, device=DEVICE)(dataloader_train, dataloader_forget, return_dampening=True)
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            fig = visualize_parameter_dampening(dampenings)
+            dataset_number = dataset_name.split("_")[1]
+            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
 
         else:
             raise NotImplementedError(f"Unlearning method {cfg.unlearn.method} not implemented")

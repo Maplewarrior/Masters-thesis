@@ -51,20 +51,14 @@ class TeacherAscender:
         for name, param in self.model.named_parameters():
             reg_term += ((FIM_original[name] * (param - original_sd[name]))**2).sum()
         return reg_term
-    
-    def schedule_reg_term_calculation(self):
-        pass
 
     def calculate_fit_term(self, model_out, y):
-        model_loss = self.model.loss(model_out, y)
-        return model_loss
-        # log_probs = (model_out['probabilities'] + 1e-8).log()
-        # entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
         # model_loss = self.model.loss(model_out, y)
-        # return -(0.5 * entropy + 0.5 * model_loss)
-        # return -model_loss
-        # return -entropy
-
+        # return model_loss
+        log_probs = (model_out['probabilities'] + 1e-8).log()
+        entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
+        return entropy
+        
 
     def __call__(self, retain_loader, forget_loader):
         """
@@ -77,11 +71,26 @@ class TeacherAscender:
         """
         # calculate FIM for original model on retain set
         original_sd = copy.deepcopy(self.model.state_dict())
-        FIM_original = self.calculate_FIM(retain_loader)
         optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+
+        FIM_forget = self.calculate_FIM(forget_loader) # used for descend
+        FIM_original = self.calculate_FIM(retain_loader) # used for ascend
         for _ in range(self.n_epochs):
-            # for batch in forget_loader:
-            for batch in retain_loader:
+
+            #### Gradient descent  
+            # for batch in retain_loader:
+            #     optimizer.zero_grad()
+            #     x = batch[0].to(self.device)
+            #     y = batch[1].to(self.device)
+            #     model_out = self.model(x)
+            #     reg_term = self.calculate_reg_term(FIM_forget, original_sd)
+            #     fit_term = self.calculate_fit_term(model_out, y)
+            #     loss = fit_term - self._lambda / 2 * reg_term # minimize CE, maximize reg term
+            #     loss.backward()
+            #     optimizer.step()
+            
+            #### Gradient ascent
+            for batch in forget_loader:
                 optimizer.zero_grad()
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
@@ -89,7 +98,7 @@ class TeacherAscender:
         
                 reg_term = self.calculate_reg_term(FIM_original, original_sd)
                 fit_term = self.calculate_fit_term(model_out, y)
-                loss = fit_term - self._lambda / 2 * reg_term # minimize CE, maximize reg term
+                loss = -fit_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
                 # loss = -fit_term + self._lambda / 2 * reg_term # # maximize CE, minimize reg term
                 loss.backward()
                 optimizer.step()

@@ -27,7 +27,8 @@ class SISATrainer(BaseTrainer):
             val_dataloader=val_dataloader,
             logger=logger,
             disable_tqdm=disable_tqdm,
-            do_early_stopping=do_early_stopping
+            do_early_stopping=do_early_stopping,
+            device=device
         )
     
     def train_client_models(self):

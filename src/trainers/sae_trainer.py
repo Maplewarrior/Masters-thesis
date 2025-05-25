@@ -24,7 +24,11 @@ class SAETrainer(BaseTrainer):
         This class is compatible with the SAEUnlearner class.
         """
         self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        super().__init__(model, self.optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints, checkpoint_dir, n_epochs, device)
+        self.lr_scheduler = None
+        super().__init__(model, self.optimizer, train_dataloader, 
+                         val_dataloader, logger, disable_tqdm, 
+                         do_early_stopping, self.lr_scheduler, save_checkpoints, 
+                         checkpoint_dir, n_epochs, device)
 
     
     def init_epoch_metrics(self):
