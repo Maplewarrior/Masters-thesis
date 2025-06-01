@@ -159,33 +159,26 @@ def main():
     plt.rcParams.update({
         'font.family': 'serif',
         'font.serif': ['Computer Modern Roman'],
-        'font.size': 14,  # Increased font size
-        'text.usetex': True,  # Enable LaTeX rendering
-        'text.latex.preamble': r'\usepackage{amsmath}',  # Add AMS math package for better math support
-        'mathtext.fontset': 'cm',  # Use Computer Modern math font
-        'figure.figsize': (12, 10),  # Even larger figure size
-        'figure.dpi': 300,  # High resolution for clear rendering
-        'savefig.dpi': 600,  # Even higher resolution for the saved figure
-        'savefig.format': 'pdf',  # Default save format as PDF
-        'savefig.bbox': 'tight',  # Tight bounding box
-        'savefig.pad_inches': 0.1  # Small padding
+        'font.size': 14,
+        'text.usetex': True,
+        'text.latex.preamble': r'\usepackage{amsmath}',
+        'mathtext.fontset': 'cm',
+        'figure.figsize': (15, 5),  # Modified for single row
+        'figure.dpi': 300,
+        'savefig.dpi': 600,
+        'savefig.format': 'pdf',
+        'savefig.bbox': 'tight',
+        'savefig.pad_inches': 0.1
     })
     
-    n_samples = 10  # Number of samples per dataset
-    n_datasets = 10  # Number of datasets to generate
+    n_samples = 30
+    n_datasets = 10
     
-    # Create figure with subplots - larger size
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    axes = axes.flatten()
+    # Create figure with subplots - single row of three
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    # Add a main title to the figure with further reduced top margin
-    fig.suptitle("Sampling Variation of Score Functions", fontsize=18, fontweight='bold', y=0.99)
-    
-    # # Add a descriptive subtitle
-    # plt.figtext(0.5, 0.94, 
-    #             "Each line represents the average score function for a dataset of n samples. " +
-    #             "The score function is the derivative of the log-likelihood with respect to the parameter.",
-    #             ha='center', fontsize=12, style='italic')
+    # Add a main title to the figure
+    fig.suptitle("Sampling Variation of Score Functions", fontsize=18, fontweight='bold', y=1.05)
     
     # 1. Normal distribution
     true_theta_normal = 6
@@ -220,19 +213,8 @@ def main():
                         "Bernoulli", n_samples,
                         bernoulli_pmf, bernoulli_score_formula)
     
-    # 4. Cauchy distribution
-    true_theta_cauchy = 6
-    param_range_cauchy = np.linspace(-10, 20, 100)
-    cauchy_samples = generate_samples(stats.cauchy, true_theta_cauchy, n_samples, n_datasets, scale=1)
-    cauchy_pdf = r"$p(x|\theta) = \frac{1}{\pi(1+(x-\theta)^2)}$"
-    cauchy_score_formula = r"$s(\theta) = \frac{2(x-\theta)}{1+(x-\theta)^2}$"
-    plot_score_functions(axes[3], cauchy_samples, cauchy_score, 
-                        param_range_cauchy, true_theta_cauchy, 
-                        "Cauchy", n_samples,
-                        cauchy_pdf, cauchy_score_formula)
-    
     # Adjust spacing between subplots for better readability
-    plt.tight_layout(pad=2.0, rect=[0, 0, 1, 0.98])
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     # Save as PDF with high resolution
     plt.savefig('score_functions.pdf', format='pdf', dpi=600, bbox_inches='tight', pad_inches=0.1)

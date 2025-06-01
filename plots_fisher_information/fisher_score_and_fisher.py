@@ -155,8 +155,9 @@ def plot_gaussian_score_function(samples: np.ndarray, param_range: np.ndarray,
 def main():
     """Main function to generate plots in a grid layout with aligned axes."""
     # Parameters
-    n_samples = 20  # Number of samples per dataset
-    n_datasets = 10  # Number of datasets to generate
+    n_samples = 25  # Number of samples per dataset
+    n_datasets = 20  # Number of datasets to generate
+    bins = 30
     true_theta_normal = 5  # True mean parameter
     param_range_normal = np.linspace(2, 8, 100)  # Range of parameter values to evaluate
     
@@ -205,7 +206,7 @@ def main():
     
     # Plot horizontal histogram (rotated distribution)
     histogram_color = '#9370DB'  # Medium Purple - sophisticated purple tone
-    sns.histplot(y=all_scores, color=histogram_color, alpha=0.8, ax=ax_dist)
+    sns.histplot(y=all_scores, color=histogram_color, alpha=0.8, ax=ax_dist, bins=bins)
     
     # Add reference line at zero
     ax_dist.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
@@ -238,7 +239,7 @@ def main():
     
     # Add Fisher information text with smaller font size
     ax_dist.text(x_start + x_range * 0.05, mean_score, 
-                "Fisher Information = $\\mathcal{I}(\\theta) = 1$",
+                "Fisher Information = $I(\\theta) = 1$",
                 color=fisher_info_color, ha='left', va='center',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3),
                 fontsize=10)  # Reduced font size
