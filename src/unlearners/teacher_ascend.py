@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import torch.optim as optim
 import pdb
+from tqdm import tqdm
 
 """
 "Bad teacher" loss for the maximization step? 
@@ -150,7 +151,7 @@ class TeacherAscender:
         mdl = mdl / len(retain_loader.dataset)
         return mdl
 
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False):
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -172,19 +173,18 @@ class TeacherAscender:
         FIM_original = self.calculate_FIM(retain_loader) # used for ascend
         FIM_ratio = self.calculate_FIM_ratio(FIM_original, FIM_forget)
 
-        # mdls = []
-        # entanglement_scores = []
-        # retain_terms = []
-        # forget_terms = []
-
-        for _ in range(self.n_epochs):
-            
-            # rt = []
-            # ft = []
-            # entanglement_scores.append(self.calculate_entanglement_score(retain_loader, forget_loader))
-            
+        # Calculate total number of batches for the inner loop
+        n_batches = len(forget_loader)
+        
+        epoch_iterator = tqdm(range(self.n_epochs), desc='Epochs', leave=True) if verbose else range(self.n_epochs)
+        for epoch in epoch_iterator:
             #### Gradient ascent
-            for batch in forget_loader:
+            batch_iterator = tqdm(enumerate(forget_loader), 
+                                desc=f'Batch Processing', 
+                                total=n_batches,
+                                leave=False) if verbose else enumerate(forget_loader)
+                                
+            for batch_idx, batch in batch_iterator:
                 optimizer.zero_grad()
 
                 x_f = batch[0].to(self.device)
@@ -206,14 +206,6 @@ class TeacherAscender:
                 loss.backward()
                 optimizer.step()
 
-            #     rt.append(retain_term)
-            #     ft.append(forget_term)
-
-            # retain_terms.append(torch.tensor(rt).mean())
-            # forget_terms.append(torch.tensor(ft).mean())
-
-            # mdl = self.MDL(retain_loader)
-            # mdls.append(mdl)
             if eval:
                 forget_loss, forget_acc = self.eval(forget_loader)
                 metrics['forget']['acc'].append(forget_acc)
@@ -226,7 +218,7 @@ class TeacherAscender:
                 val_loss, val_acc = self.eval(val_loader)
                 metrics['val']['acc'].append(val_acc)
                 metrics['val']['loss'].append(val_loss)
-            
+        
         if eval:
             return metrics
             
