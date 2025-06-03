@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import os
 from tqdm import tqdm
 import pdb
 
@@ -93,7 +94,7 @@ class BaseTrainer:
                         f"train/accuracy/{train_dataset_name}": train_epoch_metrics['accuracy'],
                         f"validation/loss/{validation_dataset_name}": val_metrics['loss'],
                         f"validation/accuracy/{validation_dataset_name}": val_metrics['accuracy'],
-                        "epoch": epoch
+                        "epoch": epoch + 1
                     })
 
                 # Update progress bar
@@ -104,12 +105,21 @@ class BaseTrainer:
                     self.save_state_dict(self.checkpoint_dir,
                                          model_name=self.checkpoint_dir.split('/')[-1],
                                          val_acc=train_metrics['val/accuracy'][-1],
-                                         epoch=epoch
+                                         epoch=epoch + 1
                                          )
 
                 if self.do_early_stopping and epoch > 4 and not train_metrics['val/loss'][-1] <= np.mean(train_metrics['val/loss'][:-4:-1]):
                     print("\Ending due to early stopping")
                     return train_metrics
+            
+        if self.save_checkpoints: # load the best model checkpoint
+            best_idx = np.argmax(train_metrics['val/accuracy'])
+            sd_opt = self.load_state_dict(self.checkpoint_dir,
+                                 model_name=self.checkpoint_dir.split('/')[-1],
+                                 val_acc=train_metrics['val/accuracy'][best_idx],
+                                 epoch=train_metrics['epoch'][best_idx]
+                                 )
+            self.model.load_state_dict(sd_opt)
 
         return train_metrics
 
@@ -148,8 +158,21 @@ class BaseTrainer:
         epoch_metrics['loss'] = sum(losses) / len(losses)
         return epoch_metrics
 
+    def save_state_dict(self, save_dir: str, model_name: str, val_acc: float, epoch: int):
+        torch.save(self.model.state_dict(), f'{save_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt')
+    
+    def load_state_dict(self, load_dir: str, model_name: str, val_acc: float, epoch: int):
+         opt_checkpoint_path = f'{load_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt'
+         self.remove_suboptimal_checkpoints(load_dir, opt_checkpoint_path) # free up space
+         return torch.load(f'{load_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt')
+    
+    def remove_suboptimal_checkpoints(self, dir_path: str, optimal_checkpoint_path: str):
+        filenames = os.listdir(dir_path)
+        optimal_checkpoint_file = optimal_checkpoint_path.split('/')[-1]
+        remove_files = [e for e in filenames if e != optimal_checkpoint_file]
+        for fn in remove_files:
+            os.remove(f'{dir_path}/{fn}')
+
     def __call__(self):
         return self.train()
 
-    def save_state_dict(self, save_dir: str, model_name: str, val_acc: float, epoch: int):
-        torch.save(self.model.state_dict(), f'{save_dir}/{model_name}_val-acc={val_acc}_epoch={epoch}.pt')

@@ -24,7 +24,10 @@ class AmnesiacTrainer(BaseTrainer):
                  n_epochs: int = 20,
                  device: str = 'cpu',
                  cache_gradients: bool = True,
-                 save_dir: str = 'results/amnesiac') -> None:
+                 save_dir: str = 'results/amnesiac', # directory in which to store gradients
+                 save_checkpoints: bool = False, # whether to store weights or not
+                 checkpoint_dir: str = None # directory to store model weights
+                 ) -> None:
         self.model = model
         # Initialize optimizer
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)

@@ -294,7 +294,7 @@ def run_and_eval(func: callable, experiment_specs: object):
     eval_single_model(experiment_specs.model, experiment_specs.dataloader_retain, experiment_specs.dataloader_forget, 
                       experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
                       experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
-    
+
 # @hydra.main(config_path=".", config_name="cifar_config")
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
@@ -352,7 +352,7 @@ def main(cfg):
     os.makedirs(f'{weights_dir}/original_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
-        save_checkpoints = False
+        save_checkpoints = True
     
     elif cfg.model.model_type == 'vision-transformer':
         original_model = build_vit(cfg).to(DEVICE)
@@ -369,24 +369,25 @@ def main(cfg):
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
         trainer = NeuralNetworkTrainer(model=original_model, 
-                                        train_dataloader=dataloader_train, 
-                                        val_dataloader=dataloader_val, 
-                                        logger=logger, 
-                                        device=DEVICE, 
-                                        learning_rate=cfg.trainer.lr,
-                                        weight_decay=cfg.trainer.weight_decay,
-                                        n_epochs=cfg.trainer.n_epochs,
-                                        optimizer_name=cfg.trainer.optimizer_name,
-                                        lr_scheduler=cfg.trainer.lr_scheduler,
-                                        save_checkpoints=save_checkpoints,
-                                        checkpoint_dir = f'{weights_dir}/original_model',
-                                        disable_tqdm=cfg.trainer.disable_tqdm, 
-                                        do_early_stopping=cfg.trainer.do_early_stopping)
+                                       train_dataloader=dataloader_train, 
+                                       val_dataloader=dataloader_val, 
+                                       logger=logger, 
+                                       device=DEVICE, 
+                                       learning_rate=cfg.trainer.lr,
+                                       weight_decay=cfg.trainer.weight_decay,
+                                       n_epochs=cfg.trainer.n_epochs,
+                                       optimizer_name=cfg.trainer.optimizer_name,
+                                       lr_scheduler=cfg.trainer.lr_scheduler,
+                                       save_checkpoints=save_checkpoints,
+                                       checkpoint_dir = f'{weights_dir}/original_model',
+                                       disable_tqdm=cfg.trainer.disable_tqdm, 
+                                       do_early_stopping=cfg.trainer.do_early_stopping)
         original_train_fn = lambda: trainer()
         original_experiment_specs = ExperimentSpecs(original_model, dataloader_train, dataloader_retain, 
                                                     dataloader_forget, dataloader_val, results_dir, 'Original model', 
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
+        original_model
         torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
         
     else:
@@ -401,7 +402,7 @@ def main(cfg):
     os.makedirs(f'{weights_dir}/retrained_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
-        save_checkpoints = False
+        save_checkpoints = True #False
     
     elif cfg.model.model_type == 'vision-transformer':
         retrained_model = build_vit(cfg)
@@ -590,6 +591,7 @@ def main(cfg):
                         do_early_stopping=cfg.trainer.do_early_stopping,
                         cache_gradients=False,
                         save_dir=f'{weights_dir}/amnesiac',
+                        checkpoint_dir = f'{weights_dir}/original_model',
                         )
         amnesiac_original_train_fn = lambda: amnesiac_trainer(indices_to_forget=forget_idxs)
         amnesiac_original_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
@@ -669,7 +671,7 @@ def main(cfg):
         sisa_trainer = SISATrainer(
                 model=None, 
                 sisa=sisa, 
-                train_dataloader=dataloader_train, 
+                train_dataloader=dataloader_train,
                 val_dataloader=dataloader_val,
                 logger=None, 
                 device=DEVICE,
@@ -695,7 +697,7 @@ def main(cfg):
 
     elif cfg.unlearn.method =='teacher-ascend':
         from src.unlearners.teacher_ascend import TeacherAscender
-        hyperparams = {'n_epochs': 15, '_lambda': 8}
+        hyperparams = {'n_epochs': 100, '_lambda': 64}
         ta = TeacherAscender(unlearned_model, n_epochs=hyperparams['n_epochs'], 
                              _lambda=hyperparams['_lambda'], device=DEVICE)
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 

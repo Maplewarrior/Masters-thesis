@@ -1,5 +1,5 @@
 # @package _global_
-absolute_root_path: /work3/s204138/MachineUnlearning #local # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
+absolute_root_path: local #local # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
 
 defaults:
   - _self_
