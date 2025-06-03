@@ -15,4 +15,5 @@ torchviz==0.0.3
 wandb==0.19.9
 seaborn==0.13.2
 bayesian-optimization==2.0.3
+transformers==4.52.4
 -e .
