@@ -7,7 +7,7 @@ import numpy as np
 from omegaconf import OmegaConf
 from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
-import graphviz
+# import graphviz
 import matplotlib.pyplot as plt
 import torch.nn as nn
 
@@ -270,51 +270,51 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
 
-def create_simple_model_visualization(model, save_path, input_shape):
-    """Create a simple flowchart visualization of the model architecture.
+# def create_simple_model_visualization(model, save_path, input_shape):
+#     """Create a simple flowchart visualization of the model architecture.
     
-    Args:
-        model: The neural network model to visualize
-        save_path: Path to save the visualization
-        input_shape: Shape of the input data (for labeling input node)
-    """
-    dot = graphviz.Digraph(comment='Neural Network Architecture')
+#     Args:
+#         model: The neural network model to visualize
+#         save_path: Path to save the visualization
+#         input_shape: Shape of the input data (for labeling input node)
+#     """
+#     dot = graphviz.Digraph(comment='Neural Network Architecture')
     
-    # Set graph attributes for better appearance
-    dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
+#     # Set graph attributes for better appearance
+#     dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
     
-    # Set node attributes
-    dot.attr('node', shape='box', style='filled,rounded', 
-             fillcolor='#E8F0FE', color='#4285F4', 
-             fontname='Helvetica', fontsize='14', fontcolor='#333333')
+#     # Set node attributes
+#     dot.attr('node', shape='box', style='filled,rounded', 
+#              fillcolor='#E8F0FE', color='#4285F4', 
+#              fontname='Helvetica', fontsize='14', fontcolor='#333333')
     
-    # Set edge attributes
-    dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    # Add input node
-    dot.node('input', f'Input\n({input_shape} features)', shape='oval')
+#     # Set edge attributes
+#     dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
+#     # Add input node
+#     dot.node('input', f'Input\n({input_shape} features)', shape='oval')
     
-    # Add nodes for each layer in the Sequential model
-    prev_node = 'input'
-    for i, layer in enumerate(model.net):
-        if isinstance(layer, nn.Linear):
-            node_name = f'linear_{i}'
-            label = f'Linear\n{layer.in_features} → {layer.out_features}'
-            dot.node(node_name, label)
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-        elif isinstance(layer, nn.ReLU):
-            node_name = f'relu_{i}'
-            dot.node(node_name, 'ReLU')
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
+#     # Add nodes for each layer in the Sequential model
+#     prev_node = 'input'
+#     for i, layer in enumerate(model.net):
+#         if isinstance(layer, nn.Linear):
+#             node_name = f'linear_{i}'
+#             label = f'Linear\n{layer.in_features} → {layer.out_features}'
+#             dot.node(node_name, label)
+#             dot.edge(prev_node, node_name)
+#             prev_node = node_name
+#         elif isinstance(layer, nn.ReLU):
+#             node_name = f'relu_{i}'
+#             dot.node(node_name, 'ReLU')
+#             dot.edge(prev_node, node_name)
+#             prev_node = node_name
     
-    # Add output node
-    dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-    dot.edge(prev_node, 'output')
+#     # Add output node
+#     dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
+#     dot.edge(prev_node, 'output')
     
-    # Render the visualization
-    dot.render(save_path, format='png')
-    return dot
+#     # Render the visualization
+#     dot.render(save_path, format='png')
+#     return dot
 
 
 @hydra.main(config_path=".", config_name="config")
@@ -373,7 +373,7 @@ def main(cfg):
         model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
         # Generate a simplified visualization
         nn_model_image_path = os.path.join(results_dir, f"nn_model_architecture")
-        create_simple_model_visualization(model, nn_model_image_path, X.shape[1])
+        #create_simple_model_visualization(model, nn_model_image_path, X.shape[1])
 
         original_model = copy.deepcopy(model)
 
