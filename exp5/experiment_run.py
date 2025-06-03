@@ -484,13 +484,13 @@ def main(cfg):
 
     
     from src.unlearners.teacher_ascend import TeacherAscender
-    # hyperparams = {'n_epochs': 100, '_lambda': 64}
-    # ta = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-    #                         _lambda=hyperparams['_lambda'], device=DEVICE)
-    # dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-    #                                                                                                     dataloader_forget, dataloader_val,
-    #                                                                                                     cfg.model.seed)
-    # ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val)
+    hyperparams = {'n_epochs': 100, '_lambda': 64}
+    ta = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+                            _lambda=hyperparams['_lambda'], device=DEVICE)
+    dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                        dataloader_forget, dataloader_val,
+                                                                                                        cfg.model.seed)
+    ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
 
 
     from src.unlearners.og_unlearner import OrthogonalGradients
