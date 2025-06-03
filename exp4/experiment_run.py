@@ -256,8 +256,8 @@ def get_model_predictions(model: nn.Module, dataloader, device: str):
     probs = torch.cat(probs)
     return probs, xs, ys
 
-def get_wrong_predictions(probs, ys) -> list:
-    return torch.where(probs.argmax(dim=-1) != ys.argmax(dim=-1))[0].cpu().tolist()
+def get_wrong_predictions(logits, ys) -> list:
+    return torch.where(logits.argmax(dim=-1) != ys.argmax(dim=-1))[0].cpu().tolist()
 
 def plot_wrong_predictions(model, dataloader, device, model_name: str):
     probs, xs, ys = get_model_predictions(model, dataloader, device)
@@ -294,6 +294,66 @@ def run_and_eval(func: callable, experiment_specs: object):
     eval_single_model(experiment_specs.model, experiment_specs.dataloader_retain, experiment_specs.dataloader_forget, 
                       experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
                       experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
+
+def eval_js_divergence(unlearned_model, retrained_model, original_model,
+                       experiment_specs):
+    if os.path.exists(f'{experiment_specs.result_dir}/JS_divergence_results.json'):
+        with open(f'{experiment_specs.result_dir}/JS_divergence_results.json', 'r') as f:
+            results = json.load(f)
+    else:
+        results = {'model-name': [],
+                   'JS div. original': [],
+                   'JS div. retrained': [],
+                   'dataset': [],
+                   'seed': []
+                   }
+    # re-instantiate all dataloaders
+    train_loader = experiment_specs.dataloader_train
+    retain_loader = experiment_specs.dataloader_retain
+    forget_loader = experiment_specs.dataloader_forget
+    val_loader = experiment_specs.dataloader_val
+    train_loader, retain_loader, forget_loader, val_loader = re_instantiate_dataloaders(train_loader, retain_loader, 
+                                                                                        forget_loader, val_loader, 
+                                                                                        experiment_specs.seed)
+    unlearning_evaluator = UnlearningEvaluator(experiment_specs.device)
+
+    probs_u_retain = unlearning_evaluator.get_model_probs(unlearned_model, copy.deepcopy(retain_loader))[0]
+    probs_u_forget = unlearning_evaluator.get_model_probs(unlearned_model, copy.deepcopy(forget_loader))[0]
+    probs_u_val = unlearning_evaluator.get_model_probs(unlearned_model, copy.deepcopy(val_loader))[0]
+
+    probs_o_retain = unlearning_evaluator.get_model_probs(original_model, copy.deepcopy(retain_loader))[0]
+    probs_o_forget = unlearning_evaluator.get_model_probs(original_model, copy.deepcopy(forget_loader))[0]
+    probs_o_val = unlearning_evaluator.get_model_probs(original_model, copy.deepcopy(val_loader))[0]
+
+    probs_r_retain = unlearning_evaluator.get_model_probs(retrained_model, copy.deepcopy(retain_loader))[0]
+    probs_r_forget = unlearning_evaluator.get_model_probs(retrained_model, copy.deepcopy(forget_loader))[0]
+    probs_r_val = unlearning_evaluator.get_model_probs(retrained_model, copy.deepcopy(val_loader))[0]
+    
+    probs = {'retain': 
+                {'original': probs_o_retain,
+                 'unlearned': probs_u_retain,
+                 'retrained': probs_r_retain},
+            'forget': 
+                {'original': probs_o_forget,
+                 'unlearned': probs_u_forget,
+                 'retrained': probs_r_forget},
+            'val': 
+                {'original': probs_o_val,
+                 'unlearned': probs_u_val,
+                 'retrained': probs_r_val}}
+    
+    for dataset_name in ['retain', 'forget', 'val']:
+        js_original = unlearning_evaluator.JS_divergence(probs[dataset_name]['unlearned'], probs[dataset_name]['original'])
+        js_retrained = unlearning_evaluator.JS_divergence(probs[dataset_name]['unlearned'], probs[dataset_name]['retrained'])
+
+        results['model-name'].append(experiment_specs.model_name)
+        results['JS div. original'].append(js_original)
+        results['JS div. retrained'].append(js_retrained)
+        results['dataset'].append(dataset_name)
+        results['seed'].append(experiment_specs.seed)
+    
+    with open(f'{experiment_specs.result_dir}/JS_divergence_results.json', 'w') as f:
+        json.dump(results, f)
 
 # @hydra.main(config_path=".", config_name="cifar_config")
 @hydra.main(config_path=".", config_name="mnist_config")
@@ -465,6 +525,7 @@ def main(cfg):
                                                results_dir, 'SSD', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         apply_ssd_fn = lambda: ssd(dataloader_train, dataloader_forget)
         run_and_eval(apply_ssd_fn, ssd_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_experiment_specs)
 
     elif cfg.unlearn.method == "scrubr":
         from src.unlearners.scrub import ScrubR
@@ -480,10 +541,11 @@ def main(cfg):
                gamma=hyperparams['gamma'],
                device=DEVICE)
         scrubr_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'Scrub+R', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                  results_dir, 'Scrub+R', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         apply_scrubr_fn = lambda: scrubr(retain_dataloader=dataloader_retain, forget_dataloader=dataloader_forget, 
                                          val_dataloader=dataloader_val, n_rounds=hyperparams['nrounds'])
         run_and_eval(apply_scrubr_fn, scrubr_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, scrubr_experiment_specs)
 
     elif cfg.unlearn.method == 'assd':
         from src.unlearners.adaptive_ssd import AdaptiveSSD
@@ -493,9 +555,10 @@ def main(cfg):
                                                                                                             cfg.model.seed)
         adaptive_ssd = AdaptiveSSD(unlearned_model, device=DEVICE)
         assd_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'Adaptive SSD', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                results_dir, 'Adaptive SSD', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         adaptive_ssd_fn = lambda: adaptive_ssd(dataloader_train, dataloader_forget)
         run_and_eval(adaptive_ssd_fn, assd_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, scrubr_experiment_specs)
 
     elif cfg.unlearn.method == 'ssd_v6':
         from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
@@ -508,8 +571,9 @@ def main(cfg):
                                          device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
         ssd_v6_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'SSD v6', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                  results_dir, 'SSD v6', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(ssd_v6_fn, ssd_v6_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
     
     elif cfg.unlearn.method == 'ssd_v6_smooth':
         from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
@@ -522,9 +586,10 @@ def main(cfg):
                                          device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
         ssd_v6_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'SSD v6', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                  results_dir, 'SSD v6', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(ssd_v6_fn, ssd_v6_experiment_specs)
-    
+        eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
+
     elif cfg.unlearn.method == 'ssd_v7':
         from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
         hyperparams = {'P': 1, 'k': 0.75, 'n_trials': 100}
@@ -534,8 +599,9 @@ def main(cfg):
         ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'],k=hyperparams['k'],n_trials=hyperparams['n_trials'], device=DEVICE)
         ssd_v7_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
         ssd_v7_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'SSD v7', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                  results_dir, 'SSD v7', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(ssd_v7_fn, ssd_v7_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v7_experiment_specs)
         
     elif cfg.unlearn.method == 'sae':
         from src.models.SAE import SAE
@@ -547,7 +613,6 @@ def main(cfg):
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        
         # instantiate & train SAE
         sae = SAE(d=unlearned_model.net[hyperparams['layer_num']-2].in_features, m=hyperparams['m'], _lambda=hyperparams['_lambda']).to(DEVICE)
         
@@ -562,8 +627,9 @@ def main(cfg):
         sae_unlearner = SAEUnlearner(unlearned_model, alpha=hyperparams['alpha'], device=DEVICE)
         sae_unlearn_fn = lambda: sae_unlearner(dataloader_retain, dataloader_forget)
         sae_unlearn_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'SAE', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                            results_dir, 'SAE', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(sae_unlearn_fn, sae_unlearn_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, sae_unlearn_specs)
 
     elif cfg.unlearn.method == 'amnesiac':
         from src.models.amnesiac_model import AmnesiacModelRS
@@ -607,6 +673,7 @@ def main(cfg):
                                                results_dir, 'Amnesiac', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         
         run_and_eval(amnesiac_unlearn_fn, amnesiac_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, amnesiac_experiment_specs)
         
         ## run repair phase to get those results as well
         hyperparams['repair'] = True
@@ -627,9 +694,10 @@ def main(cfg):
                             )
             amnesiac_repair_fn = lambda: amnesiac_repair_trainer(repair=True)
             amnesiac_repair_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                                               results_dir, 'Amnesiac', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                               results_dir, 'Amnesiac + repair', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
             
             run_and_eval(amnesiac_repair_fn, amnesiac_repair_experiment_specs)
+            eval_js_divergence(unlearned_model, retrained_model, original_model, amnesiac_repair_experiment_specs)
 
         # free up space by removing gradients
         import shutil
@@ -682,7 +750,10 @@ def main(cfg):
         sisa_train_fn = lambda: sisa_trainer()
         sisa_train_specs = ExperimentSpecs(sisa, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'SISA original', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+        
         run_and_eval(sisa_train_fn, sisa_train_specs)
+        
+        sisa_original = copy.deepcopy(sisa)
 
         sisa.constituent_models = None # avoids keeping original constituent models in memory
         # run SISA unlearning
@@ -691,6 +762,9 @@ def main(cfg):
         sisa_experiment_specs = ExperimentSpecs(sisa, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'SISA', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(sisa_unlearn_fn, sisa_experiment_specs)
+        
+        eval_js_divergence(sisa, retrained_model, sisa_original, sisa_experiment_specs)
+
         # free up space by removing constituent models and data indices
         import shutil
         shutil.rmtree(f'{weights_dir}/sisa')
@@ -707,7 +781,10 @@ def main(cfg):
         ta_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'Teacher Ascend', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(ta_fn, ta_experiment_specs)
+        eval_js_divergence(unlearned_model, retrained_model, original_model, ta_experiment_specs)
     
+   
+    ### Below are functions for visualizing where SSD bayesian optimization samples and when
     elif cfg.unlearn.method == "visualize-bo-v6":
         from src.unlearners.ssd_v6_bo_visualizer import SSDVisualizer
 
@@ -722,7 +799,7 @@ def main(cfg):
                             n_bo_iter=hyperparams['n_bo_iter'], 
                             device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
-        bo_result = ssd_v6_fn()
+        bo_result, all_dampenings = ssd_v6_fn()
 
         alphas = np.array([bo_result['result'][i]['params']['alpha_0'] for i in range(len(bo_result['result']))])
         targets = np.array([bo_result['result'][i]['target'] for i in range(len(bo_result['result']))])
@@ -758,7 +835,7 @@ def main(cfg):
                             n_trials=hyperparams['n_trials'], 
                             device=DEVICE)
         ssd_v7_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
-        bo_result = ssd_v7_fn()
+        bo_result, all_dampenings = ssd_v7_fn()
 
         alphas = np.array([bo_result['result'][i]['params']['alpha_0'] for i in range(len(bo_result['result']))])
         targets = np.array([bo_result['result'][i]['target'] for i in range(len(bo_result['result']))])
