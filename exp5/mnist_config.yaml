@@ -25,6 +25,7 @@ data:
   n_classes: 10
   n_channels: 3
   # cifar parameters
+  split_type: "tsne_box" # "tsne_box" or "random"
   image_size:
     - 32
     - 32

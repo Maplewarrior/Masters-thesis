@@ -17,6 +17,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.membership_inference_attack import MIA
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from prepare_image_data import get_image_unlearn_data
+from prepare_image_data_v2 import get_image_unlearn_data as get_image_unlearn_data_tsne_box
 import time
 import json
 
@@ -352,13 +353,20 @@ def main(cfg):
     # ============= Load data and prepare data =============
     print("Loading and preparing dataset: %s", cfg.data.dataset_name)
     if cfg.data.dataset_name == 'MNIST':
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
-                                                                                                                 dataset_name=cfg['data']['dataset_name'],
-                                                                                                                 n_forget_points=cfg.data.n_forget_points,
-                                                                                                                 subsample_size=cfg.data.subsample_size,
-                                                                                                                 patch_size=cfg.data.patch_size,
+        if cfg.data.split_type == "tsne_box":
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data_tsne_box(root_dir=dataset_dir,
                                                                                                                  batch_size=cfg.data.batch_size,
                                                                                                                  seed=cfg.model.seed)
+        elif cfg.data.split_type == "random":
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
+                                                                                                                dataset_name=cfg['data']['dataset_name'],
+                                                                                                                n_forget_points=cfg.data.n_forget_points,
+                                                                                                                subsample_size=cfg.data.subsample_size,
+                                                                                                                patch_size=cfg.data.patch_size,
+                                                                                                                batch_size=cfg.data.batch_size,
+                                                                                                                seed=cfg.model.seed)
+        else:
+            raise NotImplementedError(f"The split type {cfg.data.split_type} is not supported!")
         print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
                    len(dataloader_train.dataset), len(dataloader_forget.dataset))
     
@@ -509,7 +517,8 @@ def main(cfg):
 
     scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=scrub_params['n_rounds'], verbose=True)
     # save metrics to json
-    with open(f'{results_dir}/scrub_metrics.json', 'w') as f:
+    filename = f'{results_dir}/scrub_metrics_{cfg.data.split_type}.json'
+    with open(filename, 'w') as f:
         json.dump(scrub_metrics, f)
 
 

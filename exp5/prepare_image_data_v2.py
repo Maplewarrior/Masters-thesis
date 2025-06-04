@@ -111,7 +111,7 @@ def split_data_by_tsne_box(boundary: dict = None,
     # Default t-SNE parameters
     if tsne_params is None:
         tsne_params = {
-            'n_components': 2, 'perplexity': 30, 'n_iter': 300, 'random_state': 42
+            'n_components': 2, 'perplexity': 30, 'max_iter': 300, 'random_state': 42
         }
 
     if boundary is None:
@@ -134,7 +134,7 @@ def split_data_by_tsne_box(boundary: dict = None,
     print("t-SNE finished.")
 
     # === STEP 3: Preprocess the data to get the tensors you want to split ===
-    X_train, y_train, _, _ = preprocess_mnist_data(train_dataset, test_dataset)
+    X_train, y_train, X_test, y_test = preprocess_mnist_data(train_dataset, test_dataset)
     
     # === STEP 4: Find indices from the t-SNE results ===
     # Create a DataFrame for easier filtering. The index aligns with the original data.
@@ -172,14 +172,41 @@ def split_data_by_tsne_box(boundary: dict = None,
         print(f"Label {label}: {count} samples")
 
 
+    train_dataset = MNISTDataset(X_train, y_train, dataset_name, use_indices=False)
     retain_dataset = MNISTDataset(X_retain, y_retain, dataset_name, use_indices=False)
     forget_dataset = MNISTDataset(X_forget, y_forget, dataset_name, use_indices=False)
+    validation_dataset = MNISTDataset(X_test, y_test, dataset_name, use_indices=False)
 
     if return_tsne_results:
-        return retain_dataset, forget_dataset, forget_indices, tsne_results
+        return train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices, tsne_results
     else:
-        return retain_dataset, forget_dataset, forget_indices
+        return train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices
 
+
+def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None):
+    if boundary is None:
+        boundary = {
+            'x_min': 12.2,
+            'x_max': 12.6,
+            'y_min': -3.8,
+            'y_max': -1.5
+        }
+
+    train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
+        boundary=boundary,
+        return_tsne_results=False
+    )
+
+    from prepare_image_data import create_image_dataloaders
+
+    train_loader, retain_loader, forget_loader, validation_loader = create_image_dataloaders(train_dataset=train_dataset, 
+                                                                               retain_dataset=retain_dataset, 
+                                                                               forget_dataset=forget_dataset, 
+                                                                               test_dataset=test_dataset, 
+                                                                               batch_size=batch_size, 
+                                                                               seed=seed)
+
+    return train_loader, retain_loader, forget_loader, validation_loader, forget_indices
 
 if __name__ == '__main__':
     dataset_name = 'MNIST'
