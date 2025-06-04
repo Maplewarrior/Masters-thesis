@@ -260,6 +260,46 @@ def run_and_eval(func: callable, experiment_specs: object):
                       experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
                       experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
 
+def plot_mia_metrics(models, figsize=(12, 8)):
+    """
+    Plot MIA metrics for multiple models.
+    """
+    plt.style.use('default')
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    
+    # Create subplots - one for each metric
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    fig.suptitle('Model MIA Comparison Across Epochs', fontsize=16, fontweight='bold')
+    
+    metrics = ['mia']
+    metric_titles = ['MIA Probability']
+    
+    for i, (metric, title) in enumerate(zip(metrics, metric_titles)):
+        ax = axes[i]
+        
+        # Plot each model
+        for j, (model_name, model_data) in enumerate(models.items()):
+            if metric in model_data and 'acc' in model_data[metric]:
+                acc_values = model_data[metric]['acc']
+                epochs = range(1, len(acc_values) + 1)
+                
+                ax.plot(epochs, acc_values, 
+                       marker='o', linewidth=2, markersize=4,
+                       color=colors[j % len(colors)], 
+                       label=model_name)
+                
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('MIA Probability')
+        ax.set_title(title)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        
+        # Set y-axis limits to better show accuracy range
+        ax.set_ylim(0, 1)
+    
+    plt.tight_layout()
+    return plt
+
 def plot_model_accuracies(models, figsize=(12, 8)):
     """
     Plot accuracy curves for multiple models showing retain, forget, and val accuracies.
@@ -529,7 +569,8 @@ def main(cfg):
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')
 
-    
+    plot = plot_mia_metrics(all_metrics)
+    plot.savefig(f'{results_dir}/mia_metrics.png')
     
     
     plot = plot_model_accuracies(all_metrics)
