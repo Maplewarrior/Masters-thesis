@@ -351,6 +351,72 @@ def plot_model_accuracies(models, figsize=(12, 8)):
     plt.tight_layout()
     return plt
 
+def calculate_model_metrics(model, dataloaders, device, model_name=None):
+    """
+    Calculate accuracy and MIA metrics for a given model across multiple datasets.
+    
+    Args:
+        model: The PyTorch model to evaluate
+        dataloaders: Dictionary containing dataloaders for 'retain', 'forget', and 'val' sets
+        device: Device to run the model on ('cuda' or 'cpu')
+        model_name: Optional name for the model (for logging purposes)
+    
+    Returns:
+        dict: Dictionary containing accuracy and MIA metrics
+    """
+    model.eval()
+    metrics = {
+        'retain': {'acc': []},
+        'forget': {'acc': []},
+        'val': {'acc': []},
+        'mia': {'acc': []}
+    }
+    
+    # Calculate accuracy for each dataset
+    with torch.no_grad():
+        for dataset_name, dataloader in dataloaders.items():
+            if dataset_name not in ['retain', 'forget', 'val']:
+                continue
+                
+            correct = 0
+            total = 0
+            
+            for batch in dataloader:
+                inputs, labels = batch[0].to(device), batch[1].to(device)
+                outputs = model(inputs)
+                
+                # Handle different model output formats
+                if isinstance(outputs, dict):
+                    logits = outputs.get('logits', outputs.get('probabilities'))
+                else:
+                    logits = outputs
+                
+                _, predicted = torch.max(logits, 1)
+                _, true_labels = torch.max(labels, 1)  # Assuming one-hot encoded labels
+                
+                correct += (predicted == true_labels).sum().item()
+                total += labels.size(0)
+            
+            accuracy = correct / total
+            metrics[dataset_name]['acc'].append(accuracy)
+    
+    # Calculate MIA metric
+    mia_model = MIA(device=device)
+    mia_score = mia_model(model, 
+                         dataloaders['retain'], 
+                         dataloaders['forget'], 
+                         dataloaders['val'])
+    metrics['mia']['acc'].append(mia_score)
+    
+    if model_name:
+        print(f"\nMetrics for {model_name}:")
+        print(f"Retain Accuracy: {metrics['retain']['acc'][-1]:.4f}")
+        print(f"Forget Accuracy: {metrics['forget']['acc'][-1]:.4f}")
+        print(f"Val Accuracy: {metrics['val']['acc'][-1]:.4f}")
+        print(f"MIA Score: {metrics['mia']['acc'][-1]:.4f}")
+    
+    return metrics
+
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     print("Starting experiment with configuration: %s", cfg.data.dataset_name)
@@ -398,23 +464,9 @@ def main(cfg):
 
     assert (dataloader_train.dataset.y[forget_idxs] == dataloader_forget.dataset.y).all(), 'Forget indices applied to train do not correspond to the forget data!'
 
-    # # ============= Initialize logger =============
-    # if cfg.logging.logger == "wandb":
-    #     cfg_dict = OmegaConf.to_container(cfg, resolve=True) # ? Convert to dict to avoid issues with wandb
-
-    #     os.environ["WANDB_MODE"] = cfg.logging.wandb.mode
-    #     wandb.setup(settings=wandb.Settings(mode=cfg.logging.wandb.mode))
-    #     logger = wandb.init(project=cfg.logging.project, 
-    #                         config=cfg_dict, 
-    #                         name=cfg.logging.name, 
-    #                         group=cfg.logging.group,
-    #                         mode=cfg.logging.wandb.mode,
-    #                         dir=cfg.logging.dir)
-
-    # else:
-    #     raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
-    
+    # # ============= Initialize logger =============    
     logger = None 
+    
     # ============= Instantiate original model =============
     os.makedirs(f'{weights_dir}/original_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
@@ -520,18 +572,14 @@ def main(cfg):
     
 
     mia_model = MIA(device=DEVICE)
-    retrained_model_accuracy = eval_single_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Retrained model', hyperparams, cfg.model.seed, DEVICE)
-    original_model_accuracy = eval_single_model(original_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Original model', hyperparams, cfg.model.seed, DEVICE)
-    retrained_model_mia = mia_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val)
-    original_model_mia = mia_model(original_model, dataloader_retain, dataloader_forget, dataloader_val)
+    retrained_model_metrics = calculate_model_metrics(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Retrained model', hyperparams, cfg.model.seed, DEVICE)
+    original_model_metrics = calculate_model_metrics(original_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Original model', hyperparams, cfg.model.seed, DEVICE)
 
-    original_model_metrics = {"accuracy": original_model_accuracy, "mia": original_model_mia}
-    with open(f'{results_dir}/original_model_metrics.json', 'w') as f:
-        json.dump(original_model_metrics, f)
-
-    retrained_model_metrics = {"accuracy": retrained_model_accuracy, "mia": retrained_model_mia}
+    # save metrics to json
     with open(f'{results_dir}/retrained_model_metrics.json', 'w') as f:
         json.dump(retrained_model_metrics, f)
+    with open(f'{results_dir}/original_model_metrics.json', 'w') as f:
+        json.dump(original_model_metrics, f)
 
 
     # ========================= Teacher Ascender =========================
