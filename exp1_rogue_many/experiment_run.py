@@ -50,7 +50,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         y_retain = torch.argmax(y_retain, dim=1)
     
     # Professional color palette
-    professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
+    professional_colors = ['#ffa600', '#a05195', '#f95d6a', '#8172B3', '#CCB974', '#64B5CD']
     
     # Find the classes of the rogue points
     rogue_classes = []
@@ -69,8 +69,8 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     original_creator = DecisionBoundaryCreator(original_model, dataloader_train)
     
     # Get the decision boundaries but don't plot them yet
-    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-9, 9), (-9, 9))
+    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-9, 9), (-9, 9))
     
     # Create a single figure
     plt.figure(figsize=(8, 7), dpi=200)
@@ -115,7 +115,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             # --- After Unlearning ---
             contour_u = plt.contour(
                 xx_u.numpy(), yy_u.numpy(), unlearned_mask,
-                colors=['#FC9E4F'],  # Carribean Current
+                colors=['#003f5c'],  # Blue like
                 linestyles='solid',
                 linewidths=2,
             )
