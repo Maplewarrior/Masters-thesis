@@ -3,22 +3,17 @@ import wandb
 import torch
 from torch.utils.data import DataLoader
 import os
-import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
-from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
 import graphviz
 import torch.nn as nn
 import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.colors import TwoSlopeNorm
 from torch.utils.data import RandomSampler, SequentialSampler
 
 from src.models.neural_network import NeuralNetRS
 from src.models.vision_transformer_tiny import ViT
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
-from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from src.evaluation.membership_inference_attack import MIA
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from prepare_image_data import get_image_unlearn_data
@@ -152,8 +147,6 @@ def eval_single_model(model,
     disagree_idxs = get_wrong_predictions(logits, ys)
     wrong_preds['model-name'].append(model_name)
     wrong_preds['wrong-preds'].append(disagree_idxs)
-
-    import pdb; pdb.set_trace()
 
     with open(f'{result_dir}/all_results.json', 'w') as f:
         json.dump(results, f)
@@ -313,24 +306,30 @@ def plot_model_accuracies(models, figsize=(12, 8)):
     plt.tight_layout()
     return plt
 
-# @hydra.main(config_path=".", config_name="cifar_config")
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
+    print("Starting experiment with configuration: %s", cfg.data.dataset_name)
+    
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Using device: %s", DEVICE)
+    
     if DEVICE == 'cuda':
         torch.cuda.manual_seed(cfg.model.seed)
         torch.cuda.manual_seed_all(cfg.model.seed)
         torch.backends.cudnn.deterministic = True
+        print("CUDA seed set for reproducibility")
     
-    print(f'Running experiment 4 on device "{DEVICE}"!')
+    print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
     results_dir = os.path.join(absolute_root_path, 'results', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}')
     weights_dir = os.path.join(absolute_root_path, 'weights', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}')
     os.makedirs(results_dir, exist_ok=True)
     
+
     # ============= Load data and prepare data =============
+    print("Loading and preparing dataset: %s", cfg.data.dataset_name)
     if cfg.data.dataset_name == 'MNIST':
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
                                                                                                                  dataset_name=cfg['data']['dataset_name'],
@@ -339,6 +338,8 @@ def main(cfg):
                                                                                                                  patch_size=cfg.data.patch_size,
                                                                                                                  batch_size=cfg.data.batch_size,
                                                                                                                  seed=cfg.model.seed)
+        print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
+                   len(dataloader_train.dataset), len(dataloader_forget.dataset))
     
     else:
         dataloader_train, dataloader_retain, dataloader_retain_no_aug, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
@@ -349,24 +350,26 @@ def main(cfg):
                                                                                                                  batch_size=cfg.data.batch_size,
                                                                                                                  seed=cfg.model.seed)
 
+
     assert (dataloader_train.dataset.y[forget_idxs] == dataloader_forget.dataset.y).all(), 'Forget indices applied to train do not correspond to the forget data!'
 
-    # ============= Initialize logger =============
-    if cfg.logging.logger == "wandb":
-        cfg_dict = OmegaConf.to_container(cfg, resolve=True) # ? Convert to dict to avoid issues with wandb
+    # # ============= Initialize logger =============
+    # if cfg.logging.logger == "wandb":
+    #     cfg_dict = OmegaConf.to_container(cfg, resolve=True) # ? Convert to dict to avoid issues with wandb
 
-        os.environ["WANDB_MODE"] = cfg.logging.wandb.mode
-        wandb.setup(settings=wandb.Settings(mode=cfg.logging.wandb.mode))
-        logger = wandb.init(project=cfg.logging.project, 
-                            config=cfg_dict, 
-                            name=cfg.logging.name, 
-                            group=cfg.logging.group,
-                            mode=cfg.logging.wandb.mode,
-                            dir=cfg.logging.dir)
+    #     os.environ["WANDB_MODE"] = cfg.logging.wandb.mode
+    #     wandb.setup(settings=wandb.Settings(mode=cfg.logging.wandb.mode))
+    #     logger = wandb.init(project=cfg.logging.project, 
+    #                         config=cfg_dict, 
+    #                         name=cfg.logging.name, 
+    #                         group=cfg.logging.group,
+    #                         mode=cfg.logging.wandb.mode,
+    #                         dir=cfg.logging.dir)
 
-    else:
-        raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
+    # else:
+    #     raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
     
+    logger = None 
     # ============= Instantiate original model =============
     os.makedirs(f'{weights_dir}/original_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
@@ -380,8 +383,10 @@ def main(cfg):
     else:
         raise NotImplementedError(f"The model type {cfg.model.model_type} is not supported!")
     
+
     # ============= Train/load original model =============
     if not os.path.exists(f'{weights_dir}/original_model/original_model_weights.pt'):
+        print("Training original model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
@@ -407,10 +412,11 @@ def main(cfg):
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
         original_model
+        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights.pt')
         torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
         
     else:
-        # original_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_val-acc=0.7525712025316458_epoch=164.pt', map_location=DEVICE)
+        print("Loading pre-trained original model weights")
         original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt')
         original_model.load_state_dict(original_model_sd)
         
@@ -420,15 +426,18 @@ def main(cfg):
     # ============= Initialize retrained model =============
     os.makedirs(f'{weights_dir}/retrained_model', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
+        print("Initializing retrained model as a neural network")
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
         save_checkpoints = True #False
     
     elif cfg.model.model_type == 'vision-transformer':
+        print("Initializing retrained model as a vision transformer")
         retrained_model = build_vit(cfg)
         save_checkpoints = True
     
     # ============= Train/load retrained model =============
     if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights.pt'):
+        print("Training retrained model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
@@ -457,32 +466,14 @@ def main(cfg):
         torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights.pt')
     
     else:
+        print("Loading pre-trained retrained model weights")
         retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights.pt')
         retrained_model.load_state_dict(retrained_model_sd)
     
-    plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
-    plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
+    # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
+    # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
     
-    # if cfg.unlearn.method == "scrubr":
-    #     from src.unlearners.scrub import ScrubR
-    #     hyperparams = {'alpha': 2,
-    #                    'gamma': 2,
-    #                    'nrounds': 3}
-    #     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-    #                                                                                                         dataloader_forget, dataloader_val,
-    #                                                                                                         cfg.model.seed)
-    #     scrubr = ScrubR(model=unlearned_model, 
-    #            original_model=original_model,
-    #            alpha=hyperparams['alpha'],
-    #            gamma=hyperparams['gamma'],
-    #            device=DEVICE)
-    #     scrubr_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-    #                                            results_dir, 'Scrub+R', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
-    #     apply_scrubr_fn = lambda: scrubr(retain_dataloader=dataloader_retain, forget_dataloader=dataloader_forget, 
-    #                                      val_dataloader=dataloader_val, n_rounds=hyperparams['nrounds'])
-    #     run_and_eval(apply_scrubr_fn, scrubr_experiment_specs)
-
-    
+    print("Initializing Teacher Ascender")
     from src.unlearners.teacher_ascend import TeacherAscender
     hyperparams = {'n_epochs': 100, '_lambda': 64}
     ta = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
@@ -490,21 +481,15 @@ def main(cfg):
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
+    print("Running Teacher Ascender")
     ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
-
-
-    from src.unlearners.og_unlearner import OrthogonalGradients
-    hyperparams = {'n_epochs': 50, '_lambda': 64}
-    og_unlearner = OrthogonalGradients(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE)
+    print("Teacher Ascender metrics: ", ta_metrics)
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
     
-    og_metrics = og_unlearner(dataloader_retain, dataloader_forget, dataloader_val)
-
-    
+    print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent
     hyperparams = {'n_epochs': 50, '_lambda': 64}
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
@@ -512,15 +497,28 @@ def main(cfg):
                                                                                                         cfg.model.seed)
     gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE)
     ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
-    import pdb; pdb.set_trace()
     all_metrics = {'Gradient Ascent': ga_metrics,
-                   'Teacher Ascent': ta_metrics,
-                   'OG-unlearning': og_metrics}
+                   'Teacher Ascent': ta_metrics}
+    
+    print("Plotting model accuracies")
+    plot = plot_model_accuracies(all_metrics)
+    plot.savefig(f'{results_dir}/model_accuracies.png')
+    
+    print("Starting unlearning experiments")
+    
+    print("Running Teacher Ascender unlearning")
+    ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    
+    print("Running Gradient Ascent unlearning")
+    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
+    
+    print("Saving results and plots")
+    all_metrics = {'Gradient Ascent': ga_metrics,
+                   'Teacher Ascent': ta_metrics}
     
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')
+    print("Experiment completed successfully")
 
-
-    
 if __name__ == "__main__":
     main()
