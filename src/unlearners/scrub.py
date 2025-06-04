@@ -10,7 +10,7 @@ import os
 from src.unlearners.base_unlearner import BaseUnlearner
 
 class ScrubR(BaseUnlearner):
-    def __init__(self, model, original_model, alpha, gamma, device: str):
+    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None):
         super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()
@@ -20,7 +20,8 @@ class ScrubR(BaseUnlearner):
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
         self.device = device
-
+        self.MIA = MIA
+        
         self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-3)
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
@@ -71,6 +72,23 @@ class ScrubR(BaseUnlearner):
         return dataloader
 
 
+    def calculate_accuracy(self, model, dataloader):
+        model.eval()
+        correct = 0
+        total = 0
+        for batch in dataloader:
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
+            logits = model.inference(x)['logits']
+            preds = logits.argmax(dim=1)
+            # Convert one-hot encoded y to class indices
+            y_indices = y.argmax(dim=1)
+            correct += (preds == y_indices).sum().item()
+            total += len(y)
+
+        model.train()
+        return correct / total
+
     def calculate_error(self, model, dataloader, return_scalar=True):
         model.eval()
         losses = []
@@ -117,16 +135,64 @@ class ScrubR(BaseUnlearner):
         loss.backward()
         self.optimizer.step()
 
-    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True):
+    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True, verbose: bool = False):
         validate_err_dataloader = self.construct_validation_set(forget_dataloader, val_dataloader)
         forget_errors = []
         
-        for i in range(n_rounds):
-            for batch in forget_dataloader:
+        metrics = {'retain': {'acc': [], 'loss': []},
+                   'forget': {'acc': [], 'loss': []},
+                   'val': {'acc': [], 'loss': []}
+                  }
+        if self.MIA is not None:
+            metrics['mia'] = []
+        
+        # Create epoch iterator with tqdm if verbose
+        epoch_iterator = range(n_rounds)
+        if verbose:
+            from tqdm import tqdm
+            epoch_iterator = tqdm(epoch_iterator, desc='Training epochs', leave=True)
+        
+        for i in epoch_iterator:
+            # calculate MIA score
+            if self.MIA is not None:
+                mia_score = self.MIA(self.model, retain_dataloader, forget_dataloader, val_dataloader)
+                metrics['mia'].append(mia_score)
+
+            # calculate retain and forget errors
+            retain_err = self.calculate_error(self.model, retain_dataloader)
+            forget_err = self.calculate_error(self.model, forget_dataloader)
+            metrics['retain']['loss'].append(retain_err.item())
+            metrics['forget']['loss'].append(forget_err.item())
+
+            # calculate val error
+            val_err = self.calculate_error(self.model, val_dataloader)
+            metrics['val']['loss'].append(val_err.item())
+
+            # calculate retain and forget accuracies
+            retain_acc = self.calculate_accuracy(self.model, retain_dataloader)
+            forget_acc = self.calculate_accuracy(self.model, forget_dataloader)
+            metrics['retain']['acc'].append(retain_acc)
+            metrics['forget']['acc'].append(forget_acc)
+
+            # calculate val accuracy
+            val_acc = self.calculate_accuracy(self.model, val_dataloader)
+            metrics['val']['acc'].append(val_acc)    
+
+            # Create batch iterators with tqdm if verbose
+            forget_iterator = forget_dataloader
+            retain_iterator = retain_dataloader
+            if verbose:
+                forget_iterator = tqdm(forget_iterator, desc='Max step (forget)', leave=False)
+                retain_iterator = tqdm(retain_iterator, desc='Min step (retain)', leave=False)
+
+            # max step
+            for batch in forget_iterator:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
                 self.max_step(x, y)
-            for batch in retain_dataloader:
+            
+            # min step    
+            for batch in retain_iterator:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
                 self.min_step(x, y)
@@ -135,6 +201,14 @@ class ScrubR(BaseUnlearner):
             forget_errors.append(err.item())
             os.makedirs('weights/tmp', exist_ok=True)
             torch.save(self.model.state_dict(), f'weights/tmp/scrub+r_epoch{i+1}.pth')
+
+            # Update progress bar with current metrics if verbose
+            if verbose:
+                epoch_iterator.set_postfix({
+                    'retain_acc': f"{retain_acc:.4f}",
+                    'forget_acc': f"{forget_acc:.4f}",
+                    'val_acc': f"{val_acc:.4f}"
+                })
 
         err_threshold = self.calculate_error(self.model, validate_err_dataloader)
         
@@ -157,3 +231,4 @@ class ScrubR(BaseUnlearner):
             for file in files:
                 os.remove(f"weights/tmp/{file}")
 
+        return metrics 
