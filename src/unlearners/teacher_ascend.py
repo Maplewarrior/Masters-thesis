@@ -11,11 +11,12 @@ from tqdm import tqdm
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu') -> None:
+    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None) -> None:
         self.model = model
         self.n_epochs = n_epochs
         self._lambda = _lambda
         self.device = device
+        self.MIA = MIA
 
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -57,9 +58,6 @@ class TeacherAscender:
     def calculate_fit_term(self, model_out, y):
         model_loss = self.model.loss(model_out, y)
         return model_loss
-        # log_probs = (model_out['probabilities'] + 1e-8).log()
-        # entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
-        # return entropy
     
     def calculate_entropy(self, model_out):
         log_probs = (model_out['probabilities'] + 1e-8).log()
@@ -99,25 +97,8 @@ class TeacherAscender:
         acc = acc / len(dataloader.dataset)
         self.model.train()
         return np.mean(losses), acc
-    
-    def MDL(self, retain_loader):
-        self.model.eval()
-        mdl =  0
-        with torch.no_grad():
-            for batch in retain_loader:
-                x = batch[0].to(self.device)
-                y = batch[1].to(self.device)
-
-                model_out = self.model(x)
-                log_likelihood = model_out['probabilities'].gather(dim=1, index=y.argmax(dim=-1).unsqueeze(1)).squeeze(1).log().mean()
-                entropy = self.calculate_entropy(model_out)
-
-                mdl += -log_likelihood + entropy
-        
-        mdl = mdl / len(retain_loader.dataset)
-        return mdl
-
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True):
+  
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "original-ce"):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -126,10 +107,16 @@ class TeacherAscender:
             - Maximize cross entropy between prediction and y on forget data --> works better for data poisoning.
             - Both?
         """
+
+        if version not in ["original-ce", "original-entropy", "original-ce-retain", "original-entropy-retain"]:
+            raise ValueError(f"Invalid version: {version}, must be one of: original-ce, original-entropy, original-ce-retain, original-entropy-retain")
+
         metrics = {'retain': {'acc': [], 'loss': []},
                    'forget': {'acc': [], 'loss': []},
                    'val': {'acc': [], 'loss': []}
                   }
+        if self.MIA is not None:
+            metrics['mia'] = []
         
         # calculate FIM for original model on retain set
         original_sd = copy.deepcopy(self.model.state_dict())
@@ -144,6 +131,10 @@ class TeacherAscender:
         
         epoch_iterator = tqdm(range(self.n_epochs), desc='Epochs', leave=True) if verbose else range(self.n_epochs)
         for epoch in epoch_iterator:
+            if self.MIA is not None:
+                mia_prob = self.MIA(self.model, retain_loader, forget_loader, val_loader)
+                metrics['mia'].append(mia_prob)
+
             if eval:
                 forget_loss, forget_acc = self.eval(forget_loader)
                 metrics['forget']['acc'].append(forget_acc)
@@ -176,11 +167,24 @@ class TeacherAscender:
                 out_f = self.model(x_f)
                 out_r = self.model(x_r)
 
-                retain_term = self.calculate_fit_term(out_r, y_r)
-                forget_term = self.calculate_entropy(out_f)
+                
                 reg_term = self.calculate_reg_term(FIM_ratio, original_sd)
-                # loss = -forget_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
-                loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
+
+                if version == "original-ce":
+                    forget_term = self.calculate_fit_term(out_f, y_f)
+                    loss = -forget_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
+                elif version == "original-entropy":
+                    forget_term = self.calculate_entropy(out_f)
+                    loss = -forget_term + self._lambda / 2 * reg_term # minimize entropy, maximize reg term
+                elif version == "original-ce-retain":
+                    forget_term = self.calculate_fit_term(out_f, y_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
+                elif version == "original-entropy-retain":
+                    forget_term = self.calculate_entropy(out_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize entropy, maximize reg term
+
 
                 loss.backward()
                 optimizer.step()

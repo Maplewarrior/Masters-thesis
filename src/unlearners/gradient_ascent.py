@@ -3,10 +3,11 @@ import torch
 import torch.optim as optim
 
 class GradientAscent:
-    def __init__(self, model, n_epochs, device: str) -> None:
+    def __init__(self, model, n_epochs, device: str, MIA: callable = None) -> None:
         self.model = model
         self.n_epochs = n_epochs
         self.device = device
+        self.MIA = MIA
 
     def eval(self, dataloader):
         self.model.eval()
@@ -37,9 +38,14 @@ class GradientAscent:
                    'forget': {'acc': [], 'loss': []},
                    'val': {'acc': [], 'loss': []}
                   }
+        if self.MIA is not None:
+            metrics['mia'] = []
+
         for _ in range(self.n_epochs):
-
-
+            if self.MIA is not None:
+                mia_prob = self.MIA(self.model, retain_loader, forget_loader, val_loader)
+                metrics['mia'].append(mia_prob)
+ 
             forget_loss, forget_acc = self.eval(forget_loader)
             metrics['forget']['acc'].append(forget_acc)
             metrics['forget']['loss'].append(forget_loss)
