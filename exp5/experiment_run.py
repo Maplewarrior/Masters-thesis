@@ -518,6 +518,8 @@ def main(cfg):
     # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
     # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
     
+
+    # ========================= Teacher Ascender =========================
     print("Initializing Teacher Ascender")
     from src.unlearners.teacher_ascend import TeacherAscender
     hyperparams = {'n_epochs': 100, '_lambda': 64}
@@ -566,18 +568,21 @@ def main(cfg):
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
     
+    # ========================= Gradient Ascent =========================
     print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
-    gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE)
-    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
+    gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
+    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
     # save metrics to json
     with open(f'{results_dir}/ga_metrics.json', 'w') as f:
         json.dump(ga_metrics, f)
 
 
+
+    # ========================= Merge all metrics =========================
     # Merge all metrics into a single dictionary
     all_metrics = {'Gradient Ascent': ga_metrics,
                    'Teacher Ascent (original-ce)': ta_ce_metrics,
@@ -595,7 +600,6 @@ def main(cfg):
 
     plot = plot_mia_metrics(all_metrics)
     plot.savefig(f'{results_dir}/mia_metrics.png')
-    
     
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')
