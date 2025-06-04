@@ -181,7 +181,6 @@ def eval_single_model(model,
     wrong_preds['model-name'].append(model_name)
     wrong_preds['wrong-preds'].append(disagree_idxs)
 
-    import pdb; pdb.set_trace()
 
     with open(f'{result_dir}/all_results.json', 'w') as f:
         json.dump(results, f)
@@ -448,7 +447,6 @@ def main(cfg):
     # with open(f'{results_dir}/{cfg["data"]["dataset_name"]}/all_results.json', 'r') as f:
     #     res_dict = json.load(f)
     # df_results = pd.DataFrame.from_dict(res_dict)
-    # import pdb; pdb.set_trace()
 
     if cfg.unlearn.method == "ssd":
         from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening

@@ -535,7 +535,6 @@ def plot(results: Dict[str, Dict[str, Any]], save_to_pdf: bool = False, save_to_
         'ssd': '#8E44AD'        # Rich purple
     }
     
-    # import pdb; pdb.set_trace()
     plot_performance_metrics(results, colors, save_to_pdf, save_to_png, experiments_folder)
     plot_accuracy_metrics(results, colors, save_to_pdf, save_to_png, experiments_folder)
     plot_equiv_metrics(results, colors, save_to_pdf, save_to_png, experiments_folder)

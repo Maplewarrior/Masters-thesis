@@ -100,7 +100,6 @@ class BaseTrainer:
                 # Update progress bar
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
-                # import pdb; pdb.set_trace()
                 if self.save_checkpoints and epoch > 2 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
                     self.save_state_dict(self.checkpoint_dir,
                                          model_name=self.checkpoint_dir.split('/')[-1],

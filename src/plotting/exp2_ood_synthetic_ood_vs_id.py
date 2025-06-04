@@ -368,7 +368,6 @@ if __name__ == "__main__":
         js_divergence_values_id = extract_js_divergence_values(results_id)
 
 
-        import pdb; pdb.set_trace()
 
         # ========= Plot metrics grid =========
 
@@ -379,4 +378,3 @@ if __name__ == "__main__":
 
         plot_metrics_grid(js_divergence_values, js_divergence_values_id, metric_name="JS Divergence", ylim=(0, 0.3), save_path=f"{experiments_folder}/js_divergence_metrics_grid.png")
 
-        import pdb; pdb.set_trace()

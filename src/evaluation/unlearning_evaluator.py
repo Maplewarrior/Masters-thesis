@@ -64,7 +64,6 @@ class UnlearningEvaluator:
             probs.append(model.inference(x)['probabilities'])
             # end = time.time()
             # elapsed = end - start
-            # import pdb; pdb.set_trace()
             # Make sure y is one-hot encoded. Some models do not use one-hot encoding.
             if hasattr(dataloader, 'dataset') and hasattr(dataloader.dataset, 'onehot_labels') and not dataloader.dataset.onehot_labels:
                 y = dataloader.dataset.onehot_encode_labels(y, dataloader.dataset.n_classes).to(self.device)
@@ -156,6 +155,5 @@ class UnlearningEvaluator:
         
         if estimate.item() < 0 - tolerance or estimate.item() > 1 + tolerance:
             print("JS Divergence out of bounds!")
-            # pdb.set_trace()
         
         return estimate.item()

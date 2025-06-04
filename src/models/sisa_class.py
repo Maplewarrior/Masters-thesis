@@ -324,7 +324,6 @@ class SISA(BaseModel):
         
         # preds, weighted_probs = self.predict(x)
         
-        # import pdb; pdb.set_trace()
 
         # # convert to torch
         # weighted_probs = torch.tensor(weighted_probs) # shape: 1, len(x), n_classes
