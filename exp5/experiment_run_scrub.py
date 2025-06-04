@@ -400,7 +400,7 @@ def main(cfg):
     
 
     # ============= Train/load original model =============
-    if not os.path.exists(f'{weights_dir}/original_model/original_model_weights.pt'):
+    if not os.path.exists(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt'):
         print("Training original model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -427,12 +427,12 @@ def main(cfg):
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
         original_model
-        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights.pt')
-        torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
+        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
+        torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
         
     else:
         print("Loading pre-trained original model weights")
-        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt')
+        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
         original_model.load_state_dict(original_model_sd)
         
 
@@ -450,7 +450,7 @@ def main(cfg):
         save_checkpoints = True
     
     # ============= Train/load retrained model =============
-    if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights.pt'):
+    if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt'):
         print("Training retrained model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -477,11 +477,11 @@ def main(cfg):
                                                     dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(retrained_train_fn, retrained_experiment_specs)
-        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights.pt')
+        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt')
     
     else:
         print("Loading pre-trained retrained model weights")
-        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights.pt')
+        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt')
         retrained_model.load_state_dict(retrained_model_sd)
     
     # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
