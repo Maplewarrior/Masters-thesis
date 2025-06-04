@@ -572,8 +572,8 @@ def main(cfg):
     
 
     mia_model = MIA(device=DEVICE)
-    retrained_model_metrics = calculate_model_metrics(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Retrained model', hyperparams, cfg.model.seed, DEVICE)
-    original_model_metrics = calculate_model_metrics(original_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Original model', hyperparams, cfg.model.seed, DEVICE)
+    retrained_model_metrics = calculate_model_metrics(retrained_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Retrained model')
+    original_model_metrics = calculate_model_metrics(original_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Original model')
 
     # save metrics to json
     with open(f'{results_dir}/retrained_model_metrics.json', 'w') as f:
