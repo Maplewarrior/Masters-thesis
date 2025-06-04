@@ -516,6 +516,10 @@ def main(cfg):
     all_metrics = {'Gradient Ascent': ga_metrics,
                    'Teacher Ascent': ta_metrics}
     
+    # Save all metrics to a json file
+    with open(f'{results_dir}/all_metrics.json', 'w') as f:
+        json.dump(all_metrics, f)
+    
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')
     print("Experiment completed successfully")
