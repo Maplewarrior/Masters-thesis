@@ -519,6 +519,21 @@ def main(cfg):
     # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
     
 
+    mia_model = MIA(device=DEVICE)
+    retrained_model_accuracy = eval_single_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Retrained model', hyperparams, cfg.model.seed, DEVICE)
+    original_model_accuracy = eval_single_model(original_model, dataloader_retain, dataloader_forget, dataloader_val, 0, results_dir, 'Original model', hyperparams, cfg.model.seed, DEVICE)
+    retrained_model_mia = mia_model(retrained_model, dataloader_retain, dataloader_forget, dataloader_val)
+    original_model_mia = mia_model(original_model, dataloader_retain, dataloader_forget, dataloader_val)
+
+    original_model_metrics = {"accuracy": original_model_accuracy, "mia": original_model_mia}
+    with open(f'{results_dir}/original_model_metrics.json', 'w') as f:
+        json.dump(original_model_metrics, f)
+
+    retrained_model_metrics = {"accuracy": retrained_model_accuracy, "mia": retrained_model_mia}
+    with open(f'{results_dir}/retrained_model_metrics.json', 'w') as f:
+        json.dump(retrained_model_metrics, f)
+
+
     # ========================= Teacher Ascender =========================
     print("Initializing Teacher Ascender")
     from src.unlearners.teacher_ascend import TeacherAscender
