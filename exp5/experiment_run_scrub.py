@@ -498,7 +498,7 @@ def main(cfg):
 
 
     from src.unlearners.scrub import ScrubR
-    scrub_params = {'alpha': 1e-3, 'gamma': 1e-3, 'n_rounds': 10}
+    scrub_params = {'alpha': 2, 'gamma': 2, 'n_rounds': 10}
 
     print("Initializing SCRUB")
     scrub_model = copy.deepcopy(unlearned_model)
