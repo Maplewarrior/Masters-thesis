@@ -265,7 +265,7 @@ def plot_mia_metrics(models, figsize=(12, 8)):
     Plot MIA metrics for multiple models.
     """
     plt.style.use('default')
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
     
     # Create subplots - one for each metric
     fig, axes = plt.subplots(1, 3, figsize=figsize)
@@ -311,7 +311,7 @@ def plot_model_accuracies(models, figsize=(12, 8)):
     """
     # Set up the plot style
     plt.style.use('default')
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
     
     # Create subplots - one for each metric
     fig, axes = plt.subplots(1, 3, figsize=figsize)
@@ -537,13 +537,31 @@ def main(cfg):
                                                                                                         cfg.model.seed)
     print("Running Teacher Ascender (original-ce)")
     ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce')
+    # Save metrics to json
+    with open(f'{results_dir}/ta_ce_metrics.json', 'w') as f:
+        json.dump(ta_ce_metrics, f)
+
     print("Running Teacher Ascender (original-entropy)")
     ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy')
+    # Save metrics to json
+    with open(f'{results_dir}/ta_ce_metrics.json', 'w') as f:
+        json.dump(ta_ce_metrics, f)
+    
     print("Running Teacher Ascender (original-ce-retain)")
     te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce-retain')
+    # Save metrics to json
+    with open(f'{results_dir}/te_ce_retain_metrics.json', 'w') as f:
+        json.dump(te_ce_retain_metrics, f)
+    
+    
     print("Running Teacher Ascender (original-entropy-retain)")
     te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy-retain')
-    
+    # Save metrics to json
+    with open(f'{results_dir}/te_ce_retain_metrics.json', 'w') as f:
+        json.dump(te_ce_retain_metrics, f)
+
+    with open(f'{results_dir}/te_entropy_retain_metrics.json', 'w') as f:
+        json.dump(te_entropy_retain_metrics, f)
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
@@ -555,13 +573,19 @@ def main(cfg):
                                                                                                         cfg.model.seed)
     gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE)
     ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
+    # save metrics to json
+    with open(f'{results_dir}/ga_metrics.json', 'w') as f:
+        json.dump(ga_metrics, f)
+
+
+    # Merge all metrics into a single dictionary
     all_metrics = {'Gradient Ascent': ga_metrics,
                    'Teacher Ascent (original-ce)': ta_ce_metrics,
                    'Teacher Ascent (original-entropy)': ta_entropy_metrics,
                    'Teacher Ascent (original-ce-retain)': te_ce_retain_metrics,
                    'Teacher Ascent (original-entropy-retain)': te_entropy_retain_metrics}
     
-    # Save all metrics to a json file
+    # Save all metrics to a json file   
     with open(f'{results_dir}/all_metrics.json', 'w') as f:
         json.dump(all_metrics, f)
 
