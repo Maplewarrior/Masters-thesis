@@ -39,6 +39,19 @@ class GradientAscent:
                   }
         for _ in range(self.n_epochs):
 
+
+            forget_loss, forget_acc = self.eval(forget_loader)
+            metrics['forget']['acc'].append(forget_acc)
+            metrics['forget']['loss'].append(forget_loss)
+
+            retain_loss, retain_acc = self.eval(retain_loader)
+            metrics['retain']['acc'].append(retain_acc)
+            metrics['retain']['loss'].append(retain_loss)
+
+            val_loss, val_acc = self.eval(val_loader)
+            metrics['val']['acc'].append(val_acc)
+            metrics['val']['loss'].append(val_loss)
+
             #### Gradient ascent
             for batch in forget_loader:
                 optimizer.zero_grad()
@@ -52,16 +65,5 @@ class GradientAscent:
                 loss.backward()
                 optimizer.step()
             
-            forget_loss, forget_acc = self.eval(forget_loader)
-            metrics['forget']['acc'].append(forget_acc)
-            metrics['forget']['loss'].append(forget_loss)
-
-            retain_loss, retain_acc = self.eval(retain_loader)
-            metrics['retain']['acc'].append(retain_acc)
-            metrics['retain']['loss'].append(retain_loss)
-
-            val_loss, val_acc = self.eval(val_loader)
-            metrics['val']['acc'].append(val_acc)
-            metrics['val']['loss'].append(val_loss)
         
         return metrics

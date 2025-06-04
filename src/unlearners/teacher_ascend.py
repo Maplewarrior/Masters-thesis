@@ -100,40 +100,6 @@ class TeacherAscender:
         self.model.train()
         return np.mean(losses), acc
     
-    def calculate_entanglement_score(self, retain_loader, forget_loader):
-        retain_embeddings = []
-        forget_embeddings = []
-        N_r, N_f = len(retain_loader), len(forget_loader)
-
-        for batch in retain_loader:
-            x = batch[0].to(self.device)
-            emb = self.model.inference(x, stop_idx=-1)['logits']
-            retain_embeddings.append(emb)
-        
-        for batch in forget_loader:
-            x = batch[0].to(self.device)
-            emb = self.model.inference(x, stop_idx=-1)['logits']
-            forget_embeddings.append(emb)
-        
-        retain_embeddings = torch.cat(retain_embeddings)
-        forget_embeddings = torch.cat(forget_embeddings)
-        
-        
-
-        mu_retain = retain_embeddings.mean(dim=0)
-        mu_forget = forget_embeddings.mean(dim=0)
-        mu_total = mu_retain * (N_r / (N_r + N_f)) + mu_forget * (N_f / (N_r + N_f))
-
-        
-        
-        ES_enumerator = ((retain_embeddings - mu_retain).norm(dim=-1, p=2).pow(2).mean() + (forget_embeddings - mu_forget).norm(dim=-1, p=2).pow(2).mean())
-        ES_denominator = 0.5 * ((mu_retain - mu_total).norm(p=2).pow(2) + (mu_forget - mu_total).norm(p=2).pow(2))
-        ES = ES_enumerator / ES_denominator
-
-        self.model.train()
-
-        return ES
-
     def MDL(self, retain_loader):
         self.model.eval()
         mdl =  0
@@ -178,6 +144,19 @@ class TeacherAscender:
         
         epoch_iterator = tqdm(range(self.n_epochs), desc='Epochs', leave=True) if verbose else range(self.n_epochs)
         for epoch in epoch_iterator:
+            if eval:
+                forget_loss, forget_acc = self.eval(forget_loader)
+                metrics['forget']['acc'].append(forget_acc)
+                metrics['forget']['loss'].append(forget_loss)
+
+                retain_loss, retain_acc = self.eval(retain_loader)
+                metrics['retain']['acc'].append(retain_acc)
+                metrics['retain']['loss'].append(retain_loss)
+
+                val_loss, val_acc = self.eval(val_loader)
+                metrics['val']['acc'].append(val_acc)
+                metrics['val']['loss'].append(val_loss)
+
             #### Gradient ascent
             batch_iterator = tqdm(enumerate(forget_loader), 
                                 desc=f'Batch Processing', 
@@ -206,18 +185,6 @@ class TeacherAscender:
                 loss.backward()
                 optimizer.step()
 
-            if eval:
-                forget_loss, forget_acc = self.eval(forget_loader)
-                metrics['forget']['acc'].append(forget_acc)
-                metrics['forget']['loss'].append(forget_loss)
-
-                retain_loss, retain_acc = self.eval(retain_loader)
-                metrics['retain']['acc'].append(retain_acc)
-                metrics['retain']['loss'].append(retain_loss)
-
-                val_loss, val_acc = self.eval(val_loader)
-                metrics['val']['acc'].append(val_acc)
-                metrics['val']['loss'].append(val_loss)
         
         if eval:
             return metrics
