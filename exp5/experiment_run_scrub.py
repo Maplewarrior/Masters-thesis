@@ -513,29 +513,5 @@ def main(cfg):
         json.dump(scrub_metrics, f)
 
 
-    # ========================= Gradient Ascent =========================
-    print("Initializing Gradient Ascent")
-    from src.unlearners.gradient_ascent import GradientAscent
-    hyperparams = {'n_epochs': 100}
-    dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                        dataloader_forget, dataloader_val,
-                                                                                                        cfg.model.seed)
-    gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
-    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
-    # save metrics to json
-    with open(f'{results_dir}/ga_metrics.json', 'w') as f:
-        json.dump(ga_metrics, f)
-
-
-
-    # ========================= Merge all metrics =========================
-    # Merge all metrics into a single dictionary
-    all_metrics = {'Gradient Ascent': ga_metrics,
-                   "SCRUB": scrub_metrics}
-    
-    # Save all metrics to a json file   
-    with open(f'{results_dir}/all_metrics.json', 'w') as f:
-        json.dump(all_metrics, f)
-
 if __name__ == "__main__":
     main()
