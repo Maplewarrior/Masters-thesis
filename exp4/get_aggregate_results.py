@@ -37,7 +37,6 @@ def get_all_results():
     agg_result = result.groupby(['hyperparameters', 'model-name'])[agg_cols].agg({col: mean_std for col in agg_cols})
     
     # print(agg_result['model-name', 'MIA-probability', 'retain-accuracy', 'forget-accuracy', 'val-accuracy', 'time (sec)'])
-    pdb.set_trace()
 
 # def make_latex_table()
 
@@ -45,13 +44,11 @@ def get_performance_result(seed: int):
     with open(f'{root_dir}/{dataset_name}/seed_{seed}/all_results.json', 'r') as f:
         seed_result_dict = json.load(f)
     seed_result_df = pd.DataFrame.from_dict(seed_result_dict)
-    pdb.set_trace()
 
 
 def get_wrong_preds(seed: int):
     with open(f'{root_dir}/{dataset_name}/seed_{seed}/wrong_forget_preds.json', 'r') as f:
         wrong_preds = json.load(f)
-    # pdb.set_trace()
     # df = pd.DataFrame.from_dict(wrong_preds)
     return wrong_preds
     
@@ -72,7 +69,6 @@ def save_wrong_pred_images(seed: int):
     
     ssd_v6_seen = False
     amnesiac_seen = False
-    pdb.set_trace()
     
     for i, model_name in enumerate(wrong_preds['model-name']):
         wrong_idxs = wrong_preds['wrong-preds'][i]

@@ -180,6 +180,4 @@ class OrthogonalGradients:
             metrics['val']['acc'].append(val_acc)
             metrics['val']['loss'].append(val_loss)
         
-        pdb.set_trace()
-
         return metrics

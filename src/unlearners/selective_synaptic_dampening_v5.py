@@ -314,5 +314,4 @@ class SelectiveSynapticDampening(SSD):
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
         self.update_parameters(FIM_full, FIM_forget, **best_params)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
-        pdb.set_trace()
         return best_params
