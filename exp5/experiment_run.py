@@ -491,7 +491,6 @@ def main(cfg):
     
     print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent
-    hyperparams = {'n_epochs': 50, '_lambda': 64}
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
@@ -503,18 +502,6 @@ def main(cfg):
     print("Plotting model accuracies")
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')
-    
-    print("Starting unlearning experiments")
-    
-    print("Running Teacher Ascender unlearning")
-    ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
-    
-    print("Running Gradient Ascent unlearning")
-    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
-    
-    print("Saving results and plots")
-    all_metrics = {'Gradient Ascent': ga_metrics,
-                   'Teacher Ascent': ta_metrics}
     
     # Save all metrics to a json file
     with open(f'{results_dir}/all_metrics.json', 'w') as f:
