@@ -100,7 +100,7 @@ class SelectiveSynapticDampening(SSD):
             y_values.append(y)
 
         # check if exact distribution could be constructed..
-        if not (torch.tensor(sample_sizes) == forget_counts).all():
+        if not (torch.tensor(sample_sizes, device=self.device) == forget_counts).all():
             print("Exact distribution could not be constructed..")
         
         val_labels, val_counts = torch.unique(y_val, return_counts=True)

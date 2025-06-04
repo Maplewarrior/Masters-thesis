@@ -25,14 +25,13 @@ class AmnesiacTrainer(BaseTrainer):
                  device: str = 'cpu',
                  cache_gradients: bool = True,
                  save_dir: str = 'results/amnesiac', # directory in which to store gradients
-                 save_checkpoints: bool = False, # whether to store weights or not
-                 checkpoint_dir: str = None # directory to store model weights
+                 save_model_checkpoints: bool = False, # whether to store weights or not
                  ) -> None:
         self.model = model
         # Initialize optimizer
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         
-        super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints=False, checkpoint_dir=None, n_epochs=n_epochs, device=device)
+        super().__init__(model, optimizer, train_dataloader, val_dataloader, logger, disable_tqdm, do_early_stopping, save_checkpoints=save_model_checkpoints, checkpoint_dir=None, n_epochs=n_epochs, device=device)
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.logger = logger
@@ -43,11 +42,14 @@ class AmnesiacTrainer(BaseTrainer):
         self.cache_gradients = cache_gradients
         self.model.cache_gradients = cache_gradients
         self.save_dir = save_dir
+        self.save_model_checkpoints = save_model_checkpoints
         # {epoch: {x_idx: batch_idx}}
         self.batch_mapping = {}
         # {epoch: {batch_idx: param_diff}}
         self.batch_params = {}
         os.makedirs(f"{self.save_dir}/gradients/", exist_ok=True) # gradient save directory
+        os.makedirs(f"{self.save_dir}/weights/", exist_ok=True) # weight save directory
+        
         
 
     def init_epoch_metrics(self):
@@ -58,33 +60,14 @@ class AmnesiacTrainer(BaseTrainer):
                 'val/accuracy': [], 'val/loss': [], 'epoch': []}
 
     def train_one_epoch(self, epoch: int, **kwargs) -> tuple[list[float], float]:
-        # self.model.train()
-        # epoch_losses = []
-        # epoch_metrics = self.init_epoch_metrics()
-
-        # for batch in self.train_dataloader:
-        #     x = batch[0].to(self.device)
-        #     y = batch[1].to(self.device)
-        #     # perform forward and backward pass
-        #     out, loss = self.step(x, y)
-        #     # Update/store metrics
-        #     epoch_metrics = self.update_epoch_metrics(epoch_metrics, out, y)
-        #     epoch_losses.append(loss.item())
-        
-        # epoch_metrics['loss'] = sum(epoch_losses) / len(epoch_losses)
-        # epoch_metrics['accuracy'] = epoch_metrics['accuracy'] / len(epoch_losses)
-        # return epoch_metrics
-
+    
         class_to_forget = kwargs.get('class_to_forget', None)
         indices_to_forget = kwargs.get('indices_to_forget', None)
         repair = kwargs.get('repair', False)
-        ckpt = kwargs.get('ckpt', False)
-
 
         self.model.train()
         epoch_losses = []
         epoch_metrics = self.init_epoch_metrics()
-        # total_loss = 0.0
 
         for batch_idx, batch in enumerate(self.train_dataloader):            
             assert len(batch) == 3, f"Batch must contain x, y, and indices. Got length {len(batch)}"
@@ -119,9 +102,6 @@ class AmnesiacTrainer(BaseTrainer):
         
         epoch_metrics['loss'] = sum(epoch_losses) / len(epoch_losses)
         epoch_metrics['accuracy'] = epoch_metrics['accuracy'] / len(epoch_losses)
-
-        if ckpt:
-            self.save_checkpoint(epoch)
     
         return epoch_metrics
     
@@ -138,8 +118,7 @@ class AmnesiacTrainer(BaseTrainer):
     def train(self,
               class_to_forget=None,
               indices_to_forget=None,
-              repair=False,
-              ckpt=False):
+              repair=False):
         train_metrics = self.init_train_metrics()
 
         # either class_to_forget or indices_to_forget must be provided, or repair must be True
@@ -152,8 +131,7 @@ class AmnesiacTrainer(BaseTrainer):
                 train_epoch_metrics = self.train_one_epoch(epoch, 
                                                            class_to_forget=class_to_forget, 
                                                            indices_to_forget=indices_to_forget, 
-                                                           repair=repair, 
-                                                           ckpt=ckpt)
+                                                           repair=repair)
 
                 # run inference on validation set
                 val_metrics = self.eval()
@@ -179,11 +157,28 @@ class AmnesiacTrainer(BaseTrainer):
                 # Update progress bar
                 pbar_strings = ' '.join([f'{k}={v[-1]:.3f}' for k, v in train_metrics.items()])
                 epoch_pbar.set_description(pbar_strings)
-                        
                 
+                # end training with early stopping if criteria is met
                 if self.do_early_stopping and epoch > 4 and not train_metrics['val/loss'][-1] <= np.mean(train_metrics['val/loss'][:-4:-1]):
-                    print("\Ending due to early stopping")
+                    print("Ending due to early stopping")
                     return train_metrics
+                
+                # save model state_dict
+                if self.save_model_checkpoints and epoch > 2 and train_metrics['val/accuracy'][-1] == np.max(train_metrics['val/accuracy']):
+                    self.save_state_dict(f'{self.save_dir}/weights',
+                                          model_name='amnesiac_original',
+                                          val_acc=train_metrics['val/accuracy'][-1],
+                                          epoch=epoch + 1
+                                        )
+        # load the best model checkpoint
+        if self.save_model_checkpoints:
+            best_idx = np.argmax(train_metrics['val/accuracy'])
+            sd_opt = self.load_state_dict(f'{self.save_dir}/weights',
+                                          model_name='amnesiac_original',
+                                          val_acc=train_metrics['val/accuracy'][best_idx],
+                                          epoch=train_metrics['epoch'][best_idx]
+                                         )
+            self.model.load_state_dict(sd_opt)
                 
         return train_metrics
 
@@ -266,24 +261,24 @@ class AmnesiacTrainer(BaseTrainer):
 
             return ""
 
-    def save_checkpoint(self, epoch):
-        """Save a checkpoint of the model and training state.
+    # def save_checkpoint(self, epoch):
+    #     """Save a checkpoint of the model and training state.
 
-        Args:
-            epoch (int): Current epoch number
-        """
-        checkpoint_dir = f"{self.save_dir}/checkpoints"
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        checkpoint_path = f"{checkpoint_dir}/checkpoint_{epoch}.pth"
-        # create the directory if it doesn't exist
-        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'batch_mapping': self.batch_mapping,
-            'batch_params': self.batch_params
-        }, checkpoint_path)
+    #     Args:
+    #         epoch (int): Current epoch number
+    #     """
+    #     checkpoint_dir = f"{self.save_dir}/checkpoints"
+    #     os.makedirs(checkpoint_dir, exist_ok=True)
+    #     checkpoint_path = f"{checkpoint_dir}/checkpoint_{epoch}.pth"
+    #     # create the directory if it doesn't exist
+    #     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+    #     torch.save({
+    #         'epoch': epoch,
+    #         'model_state_dict': self.model.state_dict(),
+    #         'optimizer_state_dict': self.optimizer.state_dict(),
+    #         'batch_mapping': self.batch_mapping,
+    #         'batch_params': self.batch_params
+    #     }, checkpoint_path)
 
     def delete_stored_gradients(self):
         """Delete all cached gradients from memory."""
@@ -298,10 +293,8 @@ class AmnesiacTrainer(BaseTrainer):
     def __call__(self,
                  class_to_forget=None,
                  indices_to_forget=None,
-                 repair=False,
-                 ckpt=False):
+                 repair=False):
         return self.train(class_to_forget=class_to_forget,
                           indices_to_forget=indices_to_forget,
-                          repair=repair,
-                          ckpt=ckpt)
+                          repair=repair)
     
