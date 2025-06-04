@@ -526,23 +526,23 @@ def main(cfg):
     ta_ce = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
                             _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
     ta_entropy = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-entropy')
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
     te_ce_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-ce-retain')
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
     te_entropy_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-entropy-retain')
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
     print("Running Teacher Ascender (original-ce)")
-    ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce')
     print("Running Teacher Ascender (original-entropy)")
-    ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy')
     print("Running Teacher Ascender (original-ce-retain)")
-    te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce-retain')
     print("Running Teacher Ascender (original-entropy-retain)")
-    te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy-retain')
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
