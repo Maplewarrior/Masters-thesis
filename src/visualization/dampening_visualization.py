@@ -129,7 +129,7 @@ def visualize_parameter_dampening(state_dict, figsize=(10, 6)):
                 else:  # Output layer
                     bias_x = x_pos - 0.4
                     
-                bias_spacing = 0.22
+                bias_spacing = 0.2
                 bias_positions = calculate_grid_layout(layer_size, 1, bias_x, 4, spacing=bias_spacing)
                 
                 for i, bias_val in enumerate(bias_values):
