@@ -189,3 +189,5 @@ results/
 configs/sweep
 multirun
 outputs/
+
+*.code-workspace
