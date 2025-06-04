@@ -154,7 +154,7 @@ class ScrubR(BaseUnlearner):
             metrics['mia'] = []
 
         if self.js_div_func is not None:
-            metrics['js_div'] = []
+            metrics['js_div'] = {"retain": [], "forget": [], "val": []}
         
         # Create epoch iterator with tqdm if verbose
         epoch_iterator = range(n_rounds)
@@ -173,7 +173,15 @@ class ScrubR(BaseUnlearner):
                 probs_u = self.model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
                 probs_c = self.retrain_model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
                 js_div = self.js_div_func(probs_u, probs_c)
-                metrics['js_div'].append(js_div)
+                metrics['js_div']['retain'].append(js_div)
+                probs_u = self.model.inference(forget_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(forget_dataloader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['forget'].append(js_div)
+                probs_u = self.model.inference(val_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(val_dataloader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['val'].append(js_div)
 
             # calculate retain and forget errors
             retain_err = self.calculate_error(self.model, retain_dataloader)
