@@ -108,15 +108,14 @@ def main():
             # Create plots
             # MIA metrics plot
             mia_plot = plot_mia_metrics(all_metrics)
-            # mia_plot.savefig(os.path.join(results_dir, 'mia_metrics.png'))
-            plt.show()
+            mia_plot.savefig(os.path.join(results_dir, 'mia_metrics.png'))
             plt.close()
             
             # Model accuracies plot
             acc_plot = plot_model_accuracies(all_metrics)
 
             # plt.show()
-            # acc_plot.savefig(os.path.join(results_dir, 'model_accuracies.png'))
+            acc_plot.savefig(os.path.join(results_dir, 'model_accuracies.png'))
             
             plt.close()
             
