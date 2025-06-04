@@ -42,33 +42,6 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot_old(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams):
-        dataset_number = dataset_name.split("_")[1]
-        title = f"{cfg.unlearn.method}"
-        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-        if 'ssd' in cfg.unlearn.method:
-            if 'v5' in cfg.unlearn.method:
-                title = f"{cfg.unlearn.method}_alpha1={hyperparams['alpha1']:.2f}_lambda1={hyperparams['lambda1']:.2f}_alpha2={hyperparams['alpha2']:.2f}_lambda2={hyperparams['lambda2']:.2f}"
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-            else:
-                title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-                if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
-                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-                else:
-                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-
-        creator = DecisionBoundaryCreator(model, dataloader_retrain)
-        plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot1.title(title)
-        plot1.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x")
-        plot1.savefig(f"{savepath}_unlearned.png")
-
-        creator = DecisionBoundaryCreator(original_model, dataloader_train)
-        plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot2.scatter(X_forget[0, 0], X_forget[0, 1], color="red", marker="x", alpha=0.3)
-        plot2.title("Original")
-        plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
-
 def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams, make_pdfs=True, compress_pdfs=True):
     dataset_number = dataset_name.split("_")[1]
     title = f"{cfg.unlearn.method}"

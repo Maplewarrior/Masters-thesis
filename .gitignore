@@ -18,6 +18,8 @@ experiments/
 # C extensions
 *.so
 
+results/
+
 # Distribution / packaging
 .Python
 build/
