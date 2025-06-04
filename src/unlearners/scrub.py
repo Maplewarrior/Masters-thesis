@@ -170,8 +170,8 @@ class ScrubR(BaseUnlearner):
             
             if self.js_div_func is not None:
                 # JS_divergence(self, probs_u, probs_c, log_base: float = 2.0)
-                probs_u = self.model.inference(retain_dataloader.dataset.X)['probabilities']
-                probs_c = self.retrain_model.inference(retain_dataloader.dataset.X)['probabilities']
+                probs_u = self.model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
                 js_div = self.js_div_func(probs_u, probs_c)
                 metrics['js_div'].append(js_div)
 
