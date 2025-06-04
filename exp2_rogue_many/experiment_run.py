@@ -17,7 +17,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from src.visualization.dampening_visualization import visualize_parameter_dampening
 
-results_dir = os.path.join(os.path.dirname(__file__), "TA_GA_gradproj_results")
+results_dir = os.path.join(os.path.dirname(__file__), "results")
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)

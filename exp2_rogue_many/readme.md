@@ -10,6 +10,10 @@ In this experiment we want to investigate the behavior of the SSD method and how
 ## Experiment runs
 Now we run the experiment on each of the dataset configuration, moving the rogue point.
 
+```bash
+python exp2_rogue_many/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" unlearn.method="ssd,ssd_v2,ssd_v3,ssd_v4,ssd_v6,ssd_v6_smooth,ssd_v7,teacher_ascend" hydra/launcher=ray --multirun
+```
+
 ### 1. Rogue point with same distance to all centroids (close to decision boundary)
 <!-- ![Data configuration for Run 1](data/plots/data_1.png) -->
 <img src="data/plots/data_1.png" alt="Dataset" width="600"/>
