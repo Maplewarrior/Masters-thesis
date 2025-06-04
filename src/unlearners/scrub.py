@@ -10,7 +10,7 @@ import os
 from src.unlearners.base_unlearner import BaseUnlearner
 
 class ScrubR(BaseUnlearner):
-    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None):
+    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None):
         super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()
@@ -21,6 +21,13 @@ class ScrubR(BaseUnlearner):
         self.gamma = gamma # hyperparam for cross entropy
         self.device = device
         self.MIA = MIA
+
+        # if js_div_func is provided, then we need the retrain_model to be provided as well
+        if js_div_func is not None:
+            assert retrain_model is not None, "retrain_model must be provided if js_div_func is provided"
+        self.retrain_model = retrain_model
+        self.js_div_func = js_div_func
+        
         
         self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-3)
         self.log_softmax = nn.LogSoftmax(dim=-1)
@@ -145,6 +152,9 @@ class ScrubR(BaseUnlearner):
                   }
         if self.MIA is not None:
             metrics['mia'] = []
+
+        if self.js_div_func is not None:
+            metrics['js_div'] = []
         
         # Create epoch iterator with tqdm if verbose
         epoch_iterator = range(n_rounds)
@@ -157,6 +167,13 @@ class ScrubR(BaseUnlearner):
             if self.MIA is not None:
                 mia_score = self.MIA(self.model, retain_dataloader, forget_dataloader, val_dataloader)
                 metrics['mia'].append(mia_score)
+            
+            if self.js_div_func is not None:
+                # JS_divergence(self, probs_u, probs_c, log_base: float = 2.0)
+                probs_u = self.model.inference(retain_dataloader.dataset.X)['probabilities']
+                probs_c = self.retrain_model.inference(retain_dataloader.dataset.X)['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div'].append(js_div)
 
             # calculate retain and forget errors
             retain_err = self.calculate_error(self.model, retain_dataloader)

@@ -498,11 +498,13 @@ def main(cfg):
 
 
     from src.unlearners.scrub import ScrubR
+    unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+    js_div_func = unlearning_evaluator.JS_divergence
     scrub_params = {'alpha': 2, 'gamma': 2, 'n_rounds': 50}
 
     print("Initializing SCRUB")
     scrub_model = copy.deepcopy(unlearned_model)
-    scrub = ScrubR(scrub_model, original_model, alpha=scrub_params['alpha'], gamma=scrub_params['gamma'], device=DEVICE, MIA=mia_model)
+    scrub = ScrubR(scrub_model, original_model, alpha=scrub_params['alpha'], gamma=scrub_params['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
 
 
     scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=scrub_params['n_rounds'], verbose=True)
