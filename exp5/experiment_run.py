@@ -279,6 +279,11 @@ def plot_model_accuracies(models, figsize=(12, 8)):
     
     metrics = ['retain', 'forget', 'val']
     metric_titles = ['Retain Accuracy', 'Forget Accuracy', 'Validation Accuracy']
+
+    # Remove MIA metrics
+    for model_name, model_data in models.items():
+        if 'mia' in model_data:
+            del model_data['mia']
     
     for i, (metric, title) in enumerate(zip(metrics, metric_titles)):
         ax = axes[i]
@@ -476,14 +481,28 @@ def main(cfg):
     print("Initializing Teacher Ascender")
     from src.unlearners.teacher_ascend import TeacherAscender
     hyperparams = {'n_epochs': 100, '_lambda': 64}
-    ta = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE)
+
+    mia_model = MIA(device=DEVICE)
+    ta_ce = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
+    ta_entropy = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-entropy')
+    te_ce_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-ce-retain')
+    te_entropy_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, version='original-entropy-retain')
+    
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
-    print("Running Teacher Ascender")
-    ta_metrics = ta(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
-    print("Teacher Ascender metrics: ", ta_metrics)
+    print("Running Teacher Ascender (original-ce)")
+    ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    print("Running Teacher Ascender (original-entropy)")
+    ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    print("Running Teacher Ascender (original-ce-retain)")
+    te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
+    print("Running Teacher Ascender (original-entropy-retain)")
+    te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True)
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
@@ -497,15 +516,21 @@ def main(cfg):
     gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE)
     ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val)
     all_metrics = {'Gradient Ascent': ga_metrics,
-                   'Teacher Ascent': ta_metrics}
-    
-    print("Plotting model accuracies")
-    plot = plot_model_accuracies(all_metrics)
-    plot.savefig(f'{results_dir}/model_accuracies.png')
+                   'Teacher Ascent (original-ce)': ta_ce_metrics,
+                   'Teacher Ascent (original-entropy)': ta_entropy_metrics,
+                   'Teacher Ascent (original-ce-retain)': te_ce_retain_metrics,
+                   'Teacher Ascent (original-entropy-retain)': te_entropy_retain_metrics}
     
     # Save all metrics to a json file
     with open(f'{results_dir}/all_metrics.json', 'w') as f:
         json.dump(all_metrics, f)
+
+    print("Plotting model accuracies")
+    plot = plot_model_accuracies(all_metrics)
+    plot.savefig(f'{results_dir}/model_accuracies.png')
+
+    
+    
     
     plot = plot_model_accuracies(all_metrics)
     plot.savefig(f'{results_dir}/model_accuracies.png')

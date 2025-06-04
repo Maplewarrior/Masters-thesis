@@ -188,7 +188,6 @@ class TeacherAscender:
 
                 loss.backward()
                 optimizer.step()
-
         
         if eval:
             return metrics
