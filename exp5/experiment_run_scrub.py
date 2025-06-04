@@ -514,6 +514,7 @@ def main(cfg):
     # ========================= Gradient Ascent =========================
     print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent
+    hyperparams = {'n_epochs': 100}
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
