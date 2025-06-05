@@ -100,28 +100,70 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     plt.tight_layout()
     return fig_mia
 
+
+def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
+    """
+    Plot MIA probabilities across epochs.
+    
+    Args:
+        mia_results: Dictionary containing MIA probabilities
+        figsize: Tuple for figure size (width, height)
+    
+    Returns:
+        matplotlib.figure.Figure: Figure containing MIA plot
+    """
+    datasets = ['retain', 'forget', 'val']
+    dataset_labels = ['Retain', 'Forget', 'Validation']
+
+    colors = ['#f95d6a','#665191','#ffa600', '#dd5182']
+    fig_js, ax_js = plt.subplots(1, 1, figsize=figsize)
+    fig_js.suptitle('JS Divergence between Retrained and Unlearned Model Across Epochs', fontsize=16, fontweight='bold')
+    
+    for i, dataset in enumerate(datasets):
+        js_div_values = js_divergence_results[dataset]
+        epochs = range(1, len(js_div_values) + 1)
+
+        ax_js.plot(epochs, js_div_values,
+                    marker='o', linewidth=2, markersize=4,
+                    color=colors[i], alpha=0.7,
+                    label=dataset_labels[i])
+    
+
+    ax_js.set_xlabel('Epoch')
+    ax_js.set_ylabel('JS Divergence')
+    ax_js.grid(True, alpha=0.3)
+    ax_js.set_ylim(0, 1.1)
+    ax_js.legend()
+    
+    plt.tight_layout()
+    return fig_js
+
 def main():
     # Example results
     results_dir = 'results/MNIST/seed_42/scrub'
-    with open(os.path.join(results_dir, 'scrub_metrics.json'), 'r') as f:
+    retain_split_type = "random"
+    with open(os.path.join(results_dir, f'scrub_metrics_{retain_split_type}.json'), 'r') as f:
         results = json.load(f)
     mia_results = results['mia']
+    js_div_results = results['js_div']
     
     # Create and save plots
     os.makedirs(results_dir, exist_ok=True)
 
     # load retrained model results
-    with open(os.path.join(results_dir, 'retrained_model_metrics.json'), 'r') as f:
+    with open(os.path.join(results_dir, f'retrained_model_metrics_{retain_split_type}.json'), 'r') as f:
         retrained_model_results = json.load(f)
-    
+        
     fig_acc = plot_accuracy_metrics(results, retrained_model_results)
     fig_mia = plot_mia_metrics(mia_results, retrained_model_results)
+    fig_js_div = plot_js_divergence_metrics(js_div_results)
     
     # Save plots
     plots_dir = "plots"
     os.makedirs(plots_dir, exist_ok=True)
-    fig_acc.savefig(os.path.join(plots_dir, 'scrub_accuracy_results.png'), bbox_inches='tight')
-    fig_mia.savefig(os.path.join(plots_dir, 'scrub_mia_results.png'), bbox_inches='tight')
+    fig_acc.savefig(os.path.join(plots_dir, f'scrub_accuracy_results_{retain_split_type}.png'), bbox_inches='tight')
+    fig_mia.savefig(os.path.join(plots_dir, f'scrub_mia_results_{retain_split_type}.png'), bbox_inches='tight')
+    fig_js_div.savefig(os.path.join(plots_dir, f'scrub_js_div_results_{retain_split_type}.png'), bbox_inches='tight')
     
     plt.close('all')
 

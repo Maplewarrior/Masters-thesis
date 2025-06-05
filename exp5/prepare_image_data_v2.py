@@ -236,7 +236,7 @@ if __name__ == '__main__':
     # y_train = y_train[:1000]
     
     # Create retain and forget datasets
-    retain_dataset, forget_dataset, forget_indices, tsne_results = split_data_by_tsne_box(
+    train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices, tsne_results = split_data_by_tsne_box(
         boundary=boundary,
         return_tsne_results=True
     )
@@ -319,10 +319,13 @@ if __name__ == '__main__':
     # Adjust layout to prevent cutting off elements
     plt.tight_layout()
     
-    plt.show()
 
+    # save to pdf
+    boundary_name = f'{boundary["x_min"]}_{boundary["x_max"]}_{boundary["y_min"]}_{boundary["y_max"]}'
+    plt.savefig(f'plots/dataset_forget_retain_{boundary_name}.pdf', bbox_inches='tight')
+    # also save as png
+    plt.savefig(f'plots/dataset_forget_retain_{boundary_name}.png', bbox_inches='tight')
 
-    pdb.set_trace()
 
 
     
