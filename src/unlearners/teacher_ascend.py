@@ -11,12 +11,18 @@ from tqdm import tqdm
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None) -> None:
+    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None) -> None:
         self.model = model
         self.n_epochs = n_epochs
         self._lambda = _lambda
         self.device = device
         self.MIA = MIA
+
+        if js_div_func is not None:
+            assert retrain_model is not None, "retrain_model must be provided if js_div_func is provided"
+
+        self.js_div_func = js_div_func
+        self.retrain_model = retrain_model
 
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -117,6 +123,9 @@ class TeacherAscender:
                   }
         if self.MIA is not None:
             metrics['mia'] = []
+
+        if self.js_div_func is not None:
+            metrics['js_div'] = {"retain": [], "forget": [], "val": []}
         
         # calculate FIM for original model on retain set
         original_sd = copy.deepcopy(self.model.state_dict())
@@ -134,6 +143,22 @@ class TeacherAscender:
             if self.MIA is not None:
                 mia_prob = self.MIA(self.model, retain_loader, forget_loader, val_loader)
                 metrics['mia'].append(mia_prob)
+
+                        
+            if self.js_div_func is not None:
+                # JS_divergence(self, probs_u, probs_c, log_base: float = 2.0)
+                probs_u = self.model.inference(retain_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(retain_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['retain'].append(js_div)
+                probs_u = self.model.inference(forget_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(forget_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['forget'].append(js_div)
+                probs_u = self.model.inference(val_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(val_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['val'].append(js_div)
 
             if eval:
                 forget_loss, forget_acc = self.eval(forget_loader)

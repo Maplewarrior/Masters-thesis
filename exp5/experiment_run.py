@@ -17,6 +17,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.membership_inference_attack import MIA
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from prepare_image_data import get_image_unlearn_data
+from prepare_image_data_v2 import get_image_unlearn_data as get_image_unlearn_data_tsne_box
 import time
 import json
 
@@ -351,6 +352,7 @@ def plot_model_accuracies(models, figsize=(12, 8)):
     plt.tight_layout()
     return plt
 
+
 def calculate_model_metrics(model, dataloaders, device, model_name=None):
     """
     Calculate accuracy and MIA metrics for a given model across multiple datasets.
@@ -417,6 +419,7 @@ def calculate_model_metrics(model, dataloaders, device, model_name=None):
     
     return metrics
 
+
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     print("Starting experiment with configuration: %s", cfg.data.dataset_name)
@@ -434,21 +437,26 @@ def main(cfg):
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
-    results_dir = os.path.join(absolute_root_path, 'results', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}')
-    weights_dir = os.path.join(absolute_root_path, 'weights', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}')
+    results_dir = os.path.join(absolute_root_path, 'results', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
+    weights_dir = os.path.join(absolute_root_path, 'weights', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
     os.makedirs(results_dir, exist_ok=True)
     
 
     # ============= Load data and prepare data =============
     print("Loading and preparing dataset: %s", cfg.data.dataset_name)
     if cfg.data.dataset_name == 'MNIST':
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
-                                                                                                                 dataset_name=cfg['data']['dataset_name'],
-                                                                                                                 n_forget_points=cfg.data.n_forget_points,
-                                                                                                                 subsample_size=cfg.data.subsample_size,
-                                                                                                                 patch_size=cfg.data.patch_size,
+        if cfg.data.split_type == 'random':
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
+                                                                                                                        dataset_name=cfg['data']['dataset_name'],
+                                                                                                                        n_forget_points=cfg.data.n_forget_points,
+                                                                                                                        subsample_size=cfg.data.subsample_size,
+                                                                                                                        patch_size=cfg.data.patch_size,
+                                                                                                                        batch_size=cfg.data.batch_size,
+                                                                                                                        seed=cfg.model.seed)
+        elif cfg.data.split_type == 'tsne_box':
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data_tsne_box(root_dir=dataset_dir,
                                                                                                                  batch_size=cfg.data.batch_size,
-                                                                                                                 seed=cfg.model.seed)
+                                                                                                                 seed=cfg.model.seed)                                                               
         print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
                    len(dataloader_train.dataset), len(dataloader_forget.dataset))
     
@@ -468,7 +476,7 @@ def main(cfg):
     logger = None 
     
     # ============= Instantiate original model =============
-    os.makedirs(f'{weights_dir}/original_model', exist_ok=True)
+    os.makedirs(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
         save_checkpoints = True
@@ -482,7 +490,7 @@ def main(cfg):
     
 
     # ============= Train/load original model =============
-    if not os.path.exists(f'{weights_dir}/original_model/original_model_weights.pt'):
+    if not os.path.exists(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt'):
         print("Training original model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -500,7 +508,7 @@ def main(cfg):
                                        optimizer_name=cfg.trainer.optimizer_name,
                                        lr_scheduler=cfg.trainer.lr_scheduler,
                                        save_checkpoints=save_checkpoints,
-                                       checkpoint_dir = f'{weights_dir}/original_model',
+                                       checkpoint_dir = f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)
         original_train_fn = lambda: trainer()
@@ -509,19 +517,19 @@ def main(cfg):
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
         original_model
-        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights.pt')
-        torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
+        print("Saving original model weights to: %s", f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
+        torch.save(original_model.state_dict(), f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
         
     else:
         print("Loading pre-trained original model weights")
-        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt')
+        original_model_sd = torch.load(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
         original_model.load_state_dict(original_model_sd)
         
     ## Copy original model
     unlearned_model = copy.deepcopy(original_model)
     
     # ============= Initialize retrained model =============
-    os.makedirs(f'{weights_dir}/retrained_model', exist_ok=True)
+    os.makedirs(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         print("Initializing retrained model as a neural network")
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
@@ -533,7 +541,7 @@ def main(cfg):
         save_checkpoints = True
     
     # ============= Train/load retrained model =============
-    if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights.pt'):
+    if not os.path.exists(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt'):
         print("Training retrained model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -551,7 +559,7 @@ def main(cfg):
                                         optimizer_name=cfg.trainer.optimizer_name,
                                         lr_scheduler=cfg.trainer.lr_scheduler,
                                         save_checkpoints=save_checkpoints,
-                                        checkpoint_dir = f'{weights_dir}/retrained_model',
+                                        checkpoint_dir = f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
                                         disable_tqdm=cfg.trainer.disable_tqdm, 
                                         do_early_stopping=cfg.trainer.do_early_stopping)
         
@@ -560,26 +568,27 @@ def main(cfg):
                                                     dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(retrained_train_fn, retrained_experiment_specs)
-        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights.pt')
+        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
     
     else:
         print("Loading pre-trained retrained model weights")
-        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights.pt')
+        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
         retrained_model.load_state_dict(retrained_model_sd)
     
     # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
     # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
     
 
-    mia_model = MIA(device=DEVICE)
+    
     retrained_model_metrics = calculate_model_metrics(retrained_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Retrained model')
     original_model_metrics = calculate_model_metrics(original_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Original model')
 
     # save metrics to json
-    with open(f'{results_dir}/retrained_model_metrics.json', 'w') as f:
+    with open(f'{results_dir}/retrained_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(retrained_model_metrics, f)
-    with open(f'{results_dir}/original_model_metrics.json', 'w') as f:
+    with open(f'{results_dir}/original_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(original_model_metrics, f)
+
 
 
     # ========================= Teacher Ascender =========================
@@ -588,14 +597,16 @@ def main(cfg):
     hyperparams = {'n_epochs': 100, '_lambda': 64}
 
     mia_model = MIA(device=DEVICE)
+    unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+    js_div_func = unlearning_evaluator.JS_divergence
     ta_ce = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
     ta_entropy = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
     te_ce_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
     te_entropy_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model)
+                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
@@ -603,29 +614,29 @@ def main(cfg):
     print("Running Teacher Ascender (original-ce)")
     ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce')
     # Save metrics to json
-    with open(f'{results_dir}/ta_ce_metrics.json', 'w') as f:
+    with open(f'{results_dir}/ta_ce_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(ta_ce_metrics, f)
 
     print("Running Teacher Ascender (original-entropy)")
     ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy')
     # Save metrics to json
-    with open(f'{results_dir}/ta_ce_metrics.json', 'w') as f:
+    with open(f'{results_dir}/ta_ce_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(ta_ce_metrics, f)
     
     print("Running Teacher Ascender (original-ce-retain)")
     te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce-retain')
     # Save metrics to json
-    with open(f'{results_dir}/te_ce_retain_metrics.json', 'w') as f:
+    with open(f'{results_dir}/te_ce_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(te_ce_retain_metrics, f)
     
     
     print("Running Teacher Ascender (original-entropy-retain)")
     te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy-retain')
     # Save metrics to json
-    with open(f'{results_dir}/te_ce_retain_metrics.json', 'w') as f:
+    with open(f'{results_dir}/te_ce_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(te_ce_retain_metrics, f)
 
-    with open(f'{results_dir}/te_entropy_retain_metrics.json', 'w') as f:
+    with open(f'{results_dir}/te_entropy_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(te_entropy_retain_metrics, f)
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
@@ -640,7 +651,7 @@ def main(cfg):
     gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
     ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
     # save metrics to json
-    with open(f'{results_dir}/ga_metrics.json', 'w') as f:
+    with open(f'{results_dir}/ga_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(ga_metrics, f)
 
 
@@ -654,18 +665,18 @@ def main(cfg):
                    'Teacher Ascent (original-entropy-retain)': te_entropy_retain_metrics}
     
     # Save all metrics to a json file   
-    with open(f'{results_dir}/all_metrics.json', 'w') as f:
+    with open(f'{results_dir}/all_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(all_metrics, f)
 
     print("Plotting model accuracies")
     plot = plot_model_accuracies(all_metrics)
-    plot.savefig(f'{results_dir}/model_accuracies.png')
+    plot.savefig(f'{results_dir}/model_accuracies_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
 
     plot = plot_mia_metrics(all_metrics)
-    plot.savefig(f'{results_dir}/mia_metrics.png')
+    plot.savefig(f'{results_dir}/mia_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
     
     plot = plot_model_accuracies(all_metrics)
-    plot.savefig(f'{results_dir}/model_accuracies.png')
+    plot.savefig(f'{results_dir}/model_accuracies_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
     print("Experiment completed successfully")
 
 if __name__ == "__main__":
