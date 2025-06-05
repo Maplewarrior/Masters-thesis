@@ -437,8 +437,8 @@ def main(cfg):
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
-    results_dir = os.path.join(absolute_root_path, 'results', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
-    weights_dir = os.path.join(absolute_root_path, 'weights', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
+    results_dir = os.path.join(absolute_root_path, 'results', 'teacher_ascend', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
+    weights_dir = os.path.join(absolute_root_path, 'weights', 'teacher_ascend', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
     os.makedirs(results_dir, exist_ok=True)
     
 
