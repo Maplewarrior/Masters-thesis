@@ -400,7 +400,7 @@ def main(cfg):
     
 
     # ============= Train/load original model =============
-    if not os.path.exists(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt'):
+    if not os.path.exists(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt'):
         print("Training original model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -427,12 +427,12 @@ def main(cfg):
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
         original_model
-        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
-        torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
+        print("Saving original model weights to: %s", f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt')
+        torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt')
         
     else:
         print("Loading pre-trained original model weights")
-        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}.pt')
+        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt')
         original_model.load_state_dict(original_model_sd)
         
 
@@ -450,7 +450,7 @@ def main(cfg):
         save_checkpoints = True
     
     # ============= Train/load retrained model =============
-    if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt'):
+    if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt'):
         print("Training retrained model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -477,11 +477,11 @@ def main(cfg):
                                                     dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(retrained_train_fn, retrained_experiment_specs)
-        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt')
+        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt')
     
     else:
         print("Loading pre-trained retrained model weights")
-        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}.pt')
+        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights_{cfg.data.split_type}_{cfg.data.n_forget_points}.pt')
         retrained_model.load_state_dict(retrained_model_sd)
     
     # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
@@ -491,9 +491,9 @@ def main(cfg):
     original_model_metrics = calculate_model_metrics(original_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Original model')
 
     # save metrics to json
-    with open(f'{results_dir}/retrained_model_metrics.json', 'w') as f:
+    with open(f'{results_dir}/retrained_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(retrained_model_metrics, f)
-    with open(f'{results_dir}/original_model_metrics.json', 'w') as f:
+    with open(f'{results_dir}/original_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
         json.dump(original_model_metrics, f)
 
 
@@ -517,7 +517,7 @@ def main(cfg):
 
     scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=scrub_params['n_rounds'], verbose=True)
     # save metrics to json
-    filename = f'{results_dir}/scrub_metrics_{cfg.data.split_type}.json'
+    filename = f'{results_dir}/scrub_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json'
     with open(filename, 'w') as f:
         json.dump(scrub_metrics, f)
 
