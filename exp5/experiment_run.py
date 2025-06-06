@@ -67,24 +67,6 @@ def re_instantiate_dataloaders(dataloader_train, dataloader_retain, dataloader_f
     dataloader_val = recreate(dataloader_val)
     return dataloader_train, dataloader_retain, dataloader_forget, dataloader_val
 
-def build_vit(cfg: dict) -> nn.Module:
-    vit_params = cfg.model.vision_transformer_parameters
-    d_patch = int(cfg.data.patch_size[0] * cfg.data.patch_size[1] * cfg.data.n_channels)
-    n_patches = int(cfg.data.image_size[0] // cfg.data.patch_size[0] * cfg.data.image_size[1] // cfg.data.patch_size[1])
-    vit_model = ViT(d_patch=d_patch,
-                    d_hidden=vit_params.d_hidden,
-                    d_ff=vit_params.d_ff,
-                    d_k = vit_params.d_k,
-                    n_layers=vit_params.n_layers,
-                    n_heads=vit_params.n_heads,
-                    n_classes=cfg.data.n_classes,
-                    n_patches=n_patches,
-                    dropout_prob=vit_params.dropout_prob,
-                    tau=vit_params.tau,
-                    pooling_type=vit_params.pooling_type
-                    )
-    return vit_model
-
 def build_nn(M: int, cfg: dict) -> nn.Module:
     model = NeuralNetRS(M=M, 
                         n_classes=cfg.data.n_classes, 
@@ -156,53 +138,7 @@ def eval_single_model(model,
         json.dump(wrong_preds, f)
 
     return results
-    
-def create_simple_model_visualization(model, save_path, input_shape):
-    """Create a simple flowchart visualization of the model architecture.
-    
-    Args:
-        model: The neural network model to visualize
-        save_path: Path to save the visualization
-        input_shape: Shape of the input data (for labeling input node)
-    """
-    dot = graphviz.Digraph(comment='Neural Network Architecture')
-    
-    # Set graph attributes for better appearance
-    dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
-    
-    # Set node attributes
-    dot.attr('node', shape='box', style='filled,rounded', 
-             fillcolor='#E8F0FE', color='#4285F4', 
-             fontname='Helvetica', fontsize='14', fontcolor='#333333')
-    
-    # Set edge attributes
-    dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    # Add input node
-    dot.node('input', f'Input\n({input_shape} features)', shape='oval')
-    
-    # Add nodes for each layer in the Sequential model
-    prev_node = 'input'
-    for i, layer in enumerate(model.net):
-        if isinstance(layer, nn.Linear):
-            node_name = f'linear_{i}'
-            label = f'Linear\n{layer.in_features} → {layer.out_features}'
-            dot.node(node_name, label)
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-        elif isinstance(layer, nn.ReLU):
-            node_name = f'relu_{i}'
-            dot.node(node_name, 'ReLU')
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-    
-    # Add output node
-    dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-    dot.edge(prev_node, 'output')
-    
-    # Render the visualization
-    dot.render(save_path, format='png')
-    return dot
-
+   
 def get_model_predictions(model: nn.Module, dataloader, device: str):
     # ensure shuffle is turned off
     dataloader = DataLoader(dataloader.dataset, shuffle=False, batch_size = dataloader.batch_size)
@@ -224,19 +160,6 @@ def get_model_predictions(model: nn.Module, dataloader, device: str):
 
 def get_wrong_predictions(probs, ys) -> list:
     return torch.where(probs.argmax(dim=-1) != ys.argmax(dim=-1))[0].cpu().tolist()
-
-def plot_wrong_predictions(model, dataloader, device, model_name: str):
-    probs, xs, ys = get_model_predictions(model, dataloader, device)
-    disagree_idxs = get_wrong_predictions(probs, ys)
-    x_disagree = xs[disagree_idxs].view(-1, 28, 28).cpu()
-    save_dir = f'{model_name}_wrong_predictions'
-    os.makedirs(save_dir, exist_ok=True)
-    for i in range(x_disagree.size(0)):
-        y_pred = probs.argmax(dim=-1)[disagree_idxs[i]].item()
-        y_true = ys.argmax(dim=-1)[disagree_idxs[i]].item()
-        plt.imshow(x_disagree[i], cmap='grey')
-        plt.title(f'True label: {y_true}. Predicted label: {y_pred}.')
-        plt.savefig(f'{save_dir}/x_disagree_{disagree_idxs[i]}.png')
 
 def run_and_eval(func: callable, experiment_specs: object):
     # call function and time the call
@@ -261,99 +184,7 @@ def run_and_eval(func: callable, experiment_specs: object):
                       experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
                       experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
 
-def plot_mia_metrics(models, figsize=(12, 8)):
-    """
-    Plot MIA metrics for multiple models.
-    """
-    plt.style.use('default')
-    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
-    
-    # Create subplots - one for each metric
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-    fig.suptitle('Model MIA Comparison Across Epochs', fontsize=16, fontweight='bold')
-    
-    metrics = ['mia']
-    metric_titles = ['MIA Probability']
-    
-    for i, (metric, title) in enumerate(zip(metrics, metric_titles)):
-        ax = axes[i]
-        
-        # Plot each model
-        for j, (model_name, model_data) in enumerate(models.items()):
-            if metric in model_data and 'acc' in model_data[metric]:
-                acc_values = model_data[metric]['acc']
-                epochs = range(1, len(acc_values) + 1)
-                
-                ax.plot(epochs, acc_values, 
-                       marker='o', linewidth=2, markersize=4,
-                       color=colors[j % len(colors)], 
-                       label=model_name)
-                
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('MIA Probability')
-        ax.set_title(title)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        
-        # Set y-axis limits to better show accuracy range
-        ax.set_ylim(0, 1)
-    
-    plt.tight_layout()
-    return plt
-
-def plot_model_accuracies(models, figsize=(12, 8)):
-    """
-    Plot accuracy curves for multiple models showing retain, forget, and val accuracies.
-    
-    Args:
-        models: Dictionary where keys are model names and values are dictionaries
-                with 'retain', 'forget', 'val' keys containing accuracy lists
-        figsize: Tuple for figure size (width, height)
-    """
-    # Set up the plot style
-    plt.style.use('default')
-    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
-    
-    # Create subplots - one for each metric
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-    fig.suptitle('Model Accuracy Comparison Across Epochs', fontsize=16, fontweight='bold')
-    
-    metrics = ['retain', 'forget', 'val']
-    metric_titles = ['Retain Accuracy', 'Forget Accuracy', 'Validation Accuracy']
-
-    # Remove MIA metrics
-    for model_name, model_data in models.items():
-        if 'mia' in model_data:
-            del model_data['mia']
-    
-    for i, (metric, title) in enumerate(zip(metrics, metric_titles)):
-        ax = axes[i]
-        
-        # Plot each model
-        for j, (model_name, model_data) in enumerate(models.items()):
-            if metric in model_data and 'acc' in model_data[metric]:
-                acc_values = model_data[metric]['acc']
-                epochs = range(1, len(acc_values) + 1)
-                
-                ax.plot(epochs, acc_values, 
-                       marker='o', linewidth=2, markersize=4,
-                       color=colors[j % len(colors)], 
-                       label=model_name)
-        
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('Accuracy')
-        ax.set_title(title)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        
-        # Set y-axis limits to better show accuracy range
-        ax.set_ylim(0, 1)
-    
-    plt.tight_layout()
-    return plt
-
-
-def calculate_model_metrics(model, dataloaders, device, model_name=None):
+def calculate_model_metrics(model, dataloaders, device, model_name=None, save_path=None):
     """
     Calculate accuracy and MIA metrics for a given model across multiple datasets.
     
@@ -417,8 +248,12 @@ def calculate_model_metrics(model, dataloaders, device, model_name=None):
         print(f"Val Accuracy: {metrics['val']['acc'][-1]:.4f}")
         print(f"MIA Score: {metrics['mia']['acc'][-1]:.4f}")
     
-    return metrics
 
+    if save_path:
+        with open(save_path, 'w') as f:
+            json.dump(metrics, f)
+
+    return metrics
 
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
@@ -437,14 +272,25 @@ def main(cfg):
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
-    results_dir = os.path.join(absolute_root_path, 'results', 'teacher_ascend', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
-    weights_dir = os.path.join(absolute_root_path, 'weights', 'teacher_ascend', f'{cfg.data.dataset_name}', f'seed_{cfg.model.seed}', cfg.data.split_type, f'{cfg.data.n_forget_points}')
+    results_root_dir = os.path.join(absolute_root_path, 'results', 'teacher_ascend')
+    weights_root_dir = os.path.join(absolute_root_path, 'weights', 'teacher_ascend')
+
+    if cfg.data.split_type == "tsne_box":
+        # coords on the format {"x_min": x_min_val, "x_max": x_max_val, "y_min": y_min_val, "y_max": y_max_val}
+        bounding_box_coords = {"x_min": cfg.data.tsne_box_coordinates.x_min, "x_max": cfg.data.tsne_box_coordinates.x_max, "y_min": cfg.data.tsne_box_coordinates.y_min, "y_max": cfg.data.tsne_box_coordinates.y_max}
+        bounding_box_name = f"{cfg.data.tsne_box_coordinates.x_min}_{cfg.data.tsne_box_coordinates.x_max}_{cfg.data.tsne_box_coordinates.y_min}_{cfg.data.tsne_box_coordinates.y_max}"
+        results_folder_name = f"{cfg.data.split_type}_{bounding_box_name}"
+    elif cfg.data.split_type == "random":
+        results_folder_name = f"{cfg.data.split_type}_{cfg.data.n_forget_points}"
+
+    results_dir = os.path.join(results_root_dir, results_folder_name)
+    weights_dir = os.path.join(weights_root_dir, results_folder_name)
     os.makedirs(results_dir, exist_ok=True)
     
-
-    # ============= Load data and prepare data =============
+    # ========================== Load data and prepare data ==========================
     print("Loading and preparing dataset: %s", cfg.data.dataset_name)
     if cfg.data.dataset_name == 'MNIST':
+        # --------- random sampled forget set ---------
         if cfg.data.split_type == 'random':
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
                                                                                                                         dataset_name=cfg['data']['dataset_name'],
@@ -453,44 +299,36 @@ def main(cfg):
                                                                                                                         patch_size=cfg.data.patch_size,
                                                                                                                         batch_size=cfg.data.batch_size,
                                                                                                                         seed=cfg.model.seed)
+        # --------- tsne box forget set ---------
         elif cfg.data.split_type == 'tsne_box':
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data_tsne_box(root_dir=dataset_dir,
                                                                                                                  batch_size=cfg.data.batch_size,
-                                                                                                                 seed=cfg.model.seed)                                                               
+                                                                                                                 subsample_size=cfg.data.subsample_size,
+                                                                                                                 seed=cfg.model.seed,
+                                                                                                                 boundary=bounding_box_coords)                                                               
         print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
                    len(dataloader_train.dataset), len(dataloader_forget.dataset))
     
     else:
-        dataloader_train, dataloader_retain, dataloader_retain_no_aug, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
-                                                                                                                 dataset_name=cfg['data']['dataset_name'],
-                                                                                                                 n_forget_points=cfg.data.n_forget_points,
-                                                                                                                 subsample_size=cfg.data.subsample_size,
-                                                                                                                 patch_size=cfg.data.patch_size,
-                                                                                                                 batch_size=cfg.data.batch_size,
-                                                                                                                 seed=cfg.model.seed)
-
-
+        raise NotImplementedError(f"The dataset {cfg.data.dataset_name} is not supported!")
+    
     assert (dataloader_train.dataset.y[forget_idxs] == dataloader_forget.dataset.y).all(), 'Forget indices applied to train do not correspond to the forget data!'
-
-    # # ============= Initialize logger =============    
+    
+    # ========================== Initialize logger ==========================    
     logger = None 
     
-    # ============= Instantiate original model =============
+    # ========================== Train/load original model ==========================
+    # --------- instantiate original model ---------
     os.makedirs(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
-        save_checkpoints = True
-    
-    elif cfg.model.model_type == 'vision-transformer':
-        original_model = build_vit(cfg).to(DEVICE)
-        save_checkpoints = True
-    
+        save_checkpoints = True    
     else:
         raise NotImplementedError(f"The model type {cfg.model.model_type} is not supported!")
     
-
-    # ============= Train/load original model =============
-    if not os.path.exists(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt'):
+    # --------- load or train original model ---------
+    orig_model_path = os.path.join(weights_dir, f"original_model_weights.pt")
+    if not os.path.exists(orig_model_path):
         print("Training original model from scratch")
         hyperparams = {}
         # re-initialize dataloaders
@@ -511,36 +349,30 @@ def main(cfg):
                                        checkpoint_dir = f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)
-        original_train_fn = lambda: trainer()
-        original_experiment_specs = ExperimentSpecs(original_model, dataloader_train, dataloader_retain, 
-                                                    dataloader_forget, dataloader_val, results_dir, 'Original model', 
-                                                    cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
-        run_and_eval(original_train_fn, original_experiment_specs)
-        original_model
-        print("Saving original model weights to: %s", f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
-        torch.save(original_model.state_dict(), f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
-        
+        trainer()
+        print("Saving original model weights to: %s", orig_model_path)
+        torch.save(original_model.state_dict(), orig_model_path)
     else:
+        # Load original model weights
         print("Loading pre-trained original model weights")
-        original_model_sd = torch.load(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/original_model_weights.pt')
-        original_model.load_state_dict(original_model_sd)
-        
-    ## Copy original model
-    unlearned_model = copy.deepcopy(original_model)
+        original_model.load_state_dict(torch.load(orig_model_path))
+
+    # Calculate and save metrics for original model
+    calculate_model_metrics(original_model, 
+                            {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
+                            DEVICE, 'Original model',
+                            save_path=f'{results_dir}/original_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json')
+
     
-    # ============= Initialize retrained model =============
+    # ========================== Train/load retrained model ==========================
+    # --------- instantiate retrained model ---------
     os.makedirs(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
     if cfg.model.model_type == 'neural-network':
         print("Initializing retrained model as a neural network")
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
         save_checkpoints = True #False
-    
-    elif cfg.model.model_type == 'vision-transformer':
-        print("Initializing retrained model as a vision transformer")
-        retrained_model = build_vit(cfg)
-        save_checkpoints = True
-    
-    # ============= Train/load retrained model =============
+
+    # --------- train/load retrained model ---------
     if not os.path.exists(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt'):
         print("Training retrained model from scratch")
         hyperparams = {}
@@ -563,11 +395,7 @@ def main(cfg):
                                         disable_tqdm=cfg.trainer.disable_tqdm, 
                                         do_early_stopping=cfg.trainer.do_early_stopping)
         
-        retrained_train_fn = lambda: trainer()
-        retrained_experiment_specs = ExperimentSpecs(retrained_model, dataloader_train, dataloader_retain, 
-                                                    dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
-                                                    cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
-        run_and_eval(retrained_train_fn, retrained_experiment_specs)
+        trainer()
         torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
     
     else:
@@ -575,23 +403,14 @@ def main(cfg):
         retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
         retrained_model.load_state_dict(retrained_model_sd)
     
-    # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
-    # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
-    
-
-    
-    retrained_model_metrics = calculate_model_metrics(retrained_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Retrained model')
-    original_model_metrics = calculate_model_metrics(original_model, {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, DEVICE, 'Original model')
-
-    # save metrics to json
-    with open(f'{results_dir}/retrained_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(retrained_model_metrics, f)
-    with open(f'{results_dir}/original_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(original_model_metrics, f)
+    # Calculate and save metrics for retrained model
+    calculate_model_metrics(retrained_model, 
+                            {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
+                            DEVICE, 'Retrained model',
+                            save_path=f'{results_dir}/retrained_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json')
 
 
-
-    # ========================= Teacher Ascender =========================
+    # ========================== Unlearn: Teacher Ascender ==========================
     print("Initializing Teacher Ascender")
     from src.unlearners.teacher_ascend import TeacherAscender
     hyperparams = {'n_epochs': 100, '_lambda': 64}
@@ -599,85 +418,31 @@ def main(cfg):
     mia_model = MIA(device=DEVICE)
     unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
     js_div_func = unlearning_evaluator.JS_divergence
-    ta_ce = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
+
+    ta_versions = cfg.unlearner.teacher_ascend.versions
+    for version, is_FIM_ratio in ta_versions:
+        ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
                             _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
-    ta_entropy = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
-    te_ce_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
-    te_entropy_retain = TeacherAscender(copy.deepcopy(unlearned_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+        ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
+        fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
+        with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}.json', 'w') as f:
+            json.dump(ta_version_metrics, f)
     
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
-    print("Running Teacher Ascender (original-ce)")
-    ta_ce_metrics = ta_ce(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce')
-    # Save metrics to json
-    with open(f'{results_dir}/ta_ce_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(ta_ce_metrics, f)
-
-    print("Running Teacher Ascender (original-entropy)")
-    ta_entropy_metrics = ta_entropy(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy')
-    # Save metrics to json
-    with open(f'{results_dir}/ta_ce_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(ta_ce_metrics, f)
     
-    print("Running Teacher Ascender (original-ce-retain)")
-    te_ce_retain_metrics = te_ce_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-ce-retain')
-    # Save metrics to json
-    with open(f'{results_dir}/te_ce_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(te_ce_retain_metrics, f)
-    
-    
-    print("Running Teacher Ascender (original-entropy-retain)")
-    te_entropy_retain_metrics = te_entropy_retain(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version='original-entropy-retain')
-    # Save metrics to json
-    with open(f'{results_dir}/te_ce_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(te_ce_retain_metrics, f)
-
-    with open(f'{results_dir}/te_entropy_retain_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(te_entropy_retain_metrics, f)
-    dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                        dataloader_forget, dataloader_val,
-                                                                                                        cfg.model.seed)
-    
-    # ========================= Gradient Ascent =========================
+    # ========================== Unlearn: Gradient Ascent ==========================
     print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent
     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                         dataloader_forget, dataloader_val,
                                                                                                         cfg.model.seed)
-    gradient_ascent = GradientAscent(copy.deepcopy(unlearned_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
+    gradient_ascent = GradientAscent(copy.deepcopy(original_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
     ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
     # save metrics to json
-    with open(f'{results_dir}/ga_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
+    with open(f'{results_dir}/ga_metrics.json', 'w') as f:
         json.dump(ga_metrics, f)
-
-
-
-    # ========================= Merge all metrics =========================
-    # Merge all metrics into a single dictionary
-    all_metrics = {'Gradient Ascent': ga_metrics,
-                   'Teacher Ascent (original-ce)': ta_ce_metrics,
-                   'Teacher Ascent (original-entropy)': ta_entropy_metrics,
-                   'Teacher Ascent (original-ce-retain)': te_ce_retain_metrics,
-                   'Teacher Ascent (original-entropy-retain)': te_entropy_retain_metrics}
-    
-    # Save all metrics to a json file   
-    with open(f'{results_dir}/all_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json', 'w') as f:
-        json.dump(all_metrics, f)
-
-    print("Plotting model accuracies")
-    plot = plot_model_accuracies(all_metrics)
-    plot.savefig(f'{results_dir}/model_accuracies_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
-
-    plot = plot_mia_metrics(all_metrics)
-    plot.savefig(f'{results_dir}/mia_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
-    
-    plot = plot_model_accuracies(all_metrics)
-    plot.savefig(f'{results_dir}/model_accuracies_{cfg.data.split_type}_{cfg.data.n_forget_points}.png')
-    print("Experiment completed successfully")
 
 if __name__ == "__main__":
     main()

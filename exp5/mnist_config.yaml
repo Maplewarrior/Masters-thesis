@@ -26,6 +26,11 @@ data:
   n_channels: 3
   # cifar parameters
   split_type: "tsne_box" # "tsne_box" or "random"
+  tsne_box_coordinates: 
+    x_min: 10.2
+    x_max: 11.0
+    y_min: -4.3
+    y_max: -0.4
   image_size:
     - 32
     - 32
@@ -42,33 +47,17 @@ trainer:
   optimizer_name: Adam
   lr_scheduler: 
 
-sisa:
-  n_shards: 10 #5
-  n_slices: 10 #5
-  model_type: 'neural-network' # vision-transformer
-  neural_network_parameters: # constituent model parameters
-    width_factor: 0.5
-    n_layers: 3
-
-amnesiac:
-  gradient_checkpoint_dir: /work3/s204138/MachineUnlearning #/Users/michaelharborg/Desktop/Masters-thesis/exp4/weights
-
 model: 
   seed: 42 #MNIST: 42
   model_type: 'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4
     n_layers: 3 # MNIST: 3
-  vision_transformer_parameters:
-    d_hidden: 512
-    d_ff: 2048
-    d_k: 64
-    n_layers: 6
-    n_heads: 6
-    tau: 64 # sqrt(tau) is used for scaling in self attention
-    dropout_prob: 0.0
-    pooling_type: max
 
 unlearn:
   method: "retrain"
+  teacher_ascend:
+    versions: [("ce", False), ("entropy", False), ("ce-retain", False), ("entropy-retain", False), ("ce", True), ("entropy", True), ("ce-retain", True), ("entropy-retain", True)]
+    n_epochs: 100
+    _lambda: 64 # 64
 
