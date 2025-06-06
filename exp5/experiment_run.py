@@ -299,6 +299,7 @@ def main(cfg):
     ta_versions = [tuple(v) for v in ta_versions_lists]
     # convert to list of tuples 
     for (version, is_FIM_ratio) in ta_versions:
+        print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
         ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
                             _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
         ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
