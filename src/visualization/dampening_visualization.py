@@ -5,26 +5,35 @@ import matplotlib.patheffects
 import numpy as np
 import torch
 
-def visualize_parameter_dampening(state_dict, figsize=(10, 6)):
+def visualize_parameter_dampening(state_dict, figsize=(10, 6), title=None, ax=None):
     """
     Visualize neural network parameter dampening with a structured layout.
     
     Parameters:
     state_dict: Dictionary containing dampening values for each parameter
-    figsize: Tuple for figure size
+    figsize: Tuple for figure size (ignored if ax is provided)
+    ax: Optional matplotlib axis to plot on (if None, creates new figure)
     """
     
     # Network architecture
     layer_sizes = [2, 16, 8, 3]  # input, hidden1, hidden2, output
     layer_names = ['', 'Input', 'Hidden', 'Output']
     
-    # Create figure and axis with better proportions
-    fig, ax = plt.subplots(figsize=figsize)
+    # Create figure and axis with better proportions or use provided ax
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        created_fig = True
+    else:
+        fig = ax.get_figure()
+        created_fig = False
+        
     ax.set_xlim(0, 10.5)
     ax.set_ylim(2, 7.5)
     ax.set_aspect('equal')
     ax.axis('off')
-    fig.patch.set_facecolor('white')
+    
+    if created_fig:
+        fig.patch.set_facecolor('white')
     
     # Create custom colormap with better contrast
     colors = ['#ffa600', '#ff7c43', '#f95d6a', '#d45087', '#a05195', '#665191', '#2f4b7c', '#003f5c']
@@ -181,14 +190,15 @@ def visualize_parameter_dampening(state_dict, figsize=(10, 6)):
     cbar.ax.invert_xaxis()
     
     # Add title with better styling
-    plt.suptitle('SSD Parameter Dampening', 
-                fontsize=16, y=0.95, color='black')
+    if title is not None:
+        ax.set_title(title, fontsize=14, color='black')
     
     # Add subtle grid lines for better visual separation
     for x in [2.75, 7.75]:
         ax.axvline(x=x, color='lightgray', linestyle='--', alpha=0.4, linewidth=0.8)
     
-    plt.tight_layout()
+    if created_fig:
+        plt.tight_layout()
     return fig, ax
 
 # Example usage:
