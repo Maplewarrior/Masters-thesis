@@ -104,7 +104,7 @@ class TeacherAscender:
         self.model.train()
         return np.mean(losses), acc
   
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "original-ce"):
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce"):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -117,9 +117,10 @@ class TeacherAscender:
         if version not in ["original-ce", "original-entropy", "original-ce-retain", "original-entropy-retain"]:
             raise ValueError(f"Invalid version: {version}, must be one of: original-ce, original-entropy, original-ce-retain, original-entropy-retain")
 
-        metrics = {'retain': {'acc': [], 'loss': []},
-                   'forget': {'acc': [], 'loss': []},
-                   'val': {'acc': [], 'loss': []}
+        metrics = {'retain': {'acc': []},
+                   'forget': {'acc': []},
+                   'val': {'acc': []},
+                   "loss_terms": {"reg": [], "reg_weighted": [], "ascend": [], "repair": [], 'full': []}
                   }
         if self.MIA is not None:
             metrics['mia'] = []
@@ -161,24 +162,20 @@ class TeacherAscender:
                 metrics['js_div']['val'].append(js_div)
 
             if eval:
-                forget_loss, forget_acc = self.eval(forget_loader)
+                _, forget_acc = self.eval(forget_loader)
                 metrics['forget']['acc'].append(forget_acc)
-                metrics['forget']['loss'].append(forget_loss)
-
-                retain_loss, retain_acc = self.eval(retain_loader)
+                _, retain_acc = self.eval(retain_loader)
                 metrics['retain']['acc'].append(retain_acc)
-                metrics['retain']['loss'].append(retain_loss)
-
-                val_loss, val_acc = self.eval(val_loader)
+                _, val_acc = self.eval(val_loader)
                 metrics['val']['acc'].append(val_acc)
-                metrics['val']['loss'].append(val_loss)
+
 
             #### Gradient ascent
             batch_iterator = tqdm(enumerate(forget_loader), 
                                 desc=f'Batch Processing', 
                                 total=n_batches,
                                 leave=False) if verbose else enumerate(forget_loader)
-                                
+
             for batch_idx, batch in batch_iterator:
                 optimizer.zero_grad()
 
@@ -191,25 +188,31 @@ class TeacherAscender:
 
                 out_f = self.model(x_f)
                 out_r = self.model(x_r)
-
                 
                 reg_term = self.calculate_reg_term(FIM_ratio, original_sd)
+                weighted_reg_term = self._lambda / 2 * reg_term
 
-                if version == "original-ce":
+                if version == "ce":
                     forget_term = self.calculate_fit_term(out_f, y_f)
-                    loss = -forget_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
-                elif version == "original-entropy":
+                    loss = -forget_term + weighted_reg_term # minimize CE, maximize reg term
+                elif version == "entropy":
                     forget_term = self.calculate_entropy(out_f)
-                    loss = -forget_term + self._lambda / 2 * reg_term # minimize entropy, maximize reg term
-                elif version == "original-ce-retain":
+                    loss = -forget_term + weighted_reg_term # minimize entropy, maximize reg term
+                elif version == "ce-retain":
                     forget_term = self.calculate_fit_term(out_f, y_f)
                     retain_term = self.calculate_fit_term(out_r, y_r)
-                    loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
-                elif version == "original-entropy-retain":
+                    loss = -forget_term + retain_term + weighted_reg_term # minimize CE, maximize reg term
+                elif version == "entropy-retain":
                     forget_term = self.calculate_entropy(out_f)
                     retain_term = self.calculate_fit_term(out_r, y_r)
-                    loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize entropy, maximize reg term
+                    loss = -forget_term + retain_term + weighted_reg_term # minimize entropy, maximize reg term
 
+                # append loss to metrics
+                metrics['loss_terms']['full'].append(loss.item())
+                metrics['loss_terms']['reg_weighted'].append(weighted_reg_term.item())
+                metrics['loss_terms']['reg'].append(reg_term.item())
+                metrics['loss_terms']['ascend'].append(forget_term.item())
+                metrics['loss_terms']['repair'].append(retain_term.item())
 
                 loss.backward()
                 optimizer.step()
