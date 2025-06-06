@@ -184,6 +184,7 @@ def split_data_by_tsne_box(boundary: dict = None,
 
 
 def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None):
+    
     if boundary is None:
         boundary = {
             'x_min': 12.2,
@@ -191,6 +192,18 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
             'y_min': -3.8,
             'y_max': -1.5
         }
+
+    # Make a folder if it does not exist
+    coords_string = f"{boundary['x_min']}_{boundary['x_max']}_{boundary['y_min']}_{boundary['y_max']}"
+    folder_name = os.path.join(root_dir, f"tsne_box_{coords_string}")
+    os.makedirs(folder_name, exist_ok=True)
+
+    # load data if it exists
+    if os.path.exists(os.path.join(folder_name, "data.pt")):
+        print(f"Loading data from {folder_name}")
+        data = torch.load(os.path.join(folder_name, "data.pt"), weights_only=False)
+        pdb.set_trace()
+        return data['train_loader'], data['retain_loader'], data['forget_loader'], data['validation_loader'], data['forget_indices']
 
     train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
         boundary=boundary,
@@ -205,6 +218,18 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
                                                                                test_dataset=test_dataset, 
                                                                                batch_size=batch_size, 
                                                                                seed=seed)
+
+
+    # save data to folder in one pt file
+    print(f"Saving data to {folder_name}")
+    torch.save({
+        'train_loader': train_loader,
+        'retain_loader': retain_loader,
+        'forget_loader': forget_loader,
+        'validation_loader': validation_loader,
+        'forget_indices': forget_indices
+    }, os.path.join(folder_name, "data.pt"))
+
 
     return train_loader, retain_loader, forget_loader, validation_loader, forget_indices
 
