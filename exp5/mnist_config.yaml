@@ -57,7 +57,7 @@ model:
 unlearn:
   method: "retrain"
   teacher_ascend:
-    versions: [("ce", False), ("entropy", False), ("ce-retain", False), ("entropy-retain", False), ("ce", True), ("entropy", True), ("ce-retain", True), ("entropy-retain", True)]
+    versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true]]
     n_epochs: 100
     _lambda: 64 # 64
 

@@ -419,7 +419,9 @@ def main(cfg):
     unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
     js_div_func = unlearning_evaluator.JS_divergence
 
-    ta_versions = cfg.unlearn.teacher_ascend.versions
+    ta_versions_lists = cfg.unlearn.teacher_ascend.versions
+    ta_versions = [tuple(v) for v in ta_versions_lists]
+    # convert to list of tuples 
     for version, is_FIM_ratio in ta_versions:
         ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
                             _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
