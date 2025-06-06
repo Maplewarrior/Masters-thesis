@@ -104,7 +104,7 @@ class TeacherAscender:
         self.model.train()
         return np.mean(losses), acc
   
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce"):
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce", is_FIM_ratio: bool = False):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -189,7 +189,8 @@ class TeacherAscender:
                 out_f = self.model(x_f)
                 out_r = self.model(x_r)
                 
-                reg_term = self.calculate_reg_term(FIM_ratio, original_sd)
+
+                reg_term = self.calculate_reg_term(FIM_ratio, original_sd) if is_FIM_ratio else self.calculate_reg_term(FIM_original, original_sd)
                 weighted_reg_term = self._lambda / 2 * reg_term
 
                 if version == "ce":
