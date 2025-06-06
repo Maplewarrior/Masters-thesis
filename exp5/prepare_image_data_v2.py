@@ -211,7 +211,6 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
     # Make a folder if it does not exist
     coords_string = f"{boundary['x_min']}_{boundary['x_max']}_{boundary['y_min']}_{boundary['y_max']}"
     folder_name = os.path.join(root_dir, f"tsne_box_{coords_string}_{subsample_size}")
-    os.makedirs(folder_name, exist_ok=True)
 
     # load data if it exists
     if os.path.exists(os.path.join(folder_name, "data.pt")):
@@ -236,8 +235,12 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
                                                                                seed=seed)
 
 
+    # There should be more than 0 forget points
+    assert len(forget_indices) > 0, "No forget points found. Make another boundary box."
+
     # save data to folder in one pt file
     print(f"Saving data to {folder_name}")
+    os.makedirs(folder_name, exist_ok=True)
     torch.save({
         'train_loader': train_loader,
         'retain_loader': retain_loader,
