@@ -216,7 +216,6 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
     if os.path.exists(os.path.join(folder_name, "data.pt")):
         print(f"Loading data from {folder_name}")
         data = torch.load(os.path.join(folder_name, "data.pt"), weights_only=False)
-        pdb.set_trace()
         return data['train_loader'], data['retain_loader'], data['forget_loader'], data['validation_loader'], data['forget_indices']
 
     train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
