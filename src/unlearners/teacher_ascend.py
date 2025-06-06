@@ -203,17 +203,18 @@ class TeacherAscender:
                     forget_term = self.calculate_fit_term(out_f, y_f)
                     retain_term = self.calculate_fit_term(out_r, y_r)
                     loss = -forget_term + retain_term + weighted_reg_term # minimize CE, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
                 elif version == "entropy-retain":
                     forget_term = self.calculate_entropy(out_f)
                     retain_term = self.calculate_fit_term(out_r, y_r)
                     loss = -forget_term + retain_term + weighted_reg_term # minimize entropy, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
 
                 # append loss to metrics
                 metrics['loss_terms']['full'].append(loss.item())
                 metrics['loss_terms']['reg_weighted'].append(weighted_reg_term.item())
                 metrics['loss_terms']['reg'].append(reg_term.item())
                 metrics['loss_terms']['ascend'].append(forget_term.item())
-                metrics['loss_terms']['repair'].append(retain_term.item())
 
                 loss.backward()
                 optimizer.step()
