@@ -24,26 +24,30 @@ def download_dataset(root_dir: str, dataset_name: str):
         raise NotImplementedError(f"The requested dataset {dataset_name} is not supported.")
 
 
-def preprocess_mnist_data(train_dataset, test_dataset):
+def preprocess_mnist_data(train_data, train_target, test_data, test_target, x_min=None, x_max=None, n_classes=None):
     """
     A function that preprocesses the MNIST dataset. The preprocessing steps are:
         - Reshaping the image data
         - Min max normalizing the images
         - one-hot encoding the targets.
     """
-    X_train = train_dataset.data
-    X_test = test_dataset.data
+    X_train = train_data
+    X_test = test_data
     # extract tensors and reshape
     X_train = X_train.reshape(X_train.size(0), -1)
     X_test = X_test.reshape(X_test.size(0), -1)
 
-    y_train = train_dataset.targets
-    y_test = test_dataset.targets
-    n_classes = len(y_train.unique())
+    y_train = train_target
+    y_test = test_target
+    if not n_classes:
+        n_classes = len(y_train.unique())
 
     # min max normalize images using train min and max values
-    x_max = X_train.max()
-    x_min = X_train.min()
+    if not x_min:
+        x_min = X_train.min()
+    if not x_max:
+        x_max = X_train.max()
+
     X_train = (X_train - x_max) / (x_max - x_min)
     X_test = (X_test - x_max) / (x_max - x_min)
     
@@ -89,7 +93,9 @@ def split_data_by_tsne_box(boundary: dict = None,
                            tsne_params: dict = None,
                            return_tsne_results: bool = False,
                            root_dir: str = './data',
-                           dataset_name: str = 'MNIST') -> tuple:
+                           dataset_name: str = 'MNIST',
+                           subsample_size: int = None,
+                           seed: int = 42) -> tuple:
     """
     Splits X_train and y_train based on a t-SNE map of the original dataset.
 
@@ -122,19 +128,28 @@ def split_data_by_tsne_box(boundary: dict = None,
     # === STEP 1: Load the raw dataset ===
     train_dataset, test_dataset = download_dataset(root_dir, dataset_name)
     raw_train_data = train_dataset.data
-    raw_train_targets = train_dataset.targets
+    x_max = raw_train_data.max()
+    x_min = raw_train_data.min()
+    n_classes = len(train_dataset.targets.unique())
+
+    if subsample_size is not None:
+        # random subsample the data
+        torch.manual_seed(seed)
+        indices = torch.randperm(len(raw_train_data))[:subsample_size]
+        raw_train_data = raw_train_data[indices]
+        raw_train_targets = train_dataset.targets[indices]
 
     # === STEP 2: Run t-SNE on the RAW data ===
     # Ensure raw data is a 2D array for t-SNE (n_samples, n_features)
     raw_data_flat = raw_train_data.reshape(len(raw_train_data), -1)
     
-    print("Running t-SNE on the original train_dataset...")
+    print(f"Running t-SNE on the original train_dataset with {len(raw_train_data)} samples...")
     tsne = TSNE(**tsne_params)
     tsne_results = tsne.fit_transform(raw_data_flat)
     print("t-SNE finished.")
 
     # === STEP 3: Preprocess the data to get the tensors you want to split ===
-    X_train, y_train, X_test, y_test = preprocess_mnist_data(train_dataset, test_dataset)
+    X_train, y_train, X_test, y_test = preprocess_mnist_data(raw_train_data, raw_train_targets, test_dataset.data, test_dataset.targets, x_min=x_min, x_max=x_max, n_classes=n_classes)
     
     # === STEP 4: Find indices from the t-SNE results ===
     # Create a DataFrame for easier filtering. The index aligns with the original data.
@@ -183,7 +198,7 @@ def split_data_by_tsne_box(boundary: dict = None,
         return train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices
 
 
-def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None):
+def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None, subsample_size: int = None):
     
     if boundary is None:
         boundary = {
@@ -195,7 +210,7 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
 
     # Make a folder if it does not exist
     coords_string = f"{boundary['x_min']}_{boundary['x_max']}_{boundary['y_min']}_{boundary['y_max']}"
-    folder_name = os.path.join(root_dir, f"tsne_box_{coords_string}")
+    folder_name = os.path.join(root_dir, f"tsne_box_{coords_string}_{subsample_size}")
     os.makedirs(folder_name, exist_ok=True)
 
     # load data if it exists
@@ -207,7 +222,8 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
 
     train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
         boundary=boundary,
-        return_tsne_results=False
+        return_tsne_results=False,
+        subsample_size=subsample_size
     )
 
     from prepare_image_data import create_image_dataloaders
@@ -235,17 +251,16 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
 
 if __name__ == '__main__':
     dataset_name = 'MNIST'
-    root_dir = "data"
+    # rootdire should be the path of the current file
+    root_dir = os.path.dirname(os.path.abspath(__file__))
 
     # ================================ Preprocessing ================================
-    train_dataset, test_dataset = download_dataset(root_dir, dataset_name)
-    X_train, y_train, X_test, y_test = preprocess_mnist_data(train_dataset, test_dataset)
 
     boundary = {
-        'x_min': 12.2,
-        'x_max': 12.6,
-        'y_min': -3.8,
-        'y_max': -1.5
+        'x_min': 10.2,
+        'x_max': 11.0,
+        'y_min': -4.3,
+        'y_max': -0.4
     }
 
 
@@ -260,15 +275,17 @@ if __name__ == '__main__':
     # X_train = X_train[:1000]
     # y_train = y_train[:1000]
     
+    subsample_size=10000
     # Create retain and forget datasets
     train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices, tsne_results = split_data_by_tsne_box(
         boundary=boundary,
-        return_tsne_results=True
+        return_tsne_results=True,
+        subsample_size=subsample_size
     )
 
+    y_train = train_dataset.y
     # convert y_test from onehot to class label
     y_train_labels = torch.argmax(y_train, dim=1)
-
     # ================================ Plotting ================================
     # Set the style and figure size
     # plt.style.use('seaborn')
@@ -297,7 +314,7 @@ if __name__ == '__main__':
                               markerfacecolor='red',
                               markeredgecolor='white',
                               markersize=12,
-                              label='Forget Points',
+                              label=f'Forget Points ({len(forget_indices)} images)',
                               path_effects=[
                                   matplotlib.patheffects.withStroke(linewidth=3,
                                                                   foreground='red',
@@ -317,8 +334,7 @@ if __name__ == '__main__':
         facecolor='red',
         alpha=0.1,
         lw=2,
-        linestyle='--',
-        label=f'Forget Region ({len(forget_indices)} images)'
+        linestyle='--'
     ))
 
 
@@ -344,12 +360,14 @@ if __name__ == '__main__':
     # Adjust layout to prevent cutting off elements
     plt.tight_layout()
     
-
+    # plt.show()
     # save to pdf
     boundary_name = f'{boundary["x_min"]}_{boundary["x_max"]}_{boundary["y_min"]}_{boundary["y_max"]}'
-    plt.savefig(f'plots/dataset_forget_retain_{boundary_name}.pdf', bbox_inches='tight')
+    plots_folder_name = os.path.join(root_dir, f"plots/data/dataset_forget_retain_{boundary_name}_{subsample_size}.pdf")
+    os.makedirs(plots_folder_name, exist_ok=True)
+    plt.savefig(os.path.join(plots_folder_name, f'dataset_forget_retain_{boundary_name}_{subsample_size}.pdf'), bbox_inches='tight')
     # also save as png
-    plt.savefig(f'plots/dataset_forget_retain_{boundary_name}.png', bbox_inches='tight')
+    plt.savefig(os.path.join(plots_folder_name, f'dataset_forget_retain_{boundary_name}_{subsample_size}.png'), bbox_inches='tight')
 
 
 
