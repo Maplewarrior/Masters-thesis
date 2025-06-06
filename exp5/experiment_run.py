@@ -21,21 +21,6 @@ from prepare_image_data_v2 import get_image_unlearn_data as get_image_unlearn_da
 import time
 import json
 
-class ExperimentSpecs:
-    def __init__(self, model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-                 result_dir, model_name, dataset_name, hyperparameters, seed, device) -> None:
-        self.model = model
-        self.dataloader_train = dataloader_train
-        self.dataloader_retain = dataloader_retain
-        self.dataloader_forget = dataloader_forget
-        self.dataloader_val = dataloader_val
-        self.result_dir = result_dir
-        self.model_name = model_name
-        self.dataset_name = dataset_name
-        self.hyperparameters = hyperparameters
-        self.seed = seed
-        self.device = device
-
 def has_shuffle(dataloader) -> bool:
     """
     Returns True if dataloader was instantiated with shuffle=True and False otherwise.
@@ -74,115 +59,6 @@ def build_nn(M: int, cfg: dict) -> nn.Module:
                         width_factor=cfg.model.neural_network_parameters.width_factor, 
                         seed=cfg.model.seed)
     return model
-
-def eval_single_model(model, 
-                      dataloader_retain, 
-                      dataloader_forget, 
-                      dataloader_val,
-                      time: float,
-                      result_dir: str,
-                      model_name: str,
-                      hyperparameters,
-                      seed: int,
-                      device: str):
-    
-    if os.path.exists(f'{result_dir}/all_results.json'):
-        with open(f'{result_dir}/all_results.json', 'r') as f:
-            results = json.load(f)
-    else:
-        results = {'model-name': [],
-                   'MIA-probability': [],
-                   'retain-accuracy': [],
-                   'forget-accuracy': [],
-                   'val-accuracy': [],
-                   'time (sec)': [],
-                   'hyperparameters': [],
-                   'seed': []
-                    }
-    
-    if os.path.exists(f'{result_dir}/wrong_forget_preds.json'):
-        with open(f'{result_dir}/wrong_forget_preds.json') as f:
-            wrong_preds = json.load(f)
-    else:
-        wrong_preds = {'model-name': [],
-                       'wrong-preds': []}
-
-    mia_model = MIA(device=device)
-    UE = UnlearningEvaluator(device=device)
-    retain_probs, y_retain = UE.get_model_probs(model, dataloader_retain)
-    forget_probs, y_forget = UE.get_model_probs(model, dataloader_forget)
-    val_probs, y_val = UE.get_model_probs(model, dataloader_val)
-    
-    results['model-name'].append(model_name)
-    results['retain-accuracy'].append(UE.calculate_accuracy(retain_probs, y_retain))
-    results['forget-accuracy'].append(UE.calculate_accuracy(forget_probs, y_forget))
-    results['val-accuracy'].append(UE.calculate_accuracy(val_probs, y_val))
-    results['MIA-probability'].append(mia_model(model, dataloader_retain, dataloader_forget, dataloader_val))
-    results['time (sec)'].append(time)
-    results['hyperparameters'].append(hyperparameters)
-    results['seed'].append(seed)
-    
-    df_subset = pd.DataFrame.from_dict(results)[['model-name', 'MIA-probability', 'retain-accuracy', 
-                                                'forget-accuracy', 'val-accuracy', 'time (sec)']]
-    print(f"Successfully updated the results! The file now looks like:\n{df_subset}")
-    
-    logits, xs, ys = get_model_predictions(model, dataloader_forget, device)
-    disagree_idxs = get_wrong_predictions(logits, ys)
-    wrong_preds['model-name'].append(model_name)
-    wrong_preds['wrong-preds'].append(disagree_idxs)
-
-    with open(f'{result_dir}/all_results.json', 'w') as f:
-        json.dump(results, f)
-    
-    with open(f'{result_dir}/wrong_forget_preds.json', 'w') as f:
-        json.dump(wrong_preds, f)
-
-    return results
-   
-def get_model_predictions(model: nn.Module, dataloader, device: str):
-    # ensure shuffle is turned off
-    dataloader = DataLoader(dataloader.dataset, shuffle=False, batch_size = dataloader.batch_size)
-    xs = []
-    ys = []
-    probs = []
-    for batch in dataloader:
-        x = batch[0].to(device)
-        y = batch[1].to(device)
-        model_out = model.inference(x)
-        xs.append(x)
-        ys.append(y)
-        probs.append(model_out['probabilities'])
-
-    xs = torch.cat(xs)
-    ys = torch.cat(ys)
-    probs = torch.cat(probs)
-    return probs, xs, ys
-
-def get_wrong_predictions(probs, ys) -> list:
-    return torch.where(probs.argmax(dim=-1) != ys.argmax(dim=-1))[0].cpu().tolist()
-
-def run_and_eval(func: callable, experiment_specs: object):
-    # call function and time the call
-    start = time.time()
-    func()
-    end = time.time()
-    elapsed = end-start
-    # re-instantiate all dataloaders
-    train_loader = experiment_specs.dataloader_train
-    retain_loader = experiment_specs.dataloader_retain
-    forget_loader = experiment_specs.dataloader_forget
-    val_loader = experiment_specs.dataloader_val
-    train_loader, retain_loader, forget_loader, val_loader = re_instantiate_dataloaders(train_loader, retain_loader, 
-                                                                                        forget_loader, val_loader, 
-                                                                                        experiment_specs.seed)
-    experiment_specs.dataloader_train = train_loader
-    experiment_specs.dataloader_retain = retain_loader
-    experiment_specs.dataloader_forget = forget_loader
-    experiment_specs.dataloader_val = val_loader
-    
-    eval_single_model(experiment_specs.model, experiment_specs.dataloader_retain, experiment_specs.dataloader_forget, 
-                      experiment_specs.dataloader_val, elapsed, experiment_specs.result_dir, experiment_specs.model_name, 
-                      experiment_specs.hyperparameters, experiment_specs.seed, experiment_specs.device)
 
 def calculate_model_metrics(model, dataloaders, device, model_name=None, save_path=None):
     """
@@ -258,7 +134,7 @@ def calculate_model_metrics(model, dataloaders, device, model_name=None, save_pa
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     print("Starting experiment with configuration: %s", cfg.data.dataset_name)
-    
+
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device: %s", DEVICE)
@@ -422,7 +298,7 @@ def main(cfg):
     ta_versions_lists = cfg.unlearn.teacher_ascend.versions
     ta_versions = [tuple(v) for v in ta_versions_lists]
     # convert to list of tuples 
-    for version, is_FIM_ratio in ta_versions:
+    for (version, is_FIM_ratio) in ta_versions:
         ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
                             _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
         ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
