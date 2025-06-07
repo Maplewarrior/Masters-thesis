@@ -237,7 +237,7 @@ def main(cfg):
     calculate_model_metrics(original_model, 
                             {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
                             DEVICE, 'Original model',
-                            save_path=f'{results_dir}/original_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json')
+                            save_path=f'{results_dir}/original_model_metrics.json')
 
     
     # ========================== Train/load retrained model ==========================
@@ -283,7 +283,7 @@ def main(cfg):
     calculate_model_metrics(retrained_model, 
                             {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
                             DEVICE, 'Retrained model',
-                            save_path=f'{results_dir}/retrained_model_metrics_{cfg.data.split_type}_{cfg.data.n_forget_points}.json')
+                            save_path=f'{results_dir}/retrained_model_metrics.json')
 
 
     # ========================== Unlearn: Teacher Ascender ==========================
