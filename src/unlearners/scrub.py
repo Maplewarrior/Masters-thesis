@@ -122,8 +122,13 @@ class ScrubR(BaseUnlearner):
         student_log_probs = self.log_softmax(self.model(x)['logits'])
         teacher_probs = self.original_model.inference(x)['probabilities']
         loss = -self.KL(input=student_log_probs, target=teacher_probs) # maximize KL divergence
+
+        loss_item = loss.item()
+
         loss.backward()
         self.optimizer.step()
+
+        return loss_item
 
     def min_step(self, x, y):
         """
@@ -137,18 +142,29 @@ class ScrubR(BaseUnlearner):
 
         reg_term = self.KL(input=student_log_probs, target=teacher_probs)
         fit_term = self.CE(student_out['logits'], y).mean()
-        loss = self.alpha * reg_term + self.gamma * fit_term
-        # print(f'Min loss: {loss}')
+        weighted_reg_term = self.alpha * reg_term
+        weighted_fit_term = self.gamma * fit_term
+        loss = weighted_reg_term + weighted_fit_term
+
         loss.backward()
         self.optimizer.step()
+
+        return (
+            loss.item(), 
+            reg_term.item(), 
+            fit_term.item(), 
+            weighted_reg_term.item(), 
+            weighted_fit_term.item()
+        )
 
     def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True, verbose: bool = False):
         validate_err_dataloader = self.construct_validation_set(forget_dataloader, val_dataloader)
         forget_errors = []
         
-        metrics = {'retain': {'acc': [], 'loss': []},
-                   'forget': {'acc': [], 'loss': []},
-                   'val': {'acc': [], 'loss': []}
+        metrics = {'retain': {'acc': []},
+                   'forget': {'acc': []},
+                   'val': {'acc': []},
+                   'loss_terms': {'full': [], 'max_forget': [], 'min_task_loss': [], 'min_retain': [], 'reg': []}
                   }
         if self.MIA is not None:
             metrics['mia'] = []
@@ -211,16 +227,31 @@ class ScrubR(BaseUnlearner):
                 retain_iterator = tqdm(retain_iterator, desc='Min step (retain)', leave=False)
 
             # max step
+            loss_max_forget = []
             for batch in forget_iterator:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
-                self.max_step(x, y)
+                loss_item = self.max_step(x, y)
+                loss_max_forget.append(loss_item)
+            metrics['loss_terms']['max_forget'].append(np.mean(loss_max_forget))
             
             # min step    
+            loss_min_task_loss = []
+            loss_min_retain = []
+            loss_weighted_min_task_loss = []
+            loss_weighted_min_retain = []
             for batch in retain_iterator:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
-                self.min_step(x, y)
+                loss_item, reg_term, fit_term, weighted_reg_term, weighted_fit_term = self.min_step(x, y)
+                loss_min_task_loss.append(fit_term)
+                loss_min_retain.append(reg_term)
+                loss_weighted_min_task_loss.append(weighted_fit_term)
+                loss_weighted_min_retain.append(weighted_reg_term)
+            metrics['loss_terms']['min_task_loss'].append(np.mean(loss_min_task_loss))
+            metrics['loss_terms']['min_retain'].append(np.mean(loss_min_retain))
+            metrics['loss_terms']['weighted_min_task_loss'].append(np.mean(loss_weighted_min_task_loss))
+            metrics['loss_terms']['weighted_min_retain'].append(np.mean(loss_weighted_min_retain))
 
             err = self.calculate_error(self.model, forget_dataloader)
             forget_errors.append(err.item())
