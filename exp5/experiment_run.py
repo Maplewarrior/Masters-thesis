@@ -148,8 +148,18 @@ def main(cfg):
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
-    results_root_dir = os.path.join(absolute_root_path, 'results', 'teacher_ascend')
-    weights_root_dir = os.path.join(absolute_root_path, 'weights', 'teacher_ascend')
+
+    if cfg.unlearn.method == 'teacher_ascend':
+        hyperparams_postfix = f"{cfg.unlearn.teacher_ascend.n_epochs}epochs_{cfg.unlearn.teacher_ascend._lambda}lambda"
+        results_root_dir = os.path.join(absolute_root_path, 'results', f'teacher_ascend_{hyperparams_postfix}')
+        weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
+    elif cfg.unlearn.method == 'scrub':
+        hyperparams_postfix = f"{cfg.unlearn.scrub.alpha}alpha_{cfg.unlearn.scrub.gamma}gamma_{cfg.unlearn.scrub.n_rounds}rounds"
+        results_root_dir = os.path.join(absolute_root_path, 'results', f'scrub_{hyperparams_postfix}')
+        weights_root_dir = os.path.join(absolute_root_path, 'weights', f'scrub_{hyperparams_postfix}')
+    else:
+        raise NotImplementedError(f"The unlearning method {cfg.unlearn.method} is not supported!")
+
 
     if cfg.data.split_type == "tsne_box":
         # coords on the format {"x_min": x_min_val, "x_max": x_max_val, "y_min": y_min_val, "y_max": y_max_val}
@@ -287,30 +297,53 @@ def main(cfg):
 
 
     # ========================== Unlearn: Teacher Ascender ==========================
-    print("Initializing Teacher Ascender")
-    from src.unlearners.teacher_ascend import TeacherAscender
-    hyperparams = {'n_epochs': 100, '_lambda': 64}
+    if cfg.unlearn.method == 'teacher_ascend':
+        print("Initializing Teacher Ascender")
+        from src.unlearners.teacher_ascend import TeacherAscender
+        hyperparams = {'n_epochs': cfg.unlearn.teacher_ascend.n_epochs, '_lambda': cfg.unlearn.teacher_ascend._lambda}
 
-    mia_model = MIA(device=DEVICE)
-    unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
-    js_div_func = unlearning_evaluator.JS_divergence
+        mia_model = MIA(device=DEVICE)
+        unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+        js_div_func = unlearning_evaluator.JS_divergence
 
-    ta_versions_lists = cfg.unlearn.teacher_ascend.versions
-    ta_versions = [tuple(v) for v in ta_versions_lists]
-    # convert to list of tuples 
-    for (version, is_FIM_ratio) in ta_versions:
-        print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
-        ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
-                            _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
-        ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
-        fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
-        with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}.json', 'w') as f:
-            json.dump(ta_version_metrics, f)
-    
-    dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                        dataloader_forget, dataloader_val,
-                                                                                                        cfg.model.seed)
-    
+        ta_versions_lists = cfg.unlearn.teacher_ascend.versions
+        ta_versions = [tuple(v) for v in ta_versions_lists]
+        # convert to list of tuples 
+        for (version, is_FIM_ratio) in ta_versions:
+            print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
+            ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
+                                _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+            ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
+            fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
+            with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}.json', 'w') as f:
+                json.dump(ta_version_metrics, f)
+        
+        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                            dataloader_forget, dataloader_val,
+                                                                                                            cfg.model.seed)
+
+
+
+    # ========================== Unlearn: SCRUB ==========================
+    if cfg.unlearn.method == 'scrub':
+        print("Initializing SCRUB")
+        mia_model = MIA(device=DEVICE)
+
+        from src.unlearners.scrub import ScrubR
+        unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+        js_div_func = unlearning_evaluator.JS_divergence
+        scrub_params = {'alpha': cfg.unlearn.scrub.alpha, 'gamma': cfg.unlearn.scrub.gamma, 'n_rounds': cfg.unlearn.scrub.n_rounds}
+
+        print("Initializing SCRUB")
+        scrub_model = copy.deepcopy(original_model)
+        scrub = ScrubR(scrub_model, original_model, alpha=scrub_params['alpha'], gamma=scrub_params['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+
+
+        scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=scrub_params['n_rounds'], verbose=True)
+
+        with open(f'{results_dir}/scrub_metrics.json', 'w') as f:
+            json.dump(scrub_metrics, f)
+
     # ========================== Unlearn: Gradient Ascent ==========================
     print("Initializing Gradient Ascent")
     from src.unlearners.gradient_ascent import GradientAscent

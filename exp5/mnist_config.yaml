@@ -55,9 +55,13 @@ model:
     n_layers: 3 # MNIST: 3
 
 unlearn:
-  method: "retrain"
+  method: "scrub" # "scrub" or "teacher_ascend"
   teacher_ascend:
     versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true]]
     n_epochs: 100
     _lambda: 64 # 64
+  scrub:
+    alpha: 2
+    gamma: 2
+    n_rounds: 50
 
