@@ -57,7 +57,7 @@ model:
 unlearn:
   method: "scrub" # "scrub" or "teacher_ascend"
   teacher_ascend:
-    versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true]]
+    versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true], ["ce-retain-no-reg", false], ["entropy-retain-no-reg", false]]
     n_epochs: 100
     _lambda: 64 # 64
   scrub:
