@@ -164,7 +164,7 @@ class ScrubR(BaseUnlearner):
         metrics = {'retain': {'acc': []},
                    'forget': {'acc': []},
                    'val': {'acc': []},
-                   'loss_terms': {'full': [], 'max_forget': [], 'min_task_loss': [], 'min_retain': [], 'reg': []}
+                   'loss_terms': {'full': [], 'max_forget': [], 'min_task_loss': [], 'min_retain': [], 'reg': [], 'weighted_min_task_loss': [], 'weighted_min_retain': []}
                   }
         if self.MIA is not None:
             metrics['mia'] = []
