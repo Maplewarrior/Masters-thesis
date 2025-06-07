@@ -570,8 +570,11 @@ def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
 
 def main():
 
-    base_results_dir = "results/teacher_ascend"
-    base_plots_dir = "plots/teacher_ascend"
+    model_options = os.listdir("results")
+    model_folder = _select_from_list(model_options, "Select the model to plot:")
+ 
+    base_results_dir = f"results/{model_folder}"
+    base_plots_dir = f"plots/{model_folder}"
 
     results_dir = select_experiment_folder(base_results_dir)
     if not results_dir:
@@ -587,73 +590,74 @@ def main():
     print("\nContents of the selected directory:")
     files = os.listdir(experiment_dir)
     # filter out only the ones with ta_metrics in the name 
-    files = [f for f in files if "ta_metrics" in f]
-    selected_file = _select_from_list(files, "\nSelect the TA version:")
-    selected_file_path = os.path.join(experiment_dir, selected_file)
+    files = [f for f in files if "ta_metrics" in f or "scrub_metrics" in f]
 
-    # load the file
-    with open(selected_file_path, 'r') as f:
-        results = json.load(f)
+    for selected_file in files:
+        selected_file_path = os.path.join(experiment_dir, selected_file)
+
+        # load the file
+        with open(selected_file_path, 'r') as f:
+            results = json.load(f)
 
 
-    # remove extension from selected file
-    selected_file_name = selected_file.split('.')[0]
+        # remove extension from selected file
+        selected_file_name = selected_file.split('.')[0]
 
-    plots_dir = os.path.join(base_plots_dir, results_dir)
-    plots_dir_subfolder = os.path.join(plots_dir, selected_file_name)
+        plots_dir = os.path.join(base_plots_dir, results_dir)
+        plots_dir_subfolder = os.path.join(plots_dir, selected_file_name)
 
-    os.makedirs(plots_dir, exist_ok=True)
-    os.makedirs(plots_dir_subfolder, exist_ok=True)
+        os.makedirs(plots_dir, exist_ok=True)
+        os.makedirs(plots_dir_subfolder, exist_ok=True)
 
-    mia_results = results['mia']
-    js_div_results = results['js_div']
-    
-    # Create and save plots
-    os.makedirs(results_dir, exist_ok=True)
-
-    # load retrained model results
-    with open(os.path.join(experiment_dir, f'retrained_model_metrics.json'), 'r') as f:
-        retrained_model_results = json.load(f)
-
-    # load original model results
-    with open(os.path.join(experiment_dir, f'original_model_metrics.json'), 'r') as f:
-        original_model_results = json.load(f)
-    
-    fig_acc = plot_accuracy_metrics(results, retrained_model_results)
-    fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results)
-    fig_js_div_epochs = plot_js_divergence_metrics(js_div_results)
-    fig_js_vs_acc = plot_js_div_vs_retain_acc(results, retrained_model_results)
-    fig_mia_vs_acc = plot_mia_vs_retain_acc(results, retrained_model_results)
-    fig_retain_vs_forget_js = plot_retain_vs_forget_js_div(results, retrained_model_results)
-    fig_acc_tradeoff = plot_retain_acc_vs_forget_acc(results, retrained_model_results)
-    fig_retain_forget_epochs = plot_retain_forget_accuracy_epochs(results, retrained_model_results)
-    # Save plots
-    os.makedirs(plots_dir, exist_ok=True)
-    fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
-    fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
-    fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
-    fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
-    fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
-    plt.close('all')
-
-    # Now, plot the loss components
-    if 'loss_terms' in results and any(results['loss_terms'].values()):
-        print("Plotting loss components...")
-        fig_loss = plot_loss_components(results['loss_terms'])
+        mia_results = results['mia']
+        js_div_results = results['js_div']
         
-        # Save the figure
-        save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
-        fig_loss.savefig(save_path, bbox_inches='tight')
-        print(f"Loss components plot saved to: {save_path}")
-        
-        plt.close(fig_loss) # Close the figure to free up memory
-    else:
-        print("No 'loss_terms' data found to plot.")
+        # Create and save plots
+        os.makedirs(results_dir, exist_ok=True)
 
-    # except FileNotFoundError:
-    #     print(f"Error: The selected directory '{results_dir}' was not found.")
-    # except Exception as e:
-    #     print(f"An error occurred while listing directory contents: {e}")
+        # load retrained model results
+        with open(os.path.join(experiment_dir, f'retrained_model_metrics.json'), 'r') as f:
+            retrained_model_results = json.load(f)
+
+        # load original model results
+        with open(os.path.join(experiment_dir, f'original_model_metrics.json'), 'r') as f:
+            original_model_results = json.load(f)
+        
+        fig_acc = plot_accuracy_metrics(results, retrained_model_results)
+        fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results)
+        fig_js_div_epochs = plot_js_divergence_metrics(js_div_results)
+        fig_js_vs_acc = plot_js_div_vs_retain_acc(results, retrained_model_results)
+        fig_mia_vs_acc = plot_mia_vs_retain_acc(results, retrained_model_results)
+        fig_retain_vs_forget_js = plot_retain_vs_forget_js_div(results, retrained_model_results)
+        fig_acc_tradeoff = plot_retain_acc_vs_forget_acc(results, retrained_model_results)
+        fig_retain_forget_epochs = plot_retain_forget_accuracy_epochs(results, retrained_model_results)
+        # Save plots
+        os.makedirs(plots_dir, exist_ok=True)
+        fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
+        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
+        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
+        fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
+        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
+        plt.close('all')
+
+        # Now, plot the loss components
+        if 'loss_terms' in results and any(results['loss_terms'].values()):
+            print("Plotting loss components...")
+            fig_loss = plot_loss_components(results['loss_terms'])
+            
+            # Save the figure
+            save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
+            fig_loss.savefig(save_path, bbox_inches='tight')
+            print(f"Loss components plot saved to: {save_path}")
+            
+            plt.close(fig_loss) # Close the figure to free up memory
+        else:
+            print("No 'loss_terms' data found to plot.")
+
+        # except FileNotFoundError:
+        #     print(f"Error: The selected directory '{results_dir}' was not found.")
+        # except Exception as e:
+        #     print(f"An error occurred while listing directory contents: {e}")
 
 if __name__ == "__main__":
     main() 
