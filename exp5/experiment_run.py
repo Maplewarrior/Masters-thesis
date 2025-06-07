@@ -332,14 +332,14 @@ def main(cfg):
         from src.unlearners.scrub import ScrubR
         unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
         js_div_func = unlearning_evaluator.JS_divergence
-        scrub_params = {'alpha': cfg.unlearn.scrub.alpha, 'gamma': cfg.unlearn.scrub.gamma, 'n_epochs': cfg.unlearn.scrub.n_rounds}
+        hyperparams = {'alpha': cfg.unlearn.scrub.alpha, 'gamma': cfg.unlearn.scrub.gamma, 'n_epochs': cfg.unlearn.scrub.n_rounds}
 
         print("Initializing SCRUB")
         scrub_model = copy.deepcopy(original_model)
-        scrub = ScrubR(scrub_model, original_model, alpha=scrub_params['alpha'], gamma=scrub_params['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+        scrub = ScrubR(scrub_model, original_model, alpha=hyperparams['alpha'], gamma=hyperparams['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
 
 
-        scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=scrub_params['n_epochs'], verbose=True)
+        scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=hyperparams['n_epochs'], verbose=True)
 
         with open(f'{results_dir}/scrub_metrics.json', 'w') as f:
             json.dump(scrub_metrics, f)
