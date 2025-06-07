@@ -3,89 +3,74 @@ import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
+import sys
+from matplotlib.ticker import MaxNLocator
 
-def plot_accuracy_metrics(results, retrained_model_results, figsize=(15, 5)):
+def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5)):
     """
-    Plot teacher ascent metrics showing retain, forget, and val accuracies along with their losses.
+    Plot teacher ascent metrics showing retain, forget, and val accuracies.
     
     Args:
-        results: Dictionary containing metrics with 'retain', 'forget', 'val' keys
-        retrained_model_results: Dictionary containing metrics for the retrained model
-        figsize: Tuple for figure size (width, height)
+        results (dict): Dictionary containing metrics with 'retain', 'forget', 'val' keys.
+        retrained_model_results (dict): Dictionary containing metrics for the retrained model.
+        figsize (tuple): Tuple for figure size (width, height).
     
     Returns:
-        matplotlib.figure.Figure: Figure containing accuracy and loss plots
+        matplotlib.figure.Figure: Figure containing the accuracy plots.
     """
-    fig_acc, axes_acc = plt.subplots(1, 3, figsize=figsize)
-    fig_acc.suptitle('Teacher Ascent Results Across Epochs', fontsize=16, fontweight='bold')
+    fig_acc, axes_acc = plt.subplots(1, 3, figsize=figsize, sharey=True)
+    fig_acc.suptitle('Teacher Ascent Accuracy vs. Retrained Model', fontsize=16, fontweight='bold')
     
     metrics = ['retain', 'forget', 'val']
-    metric_titles = ['Retain', 'Forget', 'Validation']
-    colors = ['#f95d6a','#665191','#ffa600']
+    metric_titles = ['Retain Set Accuracy', 'Forget Set Accuracy', 'Validation Set Accuracy']
+    colors = {'retrained': '#f95d6a', 'unlearned': '#665191'}
     
-    # Create empty lists to store line objects for the legend
     lines = []
     labels = []
     
     for i, (metric, title) in enumerate(zip(metrics, metric_titles)):
         ax = axes_acc[i]
-        ax2 = ax.twinx()  # Create a second y-axis sharing the same x-axis
         
         acc_values = results[metric]['acc']
-        loss_values = results[metric]['loss']
-        epochs = range(1, len(acc_values) + 1)
+        epochs = range(len(acc_values))
 
-        # Plot accuracy values (left y-axis)
-        # Make a horizontal line at the retrained model accuracy
+        # Plot a horizontal line for the retrained model's accuracy
         retrain_acc_value = retrained_model_results[metric]['acc'][0]
-        retrain_line = ax.axhline(y=retrain_acc_value, color=colors[0], linestyle='--', alpha=0.8, linewidth=1.5)
+        retrain_line = ax.axhline(y=retrain_acc_value, color=colors['retrained'], linestyle='--', alpha=0.9, linewidth=2)
         
-        # Plot accuracy values
+        # Plot unlearned model's accuracy values
         ta_line = ax.plot(epochs, acc_values, 
-                           marker='o', linewidth=2, markersize=4,
-                           color=colors[1], alpha=0.7,
+                           marker='o', linewidth=2.5, markersize=5,
+                           color=colors['unlearned'], alpha=0.8,
                            label='Accuracy')[0]
-        
-        # Plot loss values (right y-axis)
-        # retrain_loss_value = retrained_model_results[metric]['loss'][0]
-        # retrain_loss_line = ax2.axhline(y=retrain_loss_value, color=colors[0], linestyle='--', alpha=0.4, linewidth=1.5)
-        
-        loss_line = ax2.plot(epochs, loss_values,
-                           marker='s', linewidth=2, markersize=4,
-                           color=colors[2], alpha=0.7,
-                           label='Loss')[0]
         
         # Only store legend handles from the first plot
         if i == 0:
-            lines.extend([retrain_line, ta_line, loss_line])
-            labels.extend(['Retrained Model', 'Unlearned Model (TA) - Acc', 'Unlearned Model (TA) - Loss'])
+            lines.extend([retrain_line, ta_line])
+            labels.extend(['Retrained Model', 'Unlearned Model (TA)'])
 
         # Set labels and title
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('Accuracy')
-        ax2.set_ylabel('Loss')
-        ax.set_title(f'{title} Metrics')
+        ax.set_xlabel('Epoch', fontsize=12)
+        if i == 0: # Set y-label only for the first plot
+            ax.set_ylabel('Accuracy', fontsize=12)
+        ax.set_title(title, fontsize=14)
         
         # Set grid and limits
-        ax.grid(True, alpha=0.3)
-        ax.set_ylim(0, 1.1)
-        # Set reasonable y-limits for loss based on your typical values
-        # You might need to adjust these based on your actual loss ranges
-        ax2.set_ylim(bottom=0)
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.set_ylim(0, 1.05)
+        ax.set_xlim(0, len(epochs) - 1 if len(epochs) > 1 else 1)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         
-        # Set colors for the y-axis labels
-        ax.yaxis.label.set_color(colors[1])
-        ax2.yaxis.label.set_color(colors[2])
-    
     # Add a single legend at the bottom center of the figure
     fig_acc.legend(lines, labels, 
-                  loc='center', 
-                  bbox_to_anchor=(0.5, 0.02),
-                  ncol=3,
-                  frameon=False)
+                  loc='lower center', 
+                  bbox_to_anchor=(0.5, -0.02),
+                  ncol=2,
+                  frameon=False,
+                  fontsize=12)
     
-    # Adjust the subplot parameters to give specified padding
-    plt.subplots_adjust(bottom=0.2, wspace=0.3)
+    # Adjust the subplot parameters for a tight layout
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     return fig_acc
 
@@ -464,28 +449,162 @@ def plot_retain_forget_accuracy_epochs(results, retrained_model_results, figsize
     plt.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust layout for suptitle
     return fig
 
+def plot_loss_components(loss_terms: dict, figsize=(12, 7)):
+    """
+    Plots the different components of the loss over training steps.
+
+    Args:
+        loss_terms (dict): A dictionary where keys are loss component names
+                           (e.g., 'full', 'ascend', 'reg_weighted') and
+                           values are lists of loss values per batch.
+        figsize (tuple): The size of the figure.
+
+    Returns:
+        matplotlib.figure.Figure: The figure containing the plot.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    colors = {
+        'full': '#003f5c',
+        'ascend': '#d45087',
+        'repair': '#ff7c43',
+        'reg_weighted': '#ffa600',
+        'reg': '#2f4b7c'
+    }
+    
+    linestyles = {
+        'full': '-',
+        'ascend': '--',
+        'repair': ':',
+        'reg_weighted': '-.',
+        'reg': ':'
+    }
+
+    legend_labels = {
+        'full': 'Total Loss',
+        'ascend': 'Ascend Term (Forget Loss)',
+        'repair': 'Repair Term (Retain Loss)',
+        'reg_weighted': 'Regularization (Weighted)',
+        'reg': 'Regularization (Unweighted)'
+    }
+
+    max_steps = 0
+    if loss_terms:
+        # Find the length of the longest list to set the x-axis
+        valid_terms = {k: v for k, v in loss_terms.items() if v}
+        
+        # Exclude the 'full' loss term from the plot as requested
+        if 'full' in valid_terms:
+            del valid_terms['full']
+            
+        if valid_terms:
+            max_steps = max(len(v) for v in valid_terms.values())
+    
+    steps = range(max_steps)
+
+    for term, values in valid_terms.items():
+        # Plot only if the term exists and has data
+        ax.plot(steps[:len(values)], values, 
+                label=legend_labels.get(term, term.replace('_', ' ').title()),
+                color=colors.get(term, '#000000'),
+                linestyle=linestyles.get(term, '-'),
+                linewidth=2, 
+                alpha=0.85)
+
+    ax.set_title('Loss Components During Unlearning', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Training Batch Step', fontsize=12)
+    ax.set_ylabel('Loss Value', fontsize=12)
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(title='Loss Components', fontsize=10, frameon=True)
+    ax.set_xlim(0, max_steps - 1 if max_steps > 1 else 1)
+    
+    plt.tight_layout()
+    
+    return fig
+
+def _select_from_list(options: list, prompt_message: str) -> str:
+    """Helper function to prompt user to select from a list of options."""
+    if not options:
+        return None
+
+    print(prompt_message)
+    for i, option in enumerate(options):
+        print(f"  {i + 1}: {option}")
+
+    while True:
+        try:
+            choice = input(f"Select an option (1-{len(options)}) or 'q' to quit: ")
+            if choice.lower() == 'q':
+                return None
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(options):
+                return options[choice_idx]
+            else:
+                print("Invalid choice.")
+        except ValueError:
+            print("Please enter a number.")
+        except (KeyboardInterrupt, EOFError):
+            print("\nSelection cancelled.")
+            return None
+
+
+def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
+    """Guides the user to interactively select an experiment results folder."""
+    # Level 1: Select split type
+    print(f"Searching for experiment results in: {os.path.abspath(base_dir)}")
+    try:
+        experiment = sorted([d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))])
+        if not experiment:
+            print("No subdirectories found for split types. Make sure results are in the correct folder.")
+            return None
+    except FileNotFoundError:
+        print(f"Error: Base directory '{base_dir}' not found.")
+        return None
+    
+    selected_experiment = _select_from_list(experiment, "\nSelect the experiment:")
+    if not selected_experiment:
+        return None
+
+    return selected_experiment
+
 
 def main():
-    # Example results
-    retain_split_type = "random"
-    n_forget_points = 100
-    results_dir = f'results/teacher_ascend/MNIST/seed_42/{retain_split_type}/{n_forget_points}'
-    te_version = "te_entropy_retain"
 
-    te_to_key_map = {"te_entropy_retain": "Teacher Ascent (original-entropy-retain)",
-                     "te_entropy": "Teacher Ascent (original-entropy)",
-                     "te_ce_retain": "Teacher Ascent (original-ce-retain)",
-                     "te_ce": "Teacher Ascent (original-ce)"}
+    base_results_dir = "results/teacher_ascend"
+    base_plots_dir = "plots/teacher_ascend"
 
-    # Make folder for retain_split_type
-    plots_dir = os.path.join("plots/teacher_ascend", f"{retain_split_type}_{n_forget_points}", te_version)
-    os.makedirs(plots_dir, exist_ok=True)
+    results_dir = select_experiment_folder(base_results_dir)
+    if not results_dir:
+        print("No experiment folder selected. Exiting.")
+        sys.exit(1)
 
-    with open(os.path.join(results_dir, f'{te_version}_metrics_{retain_split_type}_{n_forget_points}.json'), 'r') as f:
+    experiment_dir = os.path.join(base_results_dir, results_dir)
+
+    print("\n--- Folder Selection Successful ---")
+    print(f"Analyzing results from: {experiment_dir}")
+    print("------------------------------------")
+
+    print("\nContents of the selected directory:")
+    files = os.listdir(experiment_dir)
+    # filter out only the ones with ta_metrics in the name 
+    files = [f for f in files if "ta_metrics" in f]
+    selected_file = _select_from_list(files, "\nSelect the TA version:")
+    selected_file_path = os.path.join(experiment_dir, selected_file)
+
+    # load the file
+    with open(selected_file_path, 'r') as f:
         results = json.load(f)
 
 
-    # results = results[te_to_key_map[te_version]]
+    # remove extension from selected file
+    selected_file_name = selected_file.split('.')[0]
+
+    plots_dir = os.path.join(base_plots_dir, results_dir)
+    plots_dir_subfolder = os.path.join(plots_dir, selected_file_name)
+
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(plots_dir_subfolder, exist_ok=True)
+
     mia_results = results['mia']
     js_div_results = results['js_div']
     
@@ -493,9 +612,13 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
 
     # load retrained model results
-    with open(os.path.join(results_dir, f'retrained_model_metrics_{retain_split_type}_{n_forget_points}.json'), 'r') as f:
+    with open(os.path.join(experiment_dir, f'retrained_model_metrics.json'), 'r') as f:
         retrained_model_results = json.load(f)
-        
+
+    # load original model results
+    with open(os.path.join(experiment_dir, f'original_model_metrics.json'), 'r') as f:
+        original_model_results = json.load(f)
+    
     fig_acc = plot_accuracy_metrics(results, retrained_model_results)
     fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results)
     fig_js_div_epochs = plot_js_divergence_metrics(js_div_results)
@@ -506,15 +629,31 @@ def main():
     fig_retain_forget_epochs = plot_retain_forget_accuracy_epochs(results, retrained_model_results)
     # Save plots
     os.makedirs(plots_dir, exist_ok=True)
-    fig_acc.savefig(os.path.join(plots_dir, f'teacher_ascend_accuracy_loss_results_{retain_split_type}.png'), bbox_inches='tight')
-    fig_mia_epochs.savefig(os.path.join(plots_dir, f'teacher_ascend_mia_epochs_results_{retain_split_type}.png'), bbox_inches='tight')
-    fig_js_div_epochs.savefig(os.path.join(plots_dir, f'teacher_ascend_js_div_epochs_results_{retain_split_type}.png'), bbox_inches='tight')
-    fig_js_vs_acc.savefig(os.path.join(plots_dir, f'teacher_ascend_js_div_vs_retain_acc_{retain_split_type}.png'), bbox_inches='tight')
-    fig_mia_vs_acc.savefig(os.path.join(plots_dir, f'teacher_ascend_mia_vs_retain_acc_{retain_split_type}.png'), bbox_inches='tight')
-    fig_retain_vs_forget_js.savefig(os.path.join(plots_dir, f'teacher_ascend_retain_vs_forget_js_div_{retain_split_type}.png'), bbox_inches='tight')
-    fig_acc_tradeoff.savefig(os.path.join(plots_dir, f'teacher_ascend_retain_vs_forget_acc_{retain_split_type}.png'), bbox_inches='tight')
-    fig_retain_forget_epochs.savefig(os.path.join(plots_dir, f'teacher_ascend_retain_forget_accuracy_epochs_{retain_split_type}.png'), bbox_inches='tight')
+    fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
+    fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
+    fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
+    fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
+    fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
     plt.close('all')
+
+    # Now, plot the loss components
+    if 'loss_terms' in results and any(results['loss_terms'].values()):
+        print("Plotting loss components...")
+        fig_loss = plot_loss_components(results['loss_terms'])
+        
+        # Save the figure
+        save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
+        fig_loss.savefig(save_path, bbox_inches='tight')
+        print(f"Loss components plot saved to: {save_path}")
+        
+        plt.close(fig_loss) # Close the figure to free up memory
+    else:
+        print("No 'loss_terms' data found to plot.")
+
+    # except FileNotFoundError:
+    #     print(f"Error: The selected directory '{results_dir}' was not found.")
+    # except Exception as e:
+    #     print(f"An error occurred while listing directory contents: {e}")
 
 if __name__ == "__main__":
     main() 
