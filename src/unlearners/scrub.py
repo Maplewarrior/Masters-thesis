@@ -199,16 +199,6 @@ class ScrubR(BaseUnlearner):
                 js_div = self.js_div_func(probs_u, probs_c)
                 metrics['js_div']['val'].append(js_div)
 
-            # calculate retain and forget errors
-            retain_err = self.calculate_error(self.model, retain_dataloader)
-            forget_err = self.calculate_error(self.model, forget_dataloader)
-            metrics['retain']['loss'].append(retain_err.item())
-            metrics['forget']['loss'].append(forget_err.item())
-
-            # calculate val error
-            val_err = self.calculate_error(self.model, val_dataloader)
-            metrics['val']['loss'].append(val_err.item())
-
             # calculate retain and forget accuracies
             retain_acc = self.calculate_accuracy(self.model, retain_dataloader)
             forget_acc = self.calculate_accuracy(self.model, forget_dataloader)
