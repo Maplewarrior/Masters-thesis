@@ -114,8 +114,8 @@ class TeacherAscender:
             - Both?
         """
 
-        if version not in ["ce", "entropy", "ce-retain", "entropy-retain"]:
-            raise ValueError(f"Invalid version: {version}, must be one of: ce, entropy, ce-retain, entropy-retain")
+        if version not in ["ce", "entropy", "ce-retain", "entropy-retain", "ce-retain-no-reg", "entropy-retain-no-reg"]:
+            raise ValueError(f"Invalid version: {version}, must be one of: ce, entropy, ce-retain, entropy-retain, ce-retain-no-reg, entropy-retain-no-reg")
 
         metrics = {'retain': {'acc': []},
                    'forget': {'acc': []},
