@@ -6,7 +6,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import sys
 from matplotlib.ticker import MaxNLocator
 
-def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5)):
+def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5), title=None):
     """
     Plot teacher ascent metrics showing retain, forget, and val accuracies.
     
@@ -19,7 +19,10 @@ def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5)):
         matplotlib.figure.Figure: Figure containing the accuracy plots.
     """
     fig_acc, axes_acc = plt.subplots(1, 3, figsize=figsize, sharey=True)
-    fig_acc.suptitle('Teacher Ascent Accuracy vs. Retrained Model', fontsize=16, fontweight='bold')
+    if title is None:
+        fig_acc.suptitle('Teacher Ascent Accuracy vs. Retrained Model', fontsize=16, fontweight='bold')
+    else:
+        fig_acc.suptitle(title, fontsize=16, fontweight='bold')
     
     metrics = ['retain', 'forget', 'val']
     metric_titles = ['Retain Set Accuracy', 'Forget Set Accuracy', 'Validation Set Accuracy']
@@ -110,7 +113,6 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     
     plt.tight_layout()
     return fig_mia
-
 
 def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
     """
@@ -396,10 +398,9 @@ def plot_retain_acc_vs_forget_acc(results, retrained_model_results, figsize=(7, 
     plt.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust layout for suptitle
     return fig
 
-
 def plot_retain_forget_accuracy_epochs(results, retrained_model_results, figsize=(8, 6)):
     """
-    Plot Retain and Forget accuracies against epochs on the same plot.
+    Plot Retain, Forget, and Validation accuracies against epochs on the same plot.
 
     Args:
         results: Dictionary containing metrics for the unlearned model.
@@ -410,16 +411,18 @@ def plot_retain_forget_accuracy_epochs(results, retrained_model_results, figsize
         matplotlib.figure.Figure: Figure containing the plot.
     """
     fig, ax = plt.subplots(figsize=figsize)
-    fig.suptitle('Retain vs. Forget Accuracy Across Epochs', fontsize=16, fontweight='bold')
+    fig.suptitle('Retain, Forget, and Validation Accuracy Across Epochs', fontsize=16, fontweight='bold')
 
     # Colors from your palette
     retain_color = '#003f5c'  # For TA Retain Acc
     forget_color = '#ffa600'  # For TA Forget Acc
+    val_color = '#dd5182'      # For TA Val Acc
     retrained_line_color = '#f95d6a' # For retrained model lines
 
     # TA model results
     retain_acc_values = results['retain']['acc']
     forget_acc_values = results['forget']['acc']
+    val_acc_values = results['val']['acc']
     epochs = range(1, len(retain_acc_values) + 1)
 
     # Plot TA model accuracies
@@ -431,14 +434,21 @@ def plot_retain_forget_accuracy_epochs(results, retrained_model_results, figsize
             marker='s', linewidth=2, markersize=5, # Different marker for forget
             color=forget_color, alpha=0.8, label='Unlearned Model - Forget Acc')
 
+    ax.plot(epochs, val_acc_values,
+            marker='^', linewidth=2, markersize=5, # Different marker for val
+            color=val_color, alpha=0.8, label='Unlearned Model - Validation Acc')
+
     # Retrained model results (horizontal lines)
     retrained_retain_acc = retrained_model_results['retain']['acc'][0]
     retrained_forget_acc = retrained_model_results['forget']['acc'][0]
+    retrained_val_acc = retrained_model_results['val']['acc'][0]
             
     ax.axhline(y=retrained_retain_acc, color=retrained_line_color, linestyle='--', 
                alpha=0.9, linewidth=1.5, label=f'Retrained Model - Retain Acc ({retrained_retain_acc:.2f})')
     ax.axhline(y=retrained_forget_acc, color=retrained_line_color, linestyle=':', 
                alpha=0.9, linewidth=1.5, label=f'Retrained Model - Forget Acc ({retrained_forget_acc:.2f})') # Dotted line
+    ax.axhline(y=retrained_val_acc, color=retrained_line_color, linestyle='-.',
+               alpha=0.9, linewidth=1.5, label=f'Retrained Model - Validation Acc ({retrained_val_acc:.2f})')
 
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Accuracy')
@@ -469,7 +479,12 @@ def plot_loss_components(loss_terms: dict, figsize=(12, 7)):
         'ascend': '#d45087',
         'repair': '#ff7c43',
         'reg_weighted': '#ffa600',
-        'reg': '#2f4b7c'
+        'reg': '#2f4b7c',
+        'max_forget': '#003f5c',
+        'min_task_loss': '#d45087',
+        'min_retain': '#ff7c43',
+        'weighted_min_task_loss': '#2f4b7c',
+        'weighted_min_retain': '#665191',
     }
     
     linestyles = {
@@ -477,7 +492,12 @@ def plot_loss_components(loss_terms: dict, figsize=(12, 7)):
         'ascend': '--',
         'repair': ':',
         'reg_weighted': '-.',
-        'reg': ':'
+        'reg': ':',
+        'max_forget': '-',
+        'min_task_loss': '--',
+        'min_retain': ':',
+        'weighted_min_task_loss': '-.',
+        'weighted_min_retain': '--'
     }
 
     legend_labels = {
@@ -546,7 +566,6 @@ def _select_from_list(options: list, prompt_message: str) -> str:
         except (KeyboardInterrupt, EOFError):
             print("\nSelection cancelled.")
             return None
-
 
 def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
     """Guides the user to interactively select an experiment results folder."""
@@ -623,7 +642,15 @@ def main():
         with open(os.path.join(experiment_dir, f'original_model_metrics.json'), 'r') as f:
             original_model_results = json.load(f)
         
-        fig_acc = plot_accuracy_metrics(results, retrained_model_results)
+        if "scrub" in selected_file_name:
+            acc_plot_filename = f'SCRUB Accuracy vs. Retrained Model'
+            fig_acc = plot_accuracy_metrics(results, retrained_model_results, title=acc_plot_filename)
+        else:
+            acc_plot_filename = f'Teacher Ascend Accuracy vs. Retrained Model'
+            fig_acc = plot_accuracy_metrics(results, retrained_model_results, title=acc_plot_filename)
+
+
+
         fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results)
         fig_js_div_epochs = plot_js_divergence_metrics(js_div_results)
         fig_js_vs_acc = plot_js_div_vs_retain_acc(results, retrained_model_results)
@@ -634,10 +661,15 @@ def main():
         # Save plots
         os.makedirs(plots_dir, exist_ok=True)
         fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
+        fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.pdf'), bbox_inches='tight')
         fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
+        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.pdf'), bbox_inches='tight')
         fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
+        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.pdf'), bbox_inches='tight')
         fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
+        fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.pdf'), bbox_inches='tight')
         fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
+        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.pdf'), bbox_inches='tight')
         plt.close('all')
 
         # Now, plot the loss components
