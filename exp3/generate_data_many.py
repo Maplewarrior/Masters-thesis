@@ -2,6 +2,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+seed = 42
+np.random.seed(seed)
+
 def generate_data(centroids: np.ndarray = None, 
                   stds: np.ndarray = None, 
                   sizes: np.ndarray = None, 

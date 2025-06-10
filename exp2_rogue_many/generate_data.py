@@ -2,6 +2,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+seed = 42
+np.random.seed(seed)
+
 def generate_data(centroids: np.ndarray = None, 
                   stds: np.ndarray = None, 
                   sizes: np.ndarray = None, 
@@ -52,8 +55,8 @@ def generate_data(centroids: np.ndarray = None,
 
 def plot_data(X, y, rogue_point_idx=None):
     # nicer colors
-    color_map = plt.colormaps['viridis']
-    colors = [color_map(i/3) for i in range(3)]  # Create 3 evenly spaced colors
+    colors = ['#ffa600', '#a05195', '#f95d6a']
+    colors = [colors[i % len(colors)] for i in range(3)]  # Create 3 evenly spaced colors
     num_classes = np.unique(y).size
 
     for class_idx in range(num_classes):

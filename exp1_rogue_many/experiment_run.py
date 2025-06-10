@@ -115,7 +115,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             # --- After Unlearning ---
             contour_u = plt.contour(
                 xx_u.numpy(), yy_u.numpy(), unlearned_mask,
-                colors=['#003f5c'],  # Blue like
+                colors=['#FC9E4F'],  # Blue like
                 linestyles='solid',
                 linewidths=2,
             )
