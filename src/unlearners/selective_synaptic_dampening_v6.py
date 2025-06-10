@@ -524,10 +524,11 @@ class SelectiveSynapticDampening(SSD):
         generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
 
-        n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
-        if n_classes != n_forget_classes:
-            forget_dataloader_old = copy.deepcopy(forget_dataloader)
-            forget_dataloader = updated_forget_loader
+        ### Update forget dataloader to include all classes (avoids catastrophic forgetting)
+        # n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
+        # if n_classes != n_forget_classes:
+        #     forget_dataloader_old = copy.deepcopy(forget_dataloader)
+        #     forget_dataloader = updated_forget_loader
 
         end=time.time()
         print(f'repair set time: {end-start:.4f} sec.')
