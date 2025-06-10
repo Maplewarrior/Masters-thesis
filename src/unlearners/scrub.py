@@ -164,6 +164,7 @@ class ScrubR(BaseUnlearner):
         metrics = {'retain': {'acc': []},
                    'forget': {'acc': []},
                    'val': {'acc': []},
+                   'rewind': {'acc': []},
                    'loss_terms': {'full': [], 'max_forget': [], 'min_task_loss': [], 'min_retain': [], 'reg': [], 'weighted_min_task_loss': [], 'weighted_min_retain': []}
                   }
         if self.MIA is not None:
@@ -208,6 +209,10 @@ class ScrubR(BaseUnlearner):
             # calculate val accuracy
             val_acc = self.calculate_accuracy(self.model, val_dataloader)
             metrics['val']['acc'].append(val_acc)    
+
+            # calculate rewind accuracy
+            rewind_acc = self.calculate_accuracy(self.model, validate_err_dataloader)
+            metrics['rewind']['acc'].append(rewind_acc)
 
             # Create batch iterators with tqdm if verbose
             forget_iterator = forget_dataloader
