@@ -42,8 +42,28 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idx
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, 
+                           dataset_name, X_forget, cfg, hyperparams,
+                           make_pdfs=True, 
+                           compress_pdfs=True,
+                           ):
     dataset_number = dataset_name.split("_")[1]
+    title = f"{cfg.unlearn.method}"
+    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+    if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
+        if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
+            title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
+            savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+        else:
+            title = f"{cfg.unlearn.method} α={hyperparams['alpha']:.2f}, λ={hyperparams['_lambda']:.2f}"
+            if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+            else:
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+    else:
+        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+    
+    superimposed_filename = savepath + '.png'
     
     # Set common plot styling
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -157,7 +177,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             legend_handles.append(rogue_point)
     
     # Improve title and labels
-    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
+    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method} ({title})", 
               fontsize=14)
     plt.xlabel('Feature 1', fontsize=12)
     plt.ylabel('Feature 2', fontsize=12)
@@ -188,7 +208,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     plt.tight_layout()
     
     # Save with high DPI as PNG
-    superimposed_filename = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.png"
     plt.savefig(superimposed_filename, bbox_inches='tight')
     
     # Save as PDF if enabled
@@ -367,10 +386,10 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-            # hyperparams = {'alpha': 5.,
-            #                '_lambda': 3.}
-            hyperparams = {'alpha': 1.,
-                           '_lambda': 1.}
+            hyperparams = {'alpha': 5.,
+                           '_lambda': 3.}
+            # hyperparams = {'alpha': 1.,
+            #                '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
@@ -387,10 +406,10 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v2":
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
-            # hyperparams = {'alpha': 5.,
-            #                '_lambda': 3.}
-            hyperparams = {'alpha': 1.,
-                           '_lambda': 1.}
+            hyperparams = {'alpha': 5.,
+                           '_lambda': 3.}
+            # hyperparams = {'alpha': 1.,
+            #                '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
