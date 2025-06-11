@@ -8,6 +8,19 @@ from torch.utils.data import DataLoader
 import numpy as np
 import os
 from src.unlearners.base_unlearner import BaseUnlearner
+import torch.nn.functional as F
+
+class DistillKL(nn.Module):
+    """Distilling the Knowledge in a Neural Network"""
+    def __init__(self, T):
+        super(DistillKL, self).__init__()
+        self.T = T
+
+    def forward(self, y_s, y_t):
+        p_s = F.log_softmax(y_s/self.T, dim=1)
+        p_t = F.softmax(y_t/self.T, dim=1)
+        loss = F.kl_div(p_s, p_t, size_average=False) * (self.T**2) / y_s.shape[0]
+        return loss
 
 class ScrubR(BaseUnlearner):
     def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None):
@@ -16,7 +29,7 @@ class ScrubR(BaseUnlearner):
         # self.__freeze_original_model()
         # self.CE = nn.CrossEntropyLoss(reduction='sum')
         self.CE = nn.CrossEntropyLoss(reduction='none')
-        self.KL = nn.KLDivLoss(reduction='batchmean')
+        self.KL = DistillKL(T=2.0)
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
         self.device = device
@@ -119,9 +132,9 @@ class ScrubR(BaseUnlearner):
         self.model.train()
         self.optimizer.zero_grad()
         
-        student_log_probs = self.log_softmax(self.model(x)['logits'])
-        teacher_probs = self.original_model.inference(x)['probabilities']
-        loss = -self.KL(input=student_log_probs, target=teacher_probs) # maximize KL divergence
+        student_logits = self.model(x)['logits']
+        teacher_logits = self.original_model.inference(x)['logits']
+        loss = -self.KL(student_logits, teacher_logits) # maximize KL divergence
 
         loss_item = loss.item()
 
@@ -137,10 +150,10 @@ class ScrubR(BaseUnlearner):
         self.optimizer.zero_grad()
 
         student_out = self.model(x)
-        student_log_probs = self.log_softmax(student_out['logits'])
-        teacher_probs = self.original_model.inference(x)['probabilities']
+        student_logits = student_out['logits']
+        teacher_logits = self.original_model.inference(x)['logits']
 
-        reg_term = self.KL(input=student_log_probs, target=teacher_probs)
+        reg_term = self.KL(student_logits, teacher_logits)
         fit_term = self.CE(student_out['logits'], y).mean()
         weighted_reg_term = self.alpha * reg_term
         weighted_fit_term = self.gamma * fit_term
