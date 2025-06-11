@@ -43,8 +43,7 @@ def decision_boundary_plot(model,
                            compress_pdfs=False,
                            layer_target=None,
                            params=None,
-                           title=None,
-                           dampenings=None):
+                           title=None):
     dataset_number = dataset_name.split("_")[1]
     print(f'Dataset number: {dataset_number}')
     
@@ -83,11 +82,8 @@ def decision_boundary_plot(model,
     xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-9, 9), (-9, 9))
     xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-9, 9), (-9, 9))
     
-    # Create a figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7), dpi=200)
-    
-    # =============== LEFT SUBPLOT: Decision Boundary ===============
-    plt.sca(ax1)
+    # Create a single figure for decision boundary
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8), dpi=200)
     
     # Get number of unique classes
     classes = np.unique(y)
@@ -99,7 +95,7 @@ def decision_boundary_plot(model,
     custom_cmap = plt.matplotlib.colors.ListedColormap(colors)
     
     # Plot the unlearned decision boundary with lower opacity
-    ax1.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
+    ax.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
                  alpha=0.4, cmap=custom_cmap)
     
 
@@ -114,7 +110,7 @@ def decision_boundary_plot(model,
                 decision_boundary_original.numpy() == neighbor_class
             )
             # --- Before Unlearning ---
-            contour_o = ax1.contour(
+            contour_o = ax.contour(
                 xx_o.numpy(), yy_o.numpy(), original_mask,
                 colors=['#353535'],  # Jet
                 linestyles='dotted',
@@ -127,7 +123,7 @@ def decision_boundary_plot(model,
                 decision_boundary_unlearned.numpy() == neighbor_class
             )
             # --- After Unlearning ---
-            contour_u = ax1.contour(
+            contour_u = ax.contour(
                 xx_u.numpy(), yy_u.numpy(), unlearned_mask,
                 colors=['#003f5c'],  # Blue like
                 linestyles='solid',
@@ -135,7 +131,7 @@ def decision_boundary_plot(model,
             )
             
     # Enhance axis
-    ax1.set_facecolor('white')
+    ax.set_facecolor('white')
     
     # Store the handles for legend
     legend_handles = []
@@ -148,7 +144,7 @@ def decision_boundary_plot(model,
     
     # Add rogue points with two different styles
     for i, (x_point, rogue_class, rogue_color) in enumerate(zip(X_forget, rogue_classes, rogue_colors)):
-        rogue_point = ax1.scatter(
+        rogue_point = ax.scatter(
             x_point[0], x_point[1], 
             color=rogue_color, 
             marker="X", 
@@ -162,12 +158,16 @@ def decision_boundary_plot(model,
             legend_handles.append(rogue_point)
     
     # Improve title and labels for decision boundary
-    ax1.set_title('Decision Boundary\nBefore and After Unlearning', fontsize=14)
-    ax1.set_xlabel('Feature 1', fontsize=12)
-    ax1.set_ylabel('Feature 2', fontsize=12)
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+    else:
+        ax.set_title(f'Decision Boundary - {cfg.unlearn.method}\nLayer Target: {",".join(map(str, layer_target))}', fontsize=14)
+    
+    ax.set_xlabel('Feature 1', fontsize=14)
+    ax.set_ylabel('Feature 2', fontsize=14)
     
     # Add legend with box and all custom entries
-    legend = ax1.legend(
+    legend = ax.legend(
         handles=legend_handles,
         frameon=True,
         framealpha=0.95,
@@ -178,42 +178,26 @@ def decision_boundary_plot(model,
     )
     
     # Improve ticks
-    ax1.tick_params(direction='out', length=6, width=1)
+    ax.tick_params(direction='out', length=6, width=1)
     
     # Add a subtle border
-    for spine in ax1.spines.values():
+    for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_color('lightgray')
     
     # Add grid with light alpha
-    ax1.grid(True, alpha=0.3)
-    
-    # =============== RIGHT SUBPLOT: Dampening Plot ===============
-    if dampenings is not None:
-        plt.sca(ax2)
-        visualize_parameter_dampening(dampenings, 
-                                    figsize=None,  # Don't create new figure
-                                    title='SSD Parameter Dampening',
-                                    ax=ax2)
-    
-    # Add overall title
-    if title is not None:
-        fig.suptitle(title, fontsize=16, y=0.98)
-    else:
-        fig.suptitle(f"Decision Boundary and Parameter Dampening\n{cfg.unlearn.method} - Layer Target: {','.join(map(str, layer_target))}", 
-                    fontsize=16, y=0.98)
+    ax.grid(True, alpha=0.3)
     
     # Ensure tight layout
     plt.tight_layout()
-    plt.subplots_adjust(top=0.70)  # Make room for suptitle
     
     # Save with high DPI as PNG
-    combined_filename = f"{results_dir}/d{dataset_number}_layer_target_{','.join(map(str, layer_target))}.png"
-    plt.savefig(combined_filename, bbox_inches='tight')
+    boundary_filename = f"{results_dir}/d{dataset_number}_boundary_layer_target_{','.join(map(str, layer_target))}.png"
+    plt.savefig(boundary_filename, bbox_inches='tight')
     
     # Save as PDF if enabled
     if make_pdfs:
-        pdf_file = f"{results_dir}/{dataset_number}_combined_boundary_dampening_{cfg.unlearn.method}.pdf"
+        pdf_file = f"{results_dir}/{dataset_number}_boundary_{cfg.unlearn.method}_layer_{','.join(map(str, layer_target))}.pdf"
         
         plt.savefig(pdf_file, 
                    bbox_inches='tight', 
@@ -238,6 +222,29 @@ def decision_boundary_plot(model,
         except Exception as e:
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
+
+
+def create_dampening_plot(dampenings, dataset_name, layer_target, params, total_dampening, cfg):
+    """Create a separate parameter dampening visualization"""
+    dataset_number = dataset_name.split("_")[1]
+    
+    # Create the dampening plot
+    fig, ax = plt.subplots(figsize=(10, 8), dpi=200)
+    
+    title = f'''SSD Parameter Dampening
+${{L}}_{{target}}$ = {",".join(map(str, layer_target))}
+$\\alpha$ = {round(params["alpha"], 2)}, $\\lambda$ = {round(params["_lambda"], 2)}
+Total dampening: {round(total_dampening, 2)}'''
+    
+    visualize_parameter_dampening(dampenings, 
+                                figsize=None,  # Don't create new figure
+                                title=title,
+                                ax=ax)
+    
+    # Save the dampening plot
+    dampening_filename = f"{results_dir}/d{dataset_number}_dampening_layer_target_{','.join(map(str, layer_target))}.png"
+    plt.savefig(dampening_filename, bbox_inches='tight')
+    plt.close()
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
@@ -365,13 +372,9 @@ def main(cfg):
             total_parameters = sum(dampening.numel() for dampening in dampenings.values())
             total_dampening = total_parameters - sum(torch.sum(torch.abs(dampening)).item() for dampening in dampenings.values())
 
-            title = f'''
-            Decision Boundary\n
-            Before and After Unlearning for {cfg.unlearn.method}
-            ${{L}}_{{target}}$ = {",".join(map(str, layer_target))}
-            $\\alpha$ = {round(params["alpha"], 2)} $\\lambda$ = {round(params["_lambda"], 2)}
-            Total dampening: {round(total_dampening, 2)}
-            '''
+            boundary_title = f'''Decision Boundary - SSD BO
+${{L}}_{{target}}$ = {",".join(map(str, layer_target))}
+$\\alpha$ = {round(params["alpha"], 2)}, $\\lambda$ = {round(params["_lambda"], 2)}'''
 
             decision_boundary_plot(unlearned_model, 
                                 original_model, 
@@ -382,8 +385,9 @@ def main(cfg):
                                 cfg, 
                                 layer_target=layer_target,
                                 params=params,
-                                title=title,
-                                dampenings=dampenings)
+                                title=boundary_title)
+
+            create_dampening_plot(dampenings, dataset_name, layer_target, params, total_dampening, cfg)
 
 if __name__ == "__main__":
     main()
