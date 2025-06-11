@@ -64,4 +64,5 @@ unlearn:
     alpha: 2
     gamma: 2
     n_rounds: 50
+    n_repair_rounds: 5
 
