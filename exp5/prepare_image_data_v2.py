@@ -258,6 +258,7 @@ if __name__ == '__main__':
 
     # ================================ Preprocessing ================================
 
+    # 1. Edge of class
     boundary = {
         'x_min': 10.2,
         'x_max': 11.0,
@@ -266,13 +267,22 @@ if __name__ == '__main__':
     }
 
 
+    # 2. In between classes
     # boundary = {
-    #     'x_min': 10,
-    #     'x_max': 12,
-    #     'y_min': -4,
-    #     'y_max': 0
+    #     'x_min': -6.20,
+    #     'x_max': -3.4,
+    #     'y_min': -1.6,
+    #     'y_max': 1.0
     # }
     
+    # # 3. Two overlapping classes
+    # boundary = {
+    #     'x_min': -4.2,
+    #     'x_max': -2.6,
+    #     'y_min': -6.25,
+    #     'y_max': -4.8
+    # }
+
     # slice X_train and y_train to 10000 samples
     # X_train = X_train[:1000]
     # y_train = y_train[:1000]
@@ -289,9 +299,9 @@ if __name__ == '__main__':
     # convert y_test from onehot to class label
     y_train_labels = torch.argmax(y_train, dim=1)
     # ================================ Plotting ================================
-    # Set the style and figure size
-    # plt.style.use('seaborn')
-    plt.figure(figsize=(12, 10))
+    # Set a paper-friendly style
+    plt.style.use('seaborn-v0_8-paper')
+    plt.figure(figsize=(8, 7))
     
 
     colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600', '#aa5382', '#eea152']
@@ -299,20 +309,13 @@ if __name__ == '__main__':
     scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], 
                          c=y_train_labels.numpy(),
                          cmap=ListedColormap(colors),  # Now using the imported ListedColormap
-                         alpha=0.6,
+                         alpha=0.85,
                          s=50,  # Slightly larger points
                          edgecolor='white',  # White edges around points
                          linewidth=0.5)
     
-    # Add a legend with class labels using custom colors
-    legend_elements = [plt.Line2D([0], [0], marker='o', color='w', 
-                                 markerfacecolor=colors[i],  # Use custom colors directly
-                                 label=f'Class {i}',
-                                 markersize=10)
-                      for i in range(10)]
-    
-    # Add forget points to legend with overlapping circles
-    forget_marker = plt.Line2D([0], [0], marker='o', color='none',  # Changed to 'none'
+    # Add a legend only for the forget points
+    forget_marker = plt.Line2D([0], [0], marker='o', color='none',
                               markerfacecolor='red',
                               markeredgecolor='white',
                               markersize=12,
@@ -320,12 +323,10 @@ if __name__ == '__main__':
                               path_effects=[
                                   matplotlib.patheffects.withStroke(linewidth=3,
                                                                   foreground='red',
-                                                                  alpha=0.5)  # Added alpha for transparency
+                                                                  alpha=0.5)
                               ])
-    legend_elements.append(forget_marker)
     
-    plt.legend(handles=legend_elements, bbox_to_anchor=(1.15, 1), 
-              loc='upper right', fontsize=10)
+    plt.legend(handles=[forget_marker], loc='best', fontsize=18)
     
     # Plot boundary box with improved styling
     plt.gca().add_patch(Rectangle(
@@ -353,11 +354,12 @@ if __name__ == '__main__':
                     edgecolor='white', linewidth=0.5)
     
     # Add labels and title with better formatting
-    plt.xlabel('t-SNE Dimension 1', fontsize=12)
-    plt.ylabel('t-SNE Dimension 2', fontsize=12)
-    plt.title("t-SNE Visualization of MNIST Dataset\nRetain/Forget Split", 
-              fontsize=14, pad=20)
+    plt.xlabel('t-SNE Dimension 1', fontsize=18)
+    plt.ylabel('t-SNE Dimension 2', fontsize=18)
+    plt.title("t-SNE Visualization of MNIST Dataset", 
+              fontsize=22, pad=20)
     
+    plt.tick_params(axis='both', which='major', labelsize=16)
     
     # Adjust layout to prevent cutting off elements
     plt.tight_layout()
@@ -365,11 +367,45 @@ if __name__ == '__main__':
     # plt.show()
     # save to pdf
     boundary_name = f'{boundary["x_min"]}_{boundary["x_max"]}_{boundary["y_min"]}_{boundary["y_max"]}'
-    plots_folder_name = os.path.join(root_dir, f"plots/data/dataset_forget_retain_{boundary_name}_{subsample_size}.pdf")
+    plots_folder_name = os.path.join(root_dir, f"plots/data/dataset_forget_retain_{boundary_name}_{subsample_size}")
     os.makedirs(plots_folder_name, exist_ok=True)
     plt.savefig(os.path.join(plots_folder_name, f'dataset_forget_retain_{boundary_name}_{subsample_size}.pdf'), bbox_inches='tight')
     # also save as png
     plt.savefig(os.path.join(plots_folder_name, f'dataset_forget_retain_{boundary_name}_{subsample_size}.png'), bbox_inches='tight')
+
+
+
+    # ================================ Bar Plot of Forget Set Distribution ================================
+    plt.figure(figsize=(8, 7))
+    forget_labels = y_train_labels[forget_indices].numpy()
+    n_classes = y_train.shape[1]
+    
+    # Ensure we have counts for all classes from 0 to n_classes-1
+    unique_labels, counts = np.unique(forget_labels, return_counts=True)
+    full_counts = np.zeros(n_classes, dtype=int)
+    full_counts[unique_labels] = counts
+    class_labels = np.arange(n_classes)
+
+    # Create a DataFrame for easier plotting with seaborn
+    df_forget_dist = pd.DataFrame({'Class': class_labels, 'Count': full_counts})
+
+    sns.barplot(x='Class', y='Count', data=df_forget_dist, palette=colors, hue='Class', dodge=False, legend=False)
+
+    plt.xlabel('Class Label', fontsize=18)
+    plt.ylabel('Number of Samples', fontsize=18)
+    plt.title('Distribution of Classes in Forget Set', fontsize=22)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.tight_layout()
+
+    # Save the bar plot
+    barplot_filename_pdf = os.path.join(plots_folder_name, f'forget_set_distribution_{boundary_name}_{subsample_size}.pdf')
+    plt.savefig(barplot_filename_pdf, bbox_inches='tight')
+    
+    barplot_filename_png = os.path.join(plots_folder_name, f'forget_set_distribution_{boundary_name}_{subsample_size}.png')
+    plt.savefig(barplot_filename_png, bbox_inches='tight')
+
+    print(f"\nSaved forget set distribution bar plot to {barplot_filename_pdf} and {barplot_filename_png}")
 
 
 
