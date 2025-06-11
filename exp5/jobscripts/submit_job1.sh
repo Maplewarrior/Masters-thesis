@@ -50,8 +50,8 @@ sed -e "s#\${VENV_PATH}#$VENV_PATH#g" \
     -e "s#\${RUN_EXPERIMENTS_ARGS}#$RUN_EXPERIMENTS_ARGS#g" \
     "$JOB_SCRIPT_TEMPLATE" > "$TEMP_JOB_SCRIPT"
 
-# # Submit the job
-# bsub < "$TEMP_JOB_SCRIPT"
+# Submit the job
+bsub < "$TEMP_JOB_SCRIPT"
 
-# # Optionally, remove the temporary job script after submission
-# rm "$TEMP_JOB_SCRIPT"
+# Optionally, remove the temporary job script after submission
+rm "$TEMP_JOB_SCRIPT"
