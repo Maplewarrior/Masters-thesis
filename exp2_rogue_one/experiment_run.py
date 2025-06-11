@@ -386,8 +386,8 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-            hyperparams = {'alpha': 5.,
-                           '_lambda': 3.}
+            hyperparams = {'alpha': 30.,
+                           '_lambda': 5.}
             # hyperparams = {'alpha': 1.,
             #                '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
@@ -406,8 +406,8 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v2":
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
-            hyperparams = {'alpha': 5.,
-                           '_lambda': 3.}
+            hyperparams = {'alpha': 30.,
+                           '_lambda': 5.}
             # hyperparams = {'alpha': 1.,
             #                '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
