@@ -29,7 +29,7 @@
 
 nvidia-smi
 # Load the cuda module
-module load python3/3.11.7
+module load python3/3.11.8
 module load cuda/11.6
 
 # Change to the working directory
