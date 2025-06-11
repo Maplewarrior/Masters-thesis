@@ -255,7 +255,7 @@ def main(cfg):
         calculate_model_metrics(original_model, 
                                 {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
                                 DEVICE, 'Original model',
-                                save_path=f'{results_dir}/original_model_metrics.json')
+                                save_path=f'{results_dir}/original_model_metrics_{seed}.json')
 
         
         # ========================== Train/load retrained model ==========================
