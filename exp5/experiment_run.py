@@ -52,12 +52,12 @@ def re_instantiate_dataloaders(dataloader_train, dataloader_retain, dataloader_f
     dataloader_val = recreate(dataloader_val)
     return dataloader_train, dataloader_retain, dataloader_forget, dataloader_val
 
-def build_nn(M: int, cfg: dict) -> nn.Module:
+def build_nn(M: int, n_classes: int, n_layers: int, width_factor: int, seed: int) -> nn.Module:
     model = NeuralNetRS(M=M, 
-                        n_classes=cfg.data.n_classes, 
-                        n_layers=cfg.model.neural_network_parameters.n_layers, 
-                        width_factor=cfg.model.neural_network_parameters.width_factor, 
-                        seed=cfg.model.seed)
+                        n_classes=n_classes, 
+                        n_layers=n_layers, 
+                        width_factor=width_factor, 
+                        seed=seed)
     return model
 
 def calculate_model_metrics(model, dataloaders, device, model_name=None, save_path=None):
@@ -139,11 +139,6 @@ def main(cfg):
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device: %s", DEVICE)
     
-    if DEVICE == 'cuda':
-        torch.cuda.manual_seed(cfg.model.seed)
-        torch.cuda.manual_seed_all(cfg.model.seed)
-        torch.backends.cudnn.deterministic = True
-        print("CUDA seed set for reproducibility")
     
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
@@ -184,13 +179,13 @@ def main(cfg):
                                                                                                                         subsample_size=cfg.data.subsample_size,
                                                                                                                         patch_size=cfg.data.patch_size,
                                                                                                                         batch_size=cfg.data.batch_size,
-                                                                                                                        seed=cfg.model.seed)
+                                                                                                                        seed=cfg.data.seed)
         # --------- tsne box forget set ---------
         elif cfg.data.split_type == 'tsne_box':
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data_tsne_box(root_dir=dataset_dir,
                                                                                                                  batch_size=cfg.data.batch_size,
                                                                                                                  subsample_size=cfg.data.subsample_size,
-                                                                                                                 seed=cfg.model.seed,
+                                                                                                                 seed=cfg.data.seed,
                                                                                                                  boundary=bounding_box_coords)                                                               
         print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
                    len(dataloader_train.dataset), len(dataloader_forget.dataset))
@@ -203,73 +198,87 @@ def main(cfg):
     # ========================== Initialize logger ==========================    
     logger = None 
     
-    # ========================== Train/load original model ==========================
-    # --------- instantiate original model ---------
-    os.makedirs(f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
-    if cfg.model.model_type == 'neural-network':
-        original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
-        save_checkpoints = True    
-    else:
-        raise NotImplementedError(f"The model type {cfg.model.model_type} is not supported!")
-    
-    # --------- load or train original model ---------
-    orig_model_path = os.path.join(weights_dir, f"original_model_weights.pt")
-    if not os.path.exists(orig_model_path):
-        print("Training original model from scratch")
-        hyperparams = {}
-        # re-initialize dataloaders
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                            dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
-        trainer = NeuralNetworkTrainer(model=original_model, 
-                                       train_dataloader=dataloader_train, 
-                                       val_dataloader=dataloader_val, 
-                                       logger=logger, 
-                                       device=DEVICE, 
-                                       learning_rate=cfg.trainer.lr,
-                                       weight_decay=cfg.trainer.weight_decay,
-                                       n_epochs=cfg.trainer.n_epochs,
-                                       optimizer_name=cfg.trainer.optimizer_name,
-                                       lr_scheduler=cfg.trainer.lr_scheduler,
-                                       save_checkpoints=save_checkpoints,
-                                       checkpoint_dir = f'{weights_dir}/original_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
-                                       disable_tqdm=cfg.trainer.disable_tqdm, 
-                                       do_early_stopping=cfg.trainer.do_early_stopping)
-        trainer()
-        print("Saving original model weights to: %s", orig_model_path)
-        torch.save(original_model.state_dict(), orig_model_path)
-    else:
-        # Load original model weights
-        print("Loading pre-trained original model weights")
-        original_model.load_state_dict(torch.load(orig_model_path))
 
-    # Calculate and save metrics for original model
-    calculate_model_metrics(original_model, 
-                            {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
-                            DEVICE, 'Original model',
-                            save_path=f'{results_dir}/original_model_metrics.json')
+    for seed_idx, seed in enumerate(cfg.model.seeds):
+        print(f"Running experiment with seed: {seed}, {seed_idx+1} of {len(cfg.model.seeds)}")
+        if DEVICE == 'cuda':
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+            print("CUDA seed set for reproducibility")
 
-    
-    # ========================== Train/load retrained model ==========================
-    # --------- instantiate retrained model ---------
-    os.makedirs(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}', exist_ok=True)
-    if cfg.model.model_type == 'neural-network':
-        print("Initializing retrained model as a neural network")
-        retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
-        save_checkpoints = True #False
+        # ========================== Train/load original model ==========================
+        # --------- instantiate original model ---------
+        os.makedirs(f'{weights_dir}/original_model_{seed}_checkpoints', exist_ok=True)
+        if cfg.model.model_type == 'neural-network':
+            original_model = build_nn(M=dataloader_train.dataset.X.shape[-1], 
+                                      n_classes=cfg.data.n_classes, 
+                                      n_layers=cfg.model.neural_network_parameters.n_layers, 
+                                      width_factor=cfg.model.neural_network_parameters.width_factor, 
+                                      seed=seed).to(DEVICE)
+            save_checkpoints = True    
+        else:
+            raise NotImplementedError(f"The model type {cfg.model.model_type} is not supported!")
+        
+        # --------- load or train original model ---------
+        orig_model_path = os.path.join(weights_dir, f"original_model_weights_{seed}.pt")
+        if not os.path.exists(orig_model_path):
+            print("Training original model from scratch")
+            hyperparams = {}
+            # re-initialize dataloaders
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                                dataloader_forget, dataloader_val,
+                                                                                                                seed)
+            trainer = NeuralNetworkTrainer(model=original_model, 
+                                        train_dataloader=dataloader_train, 
+                                        val_dataloader=dataloader_val, 
+                                        logger=logger, 
+                                        device=DEVICE, 
+                                        learning_rate=cfg.trainer.lr,
+                                        weight_decay=cfg.trainer.weight_decay,
+                                        n_epochs=cfg.trainer.n_epochs,
+                                        optimizer_name=cfg.trainer.optimizer_name,
+                                        lr_scheduler=cfg.trainer.lr_scheduler,
+                                        save_checkpoints=save_checkpoints,
+                                        checkpoint_dir = f'{weights_dir}/original_model_{seed}_checkpoints',
+                                        disable_tqdm=cfg.trainer.disable_tqdm, 
+                                        do_early_stopping=cfg.trainer.do_early_stopping)
+            trainer()
+            print("Saving original model weights to: %s", orig_model_path)
+            torch.save(original_model.state_dict(), orig_model_path)
+        else:
+            # Load original model weights
+            print("Loading pre-trained original model weights")
+            original_model.load_state_dict(torch.load(orig_model_path))
 
-    # We run everything more times to get a better estimate of the performance
-    for i in range(cfg.unlearn.n_runs):
-        print(f"Running retrained model {i+1} of {cfg.unlearn.n_runs}")
+        # Calculate and save metrics for original model
+        calculate_model_metrics(original_model, 
+                                {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
+                                DEVICE, 'Original model',
+                                save_path=f'{results_dir}/original_model_metrics.json')
+
+        
+        # ========================== Train/load retrained model ==========================
+        # --------- instantiate retrained model ---------
+        os.makedirs(f'{weights_dir}/retrained_model_{seed}_checkpoints', exist_ok=True)
+        if cfg.model.model_type == 'neural-network':
+            print("Initializing retrained model as a neural network")
+            retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1],
+                                       n_classes=cfg.data.n_classes,
+                                       n_layers=cfg.model.neural_network_parameters.n_layers,
+                                       width_factor=cfg.model.neural_network_parameters.width_factor,
+                                       seed=seed).to(DEVICE)
+            save_checkpoints = True #False
+
 
         # --------- train/load retrained model ---------
-        if not os.path.exists(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt'):
+        if not os.path.exists(f'{weights_dir}/retrained_model_weights_{seed}.pt'):
             print("Training retrained model from scratch")
             hyperparams = {}
             # re-initialize dataloaders
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                                 dataloader_forget, dataloader_val,
-                                                                                                                cfg.model.seed)
+                                                                                                                seed)
             trainer = NeuralNetworkTrainer(model=retrained_model, 
                                             train_dataloader=dataloader_retain, 
                                             val_dataloader=dataloader_val, 
@@ -281,23 +290,23 @@ def main(cfg):
                                             optimizer_name=cfg.trainer.optimizer_name,
                                             lr_scheduler=cfg.trainer.lr_scheduler,
                                             save_checkpoints=save_checkpoints,
-                                            checkpoint_dir = f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
+                                            checkpoint_dir = f'{weights_dir}/retrained_model_{seed}_checkpoints',
                                             disable_tqdm=cfg.trainer.disable_tqdm, 
                                             do_early_stopping=cfg.trainer.do_early_stopping)
             
             trainer()
-            torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
+            torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_weights_{seed}.pt')
         
         else:
             print("Loading pre-trained retrained model weights")
-            retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
+            retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_weights_{seed}.pt')
             retrained_model.load_state_dict(retrained_model_sd)
         
         # Calculate and save metrics for retrained model
         calculate_model_metrics(retrained_model, 
                                 {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
                                 DEVICE, 'Retrained model',
-                                save_path=f'{results_dir}/retrained_model_metrics_{i}.json')
+                                save_path=f'{results_dir}/retrained_model_metrics_{seed}.json')
 
 
         # ========================== Unlearn: Teacher Ascender ==========================
@@ -319,12 +328,12 @@ def main(cfg):
                                     _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
                 ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
                 fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
-                with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}_{i}.json', 'w') as f:
+                with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}_{seed}.json', 'w') as f:
                     json.dump(ta_version_metrics, f)
             
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                                 dataloader_forget, dataloader_val,
-                                                                                                                cfg.model.seed)
+                                                                                                                seed)
 
 
 
@@ -345,7 +354,7 @@ def main(cfg):
 
             scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=hyperparams['n_epochs'], n_repair_rounds=hyperparams['n_repair_rounds'], verbose=True)
 
-            with open(f'{results_dir}/scrub_metrics_{i}.json', 'w') as f:
+            with open(f'{results_dir}/scrub_metrics_{seed}.json', 'w') as f:
                 json.dump(scrub_metrics, f)
 
     # ========================== Unlearn: Gradient Ascent ==========================
@@ -355,11 +364,11 @@ def main(cfg):
         from src.unlearners.gradient_ascent import GradientAscent
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
+                                                                                                            seed)
         gradient_ascent = GradientAscent(copy.deepcopy(original_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
         ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
         # save metrics to json
-        with open(f'{results_dir}/ga_metrics_{i}.json', 'w') as f:
+        with open(f'{results_dir}/ga_metrics_{seed}.json', 'w') as f:
             json.dump(ga_metrics, f)
 
 if __name__ == "__main__":

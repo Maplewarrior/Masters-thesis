@@ -18,6 +18,7 @@ logging:
 
 # Data generation parameters
 data:
+  seed: 42
   dataset_name: "MNIST"
   subsample_size: 10000
   n_forget_points: 100
@@ -48,14 +49,13 @@ trainer:
   lr_scheduler: 
 
 model: 
-  seed: 42 #MNIST: 42
+  seeds: [42, 43, 44] #MNIST: 42
   model_type: 'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4
     n_layers: 3 # MNIST: 3
 
 unlearn:
-  n_runs: 1
   do_gradient_ascent: False
   method: "scrub" # "scrub" or "teacher_ascend"
   teacher_ascend:
