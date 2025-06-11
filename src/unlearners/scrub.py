@@ -224,7 +224,7 @@ class ScrubR(BaseUnlearner):
 
 
             # only perform max step for the first n_rounds
-            if i< n_rounds:
+            if i <= n_rounds:
                 # max step
                 loss_max_forget = []
                 for batch in forget_iterator:
