@@ -157,7 +157,7 @@ class ScrubR(BaseUnlearner):
             weighted_fit_term.item()
         )
 
-    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True, verbose: bool = False):
+    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, n_repair_rounds: int, remove_weights: bool = True, verbose: bool = False):
         validate_err_dataloader = self.construct_validation_set(forget_dataloader, val_dataloader)
         forget_errors = []
         
@@ -174,7 +174,8 @@ class ScrubR(BaseUnlearner):
             metrics['js_div'] = {"retain": [], "forget": [], "val": []}
         
         # Create epoch iterator with tqdm if verbose
-        epoch_iterator = range(n_rounds)
+        total_rounds = n_rounds + n_repair_rounds
+        epoch_iterator = range(total_rounds)
         if verbose:
             from tqdm import tqdm
             epoch_iterator = tqdm(epoch_iterator, desc='Training epochs', leave=True)
@@ -221,15 +222,19 @@ class ScrubR(BaseUnlearner):
                 forget_iterator = tqdm(forget_iterator, desc='Max step (forget)', leave=False)
                 retain_iterator = tqdm(retain_iterator, desc='Min step (retain)', leave=False)
 
-            # max step
-            loss_max_forget = []
-            for batch in forget_iterator:
-                x = batch[0].to(self.device)
-                y = batch[1].to(self.device)
-                loss_item = self.max_step(x, y)
-                loss_max_forget.append(loss_item)
-            metrics['loss_terms']['max_forget'].append(np.mean(loss_max_forget))
+
+            # only perform max step for the first n_rounds
+            if i< n_rounds:
+                # max step
+                loss_max_forget = []
+                for batch in forget_iterator:
+                    x = batch[0].to(self.device)
+                    y = batch[1].to(self.device)
+                    loss_item = self.max_step(x, y)
+                    loss_max_forget.append(loss_item)
+                metrics['loss_terms']['max_forget'].append(np.mean(loss_max_forget))
             
+            # min step is performed on each epoch, and after the n_rounds it will be performed n_repair_rounds times
             # min step    
             loss_min_task_loss = []
             loss_min_retain = []
