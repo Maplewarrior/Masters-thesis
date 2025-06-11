@@ -7,7 +7,7 @@ import numpy as np
 from omegaconf import OmegaConf
 from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
-import graphviz
+# import graphviz
 import matplotlib.pyplot as plt
 import torch.nn as nn
 
@@ -17,7 +17,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 from src.visualization.dampening_visualization import visualize_parameter_dampening
 
-results_dir = os.path.join(os.path.dirname(__file__), "TA_GA_gradproj_results")
+results_dir = os.path.join(os.path.dirname(__file__), "results")
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
@@ -34,42 +34,17 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
-def decision_boundary_plot_old(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams):
-        dataset_number = dataset_name.split("_")[1]
-        title = f"{cfg.unlearn.method}"
-        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-        if 'ssd' in cfg.unlearn.method:
-            if 'v5' in cfg.unlearn.method:
-                title = f"{cfg.unlearn.method}_alpha1={hyperparams['alpha1']:.2f}_lambda1={hyperparams['lambda1']:.2f}_alpha2={hyperparams['alpha2']:.2f}_lambda2={hyperparams['lambda2']:.2f}"
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-            else:
-                title = f"{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-                if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
-                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-                else:
-                    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-
-        creator = DecisionBoundaryCreator(model, dataloader_retrain)
-        plot1 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot1.title(title)
-        plot1.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x", alpha=0.3)
-        plot1.savefig(f"{savepath}_unlearned.png")
-
-        creator = DecisionBoundaryCreator(original_model, dataloader_train)
-        plot2 = creator.plot_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-        plot2.scatter(X_forget[:, 0], X_forget[:, 1], color="red", marker="x")
-        plot2.title("Original")
-        plot2.savefig(f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_original.png")
-
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, hyperparams, make_pdfs=True, compress_pdfs=True):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, 
+                           dataset_name, X_forget, cfg, hyperparams,
+                           make_pdfs=True, 
+                           compress_pdfs=True,
+                           ):
     dataset_number = dataset_name.split("_")[1]
     title = f"{cfg.unlearn.method}"
     savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
     if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
         if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
             title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
-            # title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}, α3={hyperparams['alpha_2']:.2f}, λ3={hyperparams['_lambda_2']:.2f}"
-
             savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
         else:
             title = f"{cfg.unlearn.method} α={hyperparams['alpha']:.2f}, λ={hyperparams['_lambda']:.2f}"
@@ -77,10 +52,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
                 savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
             else:
                 savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-    
     else:
         savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-        
+    
     superimposed_filename = savepath + '.png'
     
     # Set common plot styling
@@ -96,7 +70,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         y_retain = torch.argmax(y_retain, dim=1)
     
     # Professional color palette
-    professional_colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974', '#64B5CD']
+    professional_colors = ['#ffa600', '#a05195', '#f95d6a', '#8172B3', '#CCB974', '#64B5CD']
     
     # Find the classes of the rogue points
     rogue_classes = []
@@ -115,11 +89,11 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     original_creator = DecisionBoundaryCreator(original_model, dataloader_train)
     
     # Get the decision boundaries but don't plot them yet
-    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
-    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-8.5, 8.5), (-8.5, 8.5))
+    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-9, 9), (-9, 9))
+    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-9, 9), (-9, 9))
     
     # Create a single figure
-    plt.figure(figsize=(8, 7), dpi=120)
+    plt.figure(figsize=(8, 7), dpi=200)
     
     # Get number of unique classes
     classes = np.unique(y)
@@ -130,14 +104,11 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     colors = [plt.matplotlib.colors.to_rgba(color) for color in colors]
     custom_cmap = plt.matplotlib.colors.ListedColormap(colors)
     
-    # Plot the original decision boundary with higher opacity
-    plt.pcolormesh(xx_o.numpy(), yy_o.numpy(), decision_boundary_original.numpy(),
-                 alpha=0.4, cmap=custom_cmap, shading='auto')
-    
     # Plot the unlearned decision boundary with lower opacity
     plt.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
-                 alpha=0.4, cmap=custom_cmap, shading='auto')
+                 alpha=0.4, cmap=custom_cmap)
     
+
     unlearned_creator.plot_retain_data(X_retain, y_retain, classes, colors)
 
 
@@ -151,14 +122,12 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             # --- Before Unlearning ---
             contour_o = plt.contour(
                 xx_o.numpy(), yy_o.numpy(), original_mask,
-                levels=[0.5],
-                colors=['#606060'],  # Blue
-                linestyles=['solid'],
-                linewidths=[1.5],
-                alpha=0.4
+                colors=['#353535'],  # Jet
+                linestyles='dotted',
+                linewidths=2,
             )
             
-            # Unlearned model boundaries - solid lines
+            # Unlearned model boundaries
             unlearned_mask = np.logical_or(
                 decision_boundary_unlearned.numpy() == class_idx,
                 decision_boundary_unlearned.numpy() == neighbor_class
@@ -166,11 +135,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             # --- After Unlearning ---
             contour_u = plt.contour(
                 xx_u.numpy(), yy_u.numpy(), unlearned_mask,
-                levels=[0.5],
-                colors=['#6A0DAD'],  # Red
-                linestyles=['solid'],
-                linewidths=[2],
-                alpha=0.4
+                colors=['#FC9E4F'],  # Carribean Current
+                linestyles='solid',
+                linewidths=2,
             )
             
     # Get the axis to enhance
@@ -182,8 +149,8 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
     # Add custom legend entries for the two boundaries
     from matplotlib.lines import Line2D    
-    original_legend = Line2D([0], [0], color='#606060', lw=2.5, linestyle='solid', label='Before Unlearning')
-    unlearned_legend = Line2D([0], [0], color='#6A0DAD', lw=3, linestyle='solid', label='After Unlearning')
+    original_legend = Line2D([0], [0], color='#353535', lw=2, linestyle='dotted', label='Before Unlearning')
+    unlearned_legend = Line2D([0], [0], color='#FC9E4F', lw=2, linestyle='solid', label='After Unlearning')
     legend_handles.extend([original_legend, unlearned_legend])
     
     # Add rogue points with two different styles
@@ -192,20 +159,20 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             x_point[0], x_point[1], 
             color=rogue_color, 
             marker="X", 
-            s=150,
-            linewidth=1.5,
+            s=100,
+            linewidth=1,
             edgecolor='white',
             zorder=10,  # Higher zorder to ensure visibility
-            label=f"Forget observations (Class {rogue_class})" if i == 0 else "_nolegend_"
+            label=f"Forget observations" if i == 0 else "_nolegend_"
         )
         if i == 0:
             legend_handles.append(rogue_point)
     
     # Improve title and labels
-    plt.title(f"Decision Boundary Before and After Unlearning ({title})", 
-              fontsize=16, fontweight='bold')
-    plt.xlabel('Feature 1', fontsize=14)
-    plt.ylabel('Feature 2', fontsize=14)
+    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method} ({title})", 
+              fontsize=14)
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
     
     # Add legend with box and all custom entries
     legend = plt.legend(
@@ -233,7 +200,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     plt.tight_layout()
     
     # Save with high DPI as PNG
-    plt.savefig(superimposed_filename, dpi=300, bbox_inches='tight')
+    plt.savefig(superimposed_filename, bbox_inches='tight')
     
     # Save as PDF if enabled
     if make_pdfs:
@@ -262,52 +229,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         except Exception as e:
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
-
-def create_simple_model_visualization(model, save_path, input_shape):
-    """Create a simple flowchart visualization of the model architecture.
-    
-    Args:
-        model: The neural network model to visualize
-        save_path: Path to save the visualization
-        input_shape: Shape of the input data (for labeling input node)
-    """
-    dot = graphviz.Digraph(comment='Neural Network Architecture')
-    
-    # Set graph attributes for better appearance
-    dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
-    
-    # Set node attributes
-    dot.attr('node', shape='box', style='filled,rounded', 
-             fillcolor='#E8F0FE', color='#4285F4', 
-             fontname='Helvetica', fontsize='14', fontcolor='#333333')
-    
-    # Set edge attributes
-    dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    # Add input node
-    dot.node('input', f'Input\n({input_shape} features)', shape='oval')
-    
-    # Add nodes for each layer in the Sequential model
-    prev_node = 'input'
-    for i, layer in enumerate(model.net):
-        if isinstance(layer, nn.Linear):
-            node_name = f'linear_{i}'
-            label = f'Linear\n{layer.in_features} → {layer.out_features}'
-            dot.node(node_name, label)
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-        elif isinstance(layer, nn.ReLU):
-            node_name = f'relu_{i}'
-            dot.node(node_name, 'ReLU')
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-    
-    # Add output node
-    dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-    dot.edge(prev_node, 'output')
-    
-    # Render the visualization
-    dot.render(save_path, format='png')
-    return dot
 
 def count_updated_params(original_model, unlearned_model):
     pass
@@ -375,7 +296,7 @@ def main(cfg):
 
         # Generate a simplified visualization
         nn_model_image_path = os.path.join(results_dir, f"nn_model_architecture")
-        create_simple_model_visualization(model, nn_model_image_path, X.shape[1])
+        #create_simple_model_visualization(model, nn_model_image_path, X.shape[1])
 
         original_model = copy.deepcopy(model)
 
@@ -421,8 +342,8 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-            # hyperparams = {'alpha': 5.,
-            #                '_lambda': 3.}
+            # hyperparams = {'alpha': 30.,
+            #                '_lambda': 5.}
             hyperparams = {'alpha': 1.,
                            '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
@@ -440,8 +361,8 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v2":
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
-            # hyperparams = {'alpha': 5.,
-            #                '_lambda': 3.}
+            # hyperparams = {'alpha': 30.,
+            #                '_lambda': 5.}
             hyperparams = {'alpha': 1.,
                            '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
@@ -546,18 +467,6 @@ def main(cfg):
             
             ta(dataloader_retain, dataloader_forget)
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
-        
-        elif cfg.unlearn.method == "teacher_ascend_gp":
-            from src.unlearners.teacher_ascend_gp import TeacherAscender
-            hyperparams = {'n_epochs': 15, '_lambda': 8}
-            ta = TeacherAscender(unlearned_model, 
-                                 n_epochs=hyperparams['n_epochs'], 
-                                _lambda=hyperparams['_lambda'], device=DEVICE)
-            
-            ta(dataloader_retain, dataloader_forget)
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
-            
-
             
         elif cfg.unlearn.method == "assd":
             from src.unlearners.adaptive_ssd import AdaptiveSSD

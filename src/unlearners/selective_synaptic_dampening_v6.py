@@ -75,23 +75,23 @@ class SelectiveSynapticDampening(SSD):
         return xs, ys, entropies
 
     def construct_validation_set(self, forget_dataloader, val_dataloader):
-
         """
         A function for constructing a validation set that is "of the same distribution" as the forget dataset. This is the +R step in the method.
         "of the same distribution" is interpreted as being in terms of the label distribution.
-
+        
         In the case that all classes are not represented in the forget set, then we add some samples from those.
         This, along with adding a retain set, should mitigate catastrophic forgetting.
         """
-
+        
         forget_dataset = forget_dataloader.dataset
         val_dataset = val_dataloader.dataset
         # X_val = val_dataset.X.to(self.device)
         # y_val_ohe = val_dataset.y.to(self.device)
         # y_val = val_dataset.y.argmax(dim=1).to(self.device)
-
+        
         X_val, y_val_ohe, entropies = self.entropy_sampling(val_dataloader)
         y_val = y_val_ohe.argmax(dim=-1)
+
         # draw random samples from the top k% highest entropy test samples
         k = int(len(X_val) * self.k)
         idx_shuffle = torch.randperm(k)
@@ -100,19 +100,19 @@ class SelectiveSynapticDampening(SSD):
         y_val_ohe = y_val_ohe[:k][idx_shuffle]
 
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
-        forget_labels, forget_counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+        forget_labels, forget_counts = torch.unique(y_val, return_counts=True)
         forget_labels = forget_labels.to(self.device)
-
+        
         sample_sizes = []
         X_values = []
         y_values = []
-
+        
         for i, label in enumerate(forget_labels):
             # find val set indexes that correspond to the label
             val_label_idx = torch.where(y_val == label)[0]
             # find sample size
-            # sample_size = min(forget_counts[i].item(), len(val_label_idx))
-            sample_size = max(forget_counts[i].item(), len(val_label_idx))
+            sample_size = min(forget_counts[i].item(), len(val_label_idx))
+            # sample_size = max(forget_counts[i].item(), len(val_label_idx))
             sample_sizes.append(sample_size)
             # draw random samples
             idxs = list(range(sample_size)) #torch.randperm(len(val_label_idx))[:sample_size]
@@ -123,52 +123,52 @@ class SelectiveSynapticDampening(SSD):
             y_values.append(y)
 
         # check if exact distribution could be constructed..
-        # if not (torch.tensor(sample_sizes) == forget_counts).all():
-        #     print("Exact distribution could not be constructed..")
-
-        generator = torch.Generator()
-        generator.manual_seed(self.model.seed)
-
+        if not (torch.tensor(sample_sizes, device=self.device) == forget_counts).all():
+            print("Exact distribution could not be constructed..")
+        
         val_labels, val_counts = torch.unique(y_val, return_counts=True)
         # not all classes are represented in the forget set --> this may lead to catastrophic forgetting when choosing the best param update
         X_forget_add = []
         y_forget_add = []
-        if not (val_labels == forget_labels).all():
-            X_forget_add.append(forget_dataloader.dataset.X)
-            y_forget_add.append(forget_dataloader.dataset.y)
-            for i, label in enumerate(val_labels):
-                if label in forget_labels: # continue if samples from class already exist
-                    continue
-                # add samples from remaining class(es) to "generalization" set
-                sample_size = min(np.min(sample_sizes) // (len(val_labels) - len(forget_labels)), val_counts[i].item() // 2)
-                val_label_idx = torch.where(y_val == label)[0]
-                idxs = torch.randperm(len(val_label_idx))[:int(2 * sample_size)]
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
+        # if not (val_labels == forget_labels).all():
+        #     X_forget_add.append(forget_dataloader.dataset.X)
+        #     y_forget_add.append(forget_dataloader.dataset.y)
+        #     for i, label in enumerate(val_labels):
+        #         if label in forget_labels: # continue if samples from class already exist
+        #             continue
+        #         # add samples from remaining class(es) to "generalization" set
+        #         sample_size = min(np.min(sample_sizes) // (len(val_labels) - len(forget_labels)), val_counts[i].item() // 2)
+        #         val_label_idx = torch.where(y_val == label)[0]
+        #         idxs = torch.randperm(len(val_label_idx))[:int(2 * sample_size)]
 
-                X = X_val[val_label_idx[idxs[:len(idxs) // 2]]]
-                y = y_val_ohe[val_label_idx[idxs[:len(idxs) // 2]]]
-                X_values.append(X)
-                y_values.append(y)
+        #         X = X_val[val_label_idx[idxs[:len(idxs) // 2]]]
+        #         y = y_val_ohe[val_label_idx[idxs[:len(idxs) // 2]]]
+        #         X_values.append(X)
+        #         y_values.append(y)
 
-                # add to forget set for missing classes
-                X = X_val[val_label_idx[idxs[len(idxs) // 2:]]]
-                y = y_val_ohe[val_label_idx[idxs[len(idxs) // 2:]]]
-                X_forget_add.append(X)
-                y_forget_add.append(y)
+        #         # add to forget set for missing classes
+        #         X = X_val[val_label_idx[idxs[len(idxs) // 2:]]]
+        #         y = y_val_ohe[val_label_idx[idxs[len(idxs) // 2:]]]
+        #         X_forget_add.append(X)
+        #         y_forget_add.append(y)
 
-            X_forget = torch.cat(X_forget_add)
-            y_forget = torch.cat(y_forget_add)
-            forget_dataset = SyntheticDataset(X_forget, y_forget, n_classes=n_classes)
-            updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4, generator=generator)
+        #     X_forget = torch.cat(X_forget_add)
+        #     y_forget = torch.cat(y_forget_add)
+        #     forget_dataset = SyntheticDataset(X_forget, y_forget, n_classes=n_classes)
+
+        #     updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4, generator=generator)
 
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
-
+        
         dataset = SyntheticDataset(X_values.clone().detach(), y_values.clone().detach(), n_classes=n_classes)
         generalization_dataloader = DataLoader(dataset, batch_size=32, generator=generator)
-
-        if len(X_forget_add): # if additions to forget dataset were made, return it
-            return generalization_dataloader, updated_forget_dataloader
-
+        
+        # if len(X_forget_add): # if additions to forget dataset were made, return it
+        #     return generalization_dataloader, updated_forget_dataloader
+        
         return generalization_dataloader, None
 
     def calculate_loss(self, dataloader, n_classes = int):
@@ -524,10 +524,11 @@ class SelectiveSynapticDampening(SSD):
         generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
 
-        n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
-        if n_classes != n_forget_classes:
-            forget_dataloader_old = copy.deepcopy(forget_dataloader)
-            forget_dataloader = updated_forget_loader
+        ### Update forget dataloader to include all classes (avoids catastrophic forgetting)
+        # n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
+        # if n_classes != n_forget_classes:
+        #     forget_dataloader_old = copy.deepcopy(forget_dataloader)
+        #     forget_dataloader = updated_forget_loader
 
         end=time.time()
         print(f'repair set time: {end-start:.4f} sec.')
