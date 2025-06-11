@@ -2,6 +2,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
+seed = 42
+np.random.seed(seed)
+
 def generate_data(centroids: np.ndarray = None, 
                   stds: np.ndarray = None, 
                   sizes: np.ndarray = None, 
@@ -56,7 +59,7 @@ def plot_data(X, y, rogue_point_idx=None):
     plt.figure(figsize=(8, 6), dpi=150)
     
     # Use a professional color palette
-    colors = ['#4C72B0', '#55A868', '#C44E52']  # Professional blue, green, red
+    colors = ['#ffa600', '#a05195', '#f95d6a']  # Professional blue, green, red
     
     # Set plot style for clean white background
     plt.style.use('seaborn-v0_8-whitegrid')

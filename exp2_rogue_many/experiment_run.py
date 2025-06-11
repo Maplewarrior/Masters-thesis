@@ -34,8 +34,28 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, 
+                           dataset_name, X_forget, cfg, hyperparams,
+                           make_pdfs=True, 
+                           compress_pdfs=True,
+                           ):
     dataset_number = dataset_name.split("_")[1]
+    title = f"{cfg.unlearn.method}"
+    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+    if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
+        if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
+            title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
+            savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+        else:
+            title = f"{cfg.unlearn.method} α={hyperparams['alpha']:.2f}, λ={hyperparams['_lambda']:.2f}"
+            if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+            else:
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
+    else:
+        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+    
+    superimposed_filename = savepath + '.png'
     
     # Set common plot styling
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -149,7 +169,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             legend_handles.append(rogue_point)
     
     # Improve title and labels
-    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
+    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method} ({title})", 
               fontsize=14)
     plt.xlabel('Feature 1', fontsize=12)
     plt.ylabel('Feature 2', fontsize=12)
@@ -180,7 +200,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     plt.tight_layout()
     
     # Save with high DPI as PNG
-    superimposed_filename = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.png"
     plt.savefig(superimposed_filename, bbox_inches='tight')
     
     # Save as PDF if enabled
@@ -210,52 +229,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         except Exception as e:
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
-
-# def create_simple_model_visualization(model, save_path, input_shape):
-#     """Create a simple flowchart visualization of the model architecture.
-    
-#     Args:
-#         model: The neural network model to visualize
-#         save_path: Path to save the visualization
-#         input_shape: Shape of the input data (for labeling input node)
-#     """
-#     dot = graphviz.Digraph(comment='Neural Network Architecture')
-    
-#     # Set graph attributes for better appearance
-#     dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
-    
-#     # Set node attributes
-#     dot.attr('node', shape='box', style='filled,rounded', 
-#              fillcolor='#E8F0FE', color='#4285F4', 
-#              fontname='Helvetica', fontsize='14', fontcolor='#333333')
-    
-#     # Set edge attributes
-#     dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-#     # Add input node
-#     dot.node('input', f'Input\n({input_shape} features)', shape='oval')
-    
-#     # Add nodes for each layer in the Sequential model
-#     prev_node = 'input'
-#     for i, layer in enumerate(model.net):
-#         if isinstance(layer, nn.Linear):
-#             node_name = f'linear_{i}'
-#             label = f'Linear\n{layer.in_features} → {layer.out_features}'
-#             dot.node(node_name, label)
-#             dot.edge(prev_node, node_name)
-#             prev_node = node_name
-#         elif isinstance(layer, nn.ReLU):
-#             node_name = f'relu_{i}'
-#             dot.node(node_name, 'ReLU')
-#             dot.edge(prev_node, node_name)
-#             prev_node = node_name
-    
-#     # Add output node
-#     dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-#     dot.edge(prev_node, 'output')
-    
-#     # Render the visualization
-#     dot.render(save_path, format='png')
-#     return dot
 
 def count_updated_params(original_model, unlearned_model):
     pass
