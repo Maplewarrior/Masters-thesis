@@ -4,6 +4,8 @@ import numpy as np
 import torch.optim as optim
 import pdb
 from tqdm import tqdm
+from torch.utils.data import DataLoader
+from src.datasets.synthetic_dataset import SyntheticDataset
 
 """
 "Bad teacher" loss for the maximization step? 
@@ -104,6 +106,52 @@ class TeacherAscender:
         self.model.train()
         return np.mean(losses), acc
   
+    def construct_validation_set(self, forget_dataloader, val_dataloader):
+        """
+        A function for constructing a validation set that is "of the same distribution" as the forget dataset. This is the +R step in the method.
+        "of the same distribution" is interpreted as being in terms of the label distribution.
+        """
+        forget_dataset = forget_dataloader.dataset
+        val_dataset = val_dataloader.dataset
+        X_val = val_dataset.X
+        y_val_ohe = val_dataset.y
+        y_val = val_dataset.y.argmax(dim=1)
+        n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
+        labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+
+        sample_sizes = []
+
+        X_values = []
+        y_values = []
+        for i, label in enumerate(labels):
+            # find val set indexes that correspond to the label
+            val_label_idx = torch.where(y_val == label)[0]
+            # find sample size
+            sample_size = min(counts[i].item(), len(val_label_idx))
+            sample_sizes.append(sample_size)
+            # draw random samples
+            idxs = torch.randperm(len(val_label_idx))[:sample_size]
+            # draw subset of data based on index
+            X = X_val[val_label_idx[idxs]]
+            y = y_val_ohe[val_label_idx[idxs]]
+            X_values.append(X)
+            y_values.append(y)
+
+        # check if exact distribution could be constructed..
+        if not (torch.tensor(sample_sizes) == counts).all():
+            print("Exact distribution could not be constructed..")
+
+        X_values = torch.cat(X_values)
+        y_values = torch.cat(y_values)
+
+        # set generator for reproducibility
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
+        # Ensure we're using Python native types, not torch.int64
+        dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=int(n_classes))
+        dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
+        return dataloader
+    
     def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce", is_FIM_ratio: bool = False):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
@@ -113,6 +161,8 @@ class TeacherAscender:
             - Maximize cross entropy between prediction and y on forget data --> works better for data poisoning.
             - Both?
         """
+
+        validate_err_dataloader = self.construct_validation_set(forget_loader, val_loader)
 
         if version not in ["ce", "entropy", "ce-retain", "entropy-retain", "ce-retain-no-reg", "entropy-retain-no-reg"]:
             raise ValueError(f"Invalid version: {version}, must be one of: ce, entropy, ce-retain, entropy-retain, ce-retain-no-reg, entropy-retain-no-reg")
@@ -168,6 +218,8 @@ class TeacherAscender:
                 metrics['retain']['acc'].append(retain_acc)
                 _, val_acc = self.eval(val_loader)
                 metrics['val']['acc'].append(val_acc)
+                _, validate_err_acc = self.eval(validate_err_dataloader)
+                metrics['val']['err_acc'].append(validate_err_acc)
 
 
             #### Gradient ascent
