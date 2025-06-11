@@ -258,103 +258,109 @@ def main(cfg):
         retrained_model = build_nn(M=dataloader_train.dataset.X.shape[-1], cfg=cfg).to(DEVICE)
         save_checkpoints = True #False
 
-    # --------- train/load retrained model ---------
-    if not os.path.exists(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt'):
-        print("Training retrained model from scratch")
-        hyperparams = {}
-        # re-initialize dataloaders
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                            dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
-        trainer = NeuralNetworkTrainer(model=retrained_model, 
-                                        train_dataloader=dataloader_retain, 
-                                        val_dataloader=dataloader_val, 
-                                        logger=logger, 
-                                        device=DEVICE, 
-                                        learning_rate=cfg.trainer.lr,
-                                        weight_decay=cfg.trainer.weight_decay,
-                                        n_epochs=cfg.trainer.n_epochs,
-                                        optimizer_name=cfg.trainer.optimizer_name,
-                                        lr_scheduler=cfg.trainer.lr_scheduler,
-                                        save_checkpoints=save_checkpoints,
-                                        checkpoint_dir = f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
-                                        disable_tqdm=cfg.trainer.disable_tqdm, 
-                                        do_early_stopping=cfg.trainer.do_early_stopping)
+    # We run everything more times to get a better estimate of the performance
+    for i in range(cfg.unlearn.n_runs):
+        print(f"Running retrained model {i+1} of {cfg.unlearn.n_runs}")
+
+        # --------- train/load retrained model ---------
+        if not os.path.exists(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt'):
+            print("Training retrained model from scratch")
+            hyperparams = {}
+            # re-initialize dataloaders
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                                dataloader_forget, dataloader_val,
+                                                                                                                cfg.model.seed)
+            trainer = NeuralNetworkTrainer(model=retrained_model, 
+                                            train_dataloader=dataloader_retain, 
+                                            val_dataloader=dataloader_val, 
+                                            logger=logger, 
+                                            device=DEVICE, 
+                                            learning_rate=cfg.trainer.lr,
+                                            weight_decay=cfg.trainer.weight_decay,
+                                            n_epochs=cfg.trainer.n_epochs,
+                                            optimizer_name=cfg.trainer.optimizer_name,
+                                            lr_scheduler=cfg.trainer.lr_scheduler,
+                                            save_checkpoints=save_checkpoints,
+                                            checkpoint_dir = f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}',
+                                            disable_tqdm=cfg.trainer.disable_tqdm, 
+                                            do_early_stopping=cfg.trainer.do_early_stopping)
+            
+            trainer()
+            torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
         
-        trainer()
-        torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
-    
-    else:
-        print("Loading pre-trained retrained model weights")
-        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
-        retrained_model.load_state_dict(retrained_model_sd)
-    
-    # Calculate and save metrics for retrained model
-    calculate_model_metrics(retrained_model, 
-                            {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
-                            DEVICE, 'Retrained model',
-                            save_path=f'{results_dir}/retrained_model_metrics.json')
-
-
-    # ========================== Unlearn: Teacher Ascender ==========================
-    if cfg.unlearn.method == 'teacher_ascend':
-        print("Initializing Teacher Ascender")
-        from src.unlearners.teacher_ascend import TeacherAscender
-        hyperparams = {'n_epochs': cfg.unlearn.teacher_ascend.n_epochs, '_lambda': cfg.unlearn.teacher_ascend._lambda}
-
-        mia_model = MIA(device=DEVICE)
-        unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
-        js_div_func = unlearning_evaluator.JS_divergence
-
-        ta_versions_lists = cfg.unlearn.teacher_ascend.versions
-        ta_versions = [tuple(v) for v in ta_versions_lists]
-        # convert to list of tuples 
-        for (version, is_FIM_ratio) in ta_versions:
-            print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
-            ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
-                                _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
-            ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
-            fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
-            with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}.json', 'w') as f:
-                json.dump(ta_version_metrics, f)
+        else:
+            print("Loading pre-trained retrained model weights")
+            retrained_model_sd = torch.load(f'{weights_dir}/retrained_model_{cfg.data.split_type}_{cfg.data.n_forget_points}/retrained_model_weights.pt')
+            retrained_model.load_state_dict(retrained_model_sd)
         
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                            dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
+        # Calculate and save metrics for retrained model
+        calculate_model_metrics(retrained_model, 
+                                {"retain": dataloader_retain, "forget": dataloader_forget, "val": dataloader_val}, 
+                                DEVICE, 'Retrained model',
+                                save_path=f'{results_dir}/retrained_model_metrics_{i}.json')
+
+
+        # ========================== Unlearn: Teacher Ascender ==========================
+        if cfg.unlearn.method == 'teacher_ascend':
+            print("Initializing Teacher Ascender")
+            from src.unlearners.teacher_ascend import TeacherAscender
+            hyperparams = {'n_epochs': cfg.unlearn.teacher_ascend.n_epochs, '_lambda': cfg.unlearn.teacher_ascend._lambda}
+
+            mia_model = MIA(device=DEVICE)
+            unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+            js_div_func = unlearning_evaluator.JS_divergence
+
+            ta_versions_lists = cfg.unlearn.teacher_ascend.versions
+            ta_versions = [tuple(v) for v in ta_versions_lists]
+            # convert to list of tuples 
+            for (version, is_FIM_ratio) in ta_versions:
+                print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
+                ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
+                                    _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+                ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
+                fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
+                with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}_{i}.json', 'w') as f:
+                    json.dump(ta_version_metrics, f)
+            
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                                dataloader_forget, dataloader_val,
+                                                                                                                cfg.model.seed)
 
 
 
-    # ========================== Unlearn: SCRUB ==========================
-    if cfg.unlearn.method == 'scrub':
-        print("Initializing SCRUB")
-        mia_model = MIA(device=DEVICE)
+        # ========================== Unlearn: SCRUB ==========================
+        if cfg.unlearn.method == 'scrub':
+            print("Initializing SCRUB")
+            mia_model = MIA(device=DEVICE)
 
-        from src.unlearners.scrub import ScrubR
-        unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
-        js_div_func = unlearning_evaluator.JS_divergence
-        hyperparams = {'alpha': cfg.unlearn.scrub.alpha, 'gamma': cfg.unlearn.scrub.gamma, 'n_epochs': cfg.unlearn.scrub.n_rounds, 'n_repair_rounds': cfg.unlearn.scrub.n_repair_rounds}
+            from src.unlearners.scrub import ScrubR
+            unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
+            js_div_func = unlearning_evaluator.JS_divergence
+            hyperparams = {'alpha': cfg.unlearn.scrub.alpha, 'gamma': cfg.unlearn.scrub.gamma, 'n_epochs': cfg.unlearn.scrub.n_rounds, 'n_repair_rounds': cfg.unlearn.scrub.n_repair_rounds}
 
-        print("Initializing SCRUB")
-        scrub_model = copy.deepcopy(original_model)
-        scrub = ScrubR(scrub_model, original_model, alpha=hyperparams['alpha'], gamma=hyperparams['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+            print("Initializing SCRUB")
+            scrub_model = copy.deepcopy(original_model)
+            scrub = ScrubR(scrub_model, original_model, alpha=hyperparams['alpha'], gamma=hyperparams['gamma'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
 
 
-        scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=hyperparams['n_epochs'], n_repair_rounds=hyperparams['n_repair_rounds'], verbose=True)
+            scrub_metrics = scrub(dataloader_retain, dataloader_forget, dataloader_val, n_rounds=hyperparams['n_epochs'], n_repair_rounds=hyperparams['n_repair_rounds'], verbose=True)
 
-        with open(f'{results_dir}/scrub_metrics.json', 'w') as f:
-            json.dump(scrub_metrics, f)
+            with open(f'{results_dir}/scrub_metrics_{i}.json', 'w') as f:
+                json.dump(scrub_metrics, f)
 
     # ========================== Unlearn: Gradient Ascent ==========================
-    print("Initializing Gradient Ascent")
-    from src.unlearners.gradient_ascent import GradientAscent
-    dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                        dataloader_forget, dataloader_val,
-                                                                                                        cfg.model.seed)
-    gradient_ascent = GradientAscent(copy.deepcopy(original_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
-    ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
-    # save metrics to json
-    with open(f'{results_dir}/ga_metrics.json', 'w') as f:
-        json.dump(ga_metrics, f)
+
+    if cfg.unlearn.do_gradient_ascent:
+        print("Initializing Gradient Ascent")
+        from src.unlearners.gradient_ascent import GradientAscent
+        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
+                                                                                                            dataloader_forget, dataloader_val,
+                                                                                                            cfg.model.seed)
+        gradient_ascent = GradientAscent(copy.deepcopy(original_model), hyperparams['n_epochs'], DEVICE, MIA=mia_model)
+        ga_metrics = gradient_ascent(dataloader_retain, dataloader_forget, dataloader_val, verbose=True)
+        # save metrics to json
+        with open(f'{results_dir}/ga_metrics_{i}.json', 'w') as f:
+            json.dump(ga_metrics, f)
 
 if __name__ == "__main__":
     main()
