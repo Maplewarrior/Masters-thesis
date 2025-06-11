@@ -18,6 +18,7 @@ logging:
 
 # Data generation parameters
 data:
+  seed: 42
   dataset_name: "MNIST"
   subsample_size: 10000
   n_forget_points: 100
@@ -25,6 +26,12 @@ data:
   n_classes: 10
   n_channels: 3
   # cifar parameters
+  split_type: "tsne_box" # "tsne_box" or "random"
+  tsne_box_coordinates: 
+    x_min: 10.2
+    x_max: 11.0
+    y_min: -4.3
+    y_max: -0.4
   image_size:
     - 32
     - 32
@@ -41,33 +48,23 @@ trainer:
   optimizer_name: Adam
   lr_scheduler: 
 
-sisa:
-  n_shards: 10 #5
-  n_slices: 10 #5
-  model_type: 'neural-network' # vision-transformer
-  neural_network_parameters: # constituent model parameters
-    width_factor: 0.5
-    n_layers: 3
-
-amnesiac:
-  gradient_checkpoint_dir: /work3/s204138/MachineUnlearning #/Users/michaelharborg/Desktop/Masters-thesis/exp4/weights
-
 model: 
-  seed: 42 #MNIST: 42
+  seeds: [42, 43, 44] #MNIST: 42
   model_type: 'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4
     n_layers: 3 # MNIST: 3
-  vision_transformer_parameters:
-    d_hidden: 512
-    d_ff: 2048
-    d_k: 64
-    n_layers: 6
-    n_heads: 6
-    tau: 64 # sqrt(tau) is used for scaling in self attention
-    dropout_prob: 0.0
-    pooling_type: max
 
 unlearn:
-  method: "retrain"
+  do_gradient_ascent: False
+  method: "scrub" # "scrub" or "teacher_ascend"
+  teacher_ascend:
+    versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true], ["ce-retain-no-reg", false], ["entropy-retain-no-reg", false]]
+    n_epochs: 100
+    _lambda: 64 # 64
+  scrub:
+    alpha: 2
+    gamma: 2
+    n_rounds: 50
+    n_repair_rounds: 5
 

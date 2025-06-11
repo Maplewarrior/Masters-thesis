@@ -159,7 +159,6 @@ def preprocess_cifar_data(train_dataset, test_dataset):
     # x_patch = x_true.reshape(n_patches, patch_size[0], patch_size[1], n_channels)
 
 
-    # pdb.set_trace()
     # for i in range(n_patches):
         
 
@@ -168,7 +167,6 @@ def preprocess_cifar_data(train_dataset, test_dataset):
     
     # plt.show()
 
-    # pdb.set_trace()
     # plt.close()
 
 
@@ -255,7 +253,6 @@ class CIFARDataset(Dataset):
     def __getitem__(self, index):
         x = self.X[index]
         x = self.augmentations(x)
-        # pdb.set_trace()
         ### Dimension mapping: [C x H x W] --> [n_patches x patch_h x patch_w x C]
         # NOTE: Handled internally in transformers!
         # x = x.reshape(self.n_h, self.patch_size[0], self.n_w, self.patch_size[1], self.n_channels)
@@ -358,7 +355,6 @@ if __name__ == '__main__':
     # dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = get_mnist_unlearn_data(n_forget_points=500,
     #                        batch_size=16, seed=42)
     # _x, _y = next(iter(dataloader_train))
-    # pdb.set_trace()
     # cifar_train, cifar_test = download_cifar_dataset('exp4/data')
     # preprocess_cifar_data(cifar_train, cifar_test)
     root_dir = os.path.join(os.path.dirname(__file__), 'data')

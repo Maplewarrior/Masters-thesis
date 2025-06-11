@@ -25,7 +25,6 @@ img_patch = img_patch.permute(0, 2, 1, 3, 4).reshape(n_patches, patch_size[0], p
 # img_patch_grid = F.to_pil_image(img_patch_grid)
 # img_patch_grid.show()
 
-# pdb.set_trace()
 
 sub_patch = img_patch[25]#.permute(2, 0, 1)
 
@@ -40,7 +39,6 @@ np_sub = int(nh_sub * nw_sub)
 sub_flat = sub_patch.reshape(nh_sub, sub_flat_psh, nw_sub, sub_flat_psw, n_channels)\
                     .permute(0, 2, 1, 3, 4)\
                     .reshape(np_sub, sub_flat_psh, sub_flat_psw, n_channels)
-pdb.set_trace()
 F.to_pil_image(make_grid(sub_flat.permute(0, 3, 1, 2), nrow=nw_sub*nh_sub)).show()
 
 # sub_patch

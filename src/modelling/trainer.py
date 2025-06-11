@@ -57,7 +57,6 @@ class Trainer:
                     self.optimizer.step()
                     
                     losses.append(loss.item())
-                    # pdb.set_trace()
                 val_loss, val_acc, val_l0 = self.eval_sae()
                 epoch_pbar.set_description(
                                            f"epoch={epoch}, loss={torch.mean(torch.tensor(losses)):.2f}, "

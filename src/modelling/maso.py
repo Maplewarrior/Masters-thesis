@@ -70,7 +70,6 @@ class MASO:
 
     def loss(self, logits, y):
         # logits = self.model(X)['logits']
-        # pdb.set_trace()
         fit_term = self.cross_entropy_loss(logits, y)
         W_L = self.model.net[-1].weight
         W = W_L @ W_L.T

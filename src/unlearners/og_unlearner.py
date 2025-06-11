@@ -43,7 +43,6 @@ class OrthogonalGradients:
                 else:
                     print(f'Parameters of dimension: {param.ndim} are not supported.')
             except Exception as e:
-                pdb.set_trace()
                 print(e)
 
         return parameters
@@ -180,6 +179,4 @@ class OrthogonalGradients:
             metrics['val']['acc'].append(val_acc)
             metrics['val']['loss'].append(val_loss)
         
-        pdb.set_trace()
-
         return metrics

@@ -272,7 +272,6 @@ def main(cfg):
         # FIM_forget = ssd.calculate_FIM(dataloader_forget)
         # FIM_full = ssd.calculate_FIM(dataloader_train)
         # FIM_full_bs1 = ssd.calculate_FIM(dataloader_train_bs1)
-        # import pdb; pdb.set_trace()
         
         # forget_heatmap_fig = plot_nn_heatmaps(FIM_forget)
         # forget_heatmap_fig.savefig(f'{results_dir}/forget_heatmap_fig.png')

@@ -224,7 +224,6 @@ class SelectiveSynapticDampening(SSD):
         self.update_parameters(FIM_full, FIM_forget, **kwargs)
         # calculate loss on forget set
         forget_losses = self.calculate_loss(forget_loader, n_classes)
-        # pdb.set_trace()
         # calculate squared error between forget an generalization loss
         diff = ((forget_losses - gen_losses)**2).mean()
         return -diff
@@ -314,5 +313,4 @@ class SelectiveSynapticDampening(SSD):
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
         self.update_parameters(FIM_full, FIM_forget, **best_params)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
-        pdb.set_trace()
         return best_params

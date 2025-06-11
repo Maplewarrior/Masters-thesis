@@ -8,19 +8,40 @@ from torch.utils.data import DataLoader
 import numpy as np
 import os
 from src.unlearners.base_unlearner import BaseUnlearner
+import torch.nn.functional as F
+
+class DistillKL(nn.Module):
+    """Distilling the Knowledge in a Neural Network"""
+    def __init__(self, T):
+        super(DistillKL, self).__init__()
+        self.T = T
+
+    def forward(self, y_s, y_t):
+        p_s = F.log_softmax(y_s/self.T, dim=1)
+        p_t = F.softmax(y_t/self.T, dim=1)
+        loss = F.kl_div(p_s, p_t, size_average=False) * (self.T**2) / y_s.shape[0]
+        return loss
 
 class ScrubR(BaseUnlearner):
-    def __init__(self, model, original_model, alpha, gamma, device: str):
+    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None):
         super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()
         # self.CE = nn.CrossEntropyLoss(reduction='sum')
         self.CE = nn.CrossEntropyLoss(reduction='none')
-        self.KL = nn.KLDivLoss(reduction='batchmean')
+        self.KL = DistillKL(T=2.0)
         self.alpha = alpha # hyperparam for distance between student & teacher on retain data
         self.gamma = gamma # hyperparam for cross entropy
         self.device = device
+        self.MIA = MIA
 
+        # if js_div_func is provided, then we need the retrain_model to be provided as well
+        if js_div_func is not None:
+            assert retrain_model is not None, "retrain_model must be provided if js_div_func is provided"
+        self.retrain_model = retrain_model
+        self.js_div_func = js_div_func
+        
+        
         self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-3)
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
@@ -71,6 +92,23 @@ class ScrubR(BaseUnlearner):
         return dataloader
 
 
+    def calculate_accuracy(self, model, dataloader):
+        model.eval()
+        correct = 0
+        total = 0
+        for batch in dataloader:
+            x = batch[0].to(self.device)
+            y = batch[1].to(self.device)
+            logits = model.inference(x)['logits']
+            preds = logits.argmax(dim=1)
+            # Convert one-hot encoded y to class indices
+            y_indices = y.argmax(dim=1)
+            correct += (preds == y_indices).sum().item()
+            total += len(y)
+
+        model.train()
+        return correct / total
+
     def calculate_error(self, model, dataloader, return_scalar=True):
         model.eval()
         losses = []
@@ -94,11 +132,16 @@ class ScrubR(BaseUnlearner):
         self.model.train()
         self.optimizer.zero_grad()
         
-        student_log_probs = self.log_softmax(self.model(x)['logits'])
-        teacher_probs = self.original_model.inference(x)['probabilities']
-        loss = -self.KL(input=student_log_probs, target=teacher_probs) # maximize KL divergence
+        student_logits = self.model(x)['logits']
+        teacher_logits = self.original_model.inference(x)['logits']
+        loss = -self.KL(student_logits, teacher_logits) # maximize KL divergence
+
+        loss_item = loss.item()
+
         loss.backward()
         self.optimizer.step()
+
+        return loss_item
 
     def min_step(self, x, y):
         """
@@ -107,34 +150,134 @@ class ScrubR(BaseUnlearner):
         self.optimizer.zero_grad()
 
         student_out = self.model(x)
-        student_log_probs = self.log_softmax(student_out['logits'])
-        teacher_probs = self.original_model.inference(x)['probabilities']
+        student_logits = student_out['logits']
+        teacher_logits = self.original_model.inference(x)['logits']
 
-        reg_term = self.KL(input=student_log_probs, target=teacher_probs)
+        reg_term = self.KL(student_logits, teacher_logits)
         fit_term = self.CE(student_out['logits'], y).mean()
-        loss = self.alpha * reg_term + self.gamma * fit_term
-        # print(f'Min loss: {loss}')
+        weighted_reg_term = self.alpha * reg_term
+        weighted_fit_term = self.gamma * fit_term
+        loss = weighted_reg_term + weighted_fit_term
+
         loss.backward()
         self.optimizer.step()
 
-    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, remove_weights: bool = True):
+        return (
+            loss.item(), 
+            reg_term.item(), 
+            fit_term.item(), 
+            weighted_reg_term.item(), 
+            weighted_fit_term.item()
+        )
+
+    def __call__(self, retain_dataloader, forget_dataloader, val_dataloader, n_rounds: int, n_repair_rounds: int, remove_weights: bool = True, verbose: bool = False):
         validate_err_dataloader = self.construct_validation_set(forget_dataloader, val_dataloader)
         forget_errors = []
         
-        for i in range(n_rounds):
-            for batch in forget_dataloader:
+        metrics = {'retain': {'acc': []},
+                   'forget': {'acc': []},
+                   'val': {'acc': []},
+                   'rewind': {'acc': []},
+                   'loss_terms': {'full': [], 'max_forget': [], 'min_task_loss': [], 'min_retain': [], 'reg': [], 'weighted_min_task_loss': [], 'weighted_min_retain': []}
+                  }
+        if self.MIA is not None:
+            metrics['mia'] = []
+
+        if self.js_div_func is not None:
+            metrics['js_div'] = {"retain": [], "forget": [], "val": []}
+        
+        # Create epoch iterator with tqdm if verbose
+        total_rounds = n_rounds + n_repair_rounds
+        epoch_iterator = range(total_rounds)
+        if verbose:
+            from tqdm import tqdm
+            epoch_iterator = tqdm(epoch_iterator, desc='Training epochs', leave=True)
+        
+        for i in epoch_iterator:
+            # calculate MIA score
+            if self.MIA is not None:
+                mia_score = self.MIA(self.model, retain_dataloader, forget_dataloader, val_dataloader)
+                metrics['mia'].append(mia_score)
+            
+            if self.js_div_func is not None:
+                # JS_divergence(self, probs_u, probs_c, log_base: float = 2.0)
+                probs_u = self.model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(retain_dataloader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['retain'].append(js_div)
+                probs_u = self.model.inference(forget_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(forget_dataloader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['forget'].append(js_div)
+                probs_u = self.model.inference(val_dataloader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(val_dataloader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['val'].append(js_div)
+
+            # calculate retain and forget accuracies
+            retain_acc = self.calculate_accuracy(self.model, retain_dataloader)
+            forget_acc = self.calculate_accuracy(self.model, forget_dataloader)
+            metrics['retain']['acc'].append(retain_acc)
+            metrics['forget']['acc'].append(forget_acc)
+
+            # calculate val accuracy
+            val_acc = self.calculate_accuracy(self.model, val_dataloader)
+            metrics['val']['acc'].append(val_acc)    
+
+            # calculate rewind accuracy
+            rewind_acc = self.calculate_accuracy(self.model, validate_err_dataloader)
+            metrics['rewind']['acc'].append(rewind_acc)
+
+            # Create batch iterators with tqdm if verbose
+            forget_iterator = forget_dataloader
+            retain_iterator = retain_dataloader
+            if verbose:
+                forget_iterator = tqdm(forget_iterator, desc='Max step (forget)', leave=False)
+                retain_iterator = tqdm(retain_iterator, desc='Min step (retain)', leave=False)
+
+
+            # only perform max step for the first n_rounds
+            if i <= n_rounds:
+                # max step
+                loss_max_forget = []
+                for batch in forget_iterator:
+                    x = batch[0].to(self.device)
+                    y = batch[1].to(self.device)
+                    loss_item = self.max_step(x, y)
+                    loss_max_forget.append(loss_item)
+                metrics['loss_terms']['max_forget'].append(np.mean(loss_max_forget))
+            
+            # min step is performed on each epoch, and after the n_rounds it will be performed n_repair_rounds times
+            # min step    
+            loss_min_task_loss = []
+            loss_min_retain = []
+            loss_weighted_min_task_loss = []
+            loss_weighted_min_retain = []
+            for batch in retain_iterator:
                 x = batch[0].to(self.device)
                 y = batch[1].to(self.device)
-                self.max_step(x, y)
-            for batch in retain_dataloader:
-                x = batch[0].to(self.device)
-                y = batch[1].to(self.device)
-                self.min_step(x, y)
+                loss_item, reg_term, fit_term, weighted_reg_term, weighted_fit_term = self.min_step(x, y)
+                loss_min_task_loss.append(fit_term)
+                loss_min_retain.append(reg_term)
+                loss_weighted_min_task_loss.append(weighted_fit_term)
+                loss_weighted_min_retain.append(weighted_reg_term)
+            metrics['loss_terms']['min_task_loss'].append(np.mean(loss_min_task_loss))
+            metrics['loss_terms']['min_retain'].append(np.mean(loss_min_retain))
+            metrics['loss_terms']['weighted_min_task_loss'].append(np.mean(loss_weighted_min_task_loss))
+            metrics['loss_terms']['weighted_min_retain'].append(np.mean(loss_weighted_min_retain))
 
             err = self.calculate_error(self.model, forget_dataloader)
             forget_errors.append(err.item())
             os.makedirs('weights/tmp', exist_ok=True)
             torch.save(self.model.state_dict(), f'weights/tmp/scrub+r_epoch{i+1}.pth')
+
+            # Update progress bar with current metrics if verbose
+            if verbose:
+                epoch_iterator.set_postfix({
+                    'retain_acc': f"{retain_acc:.4f}",
+                    'forget_acc': f"{forget_acc:.4f}",
+                    'val_acc': f"{val_acc:.4f}"
+                })
 
         err_threshold = self.calculate_error(self.model, validate_err_dataloader)
         
@@ -157,3 +300,4 @@ class ScrubR(BaseUnlearner):
             for file in files:
                 os.remove(f"weights/tmp/{file}")
 
+        return metrics 

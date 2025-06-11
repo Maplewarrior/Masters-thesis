@@ -274,4 +274,3 @@ if __name__ == "__main__":
 
         plot_metrics_grid(js_divergence_values, metric_name="JS Divergence", ylim=(0, 0.3), save_path=f"{experiments_folder}/js_divergence_metrics_grid.png")
 
-        import pdb; pdb.set_trace()

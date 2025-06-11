@@ -3,6 +3,9 @@ import torch
 import numpy as np
 import torch.optim as optim
 import pdb
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+from src.datasets.synthetic_dataset import SyntheticDataset
 
 """
 "Bad teacher" loss for the maximization step? 
@@ -10,11 +13,18 @@ import pdb
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu') -> None:
+    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None) -> None:
         self.model = model
         self.n_epochs = n_epochs
         self._lambda = _lambda
         self.device = device
+        self.MIA = MIA
+
+        if js_div_func is not None:
+            assert retrain_model is not None, "retrain_model must be provided if js_div_func is provided"
+
+        self.js_div_func = js_div_func
+        self.retrain_model = retrain_model
 
     def calculate_FIM(self, dataloader) -> dict:
         """
@@ -56,9 +66,6 @@ class TeacherAscender:
     def calculate_fit_term(self, model_out, y):
         model_loss = self.model.loss(model_out, y)
         return model_loss
-        # log_probs = (model_out['probabilities'] + 1e-8).log()
-        # entropy = -(model_out['probabilities'] * log_probs).sum(dim=-1).mean()
-        # return entropy
     
     def calculate_entropy(self, model_out):
         log_probs = (model_out['probabilities'] + 1e-8).log()
@@ -98,59 +105,54 @@ class TeacherAscender:
         acc = acc / len(dataloader.dataset)
         self.model.train()
         return np.mean(losses), acc
+  
+    def construct_validation_set(self, forget_dataloader, val_dataloader):
+        """
+        A function for constructing a validation set that is "of the same distribution" as the forget dataset. This is the +R step in the method.
+        "of the same distribution" is interpreted as being in terms of the label distribution.
+        """
+        forget_dataset = forget_dataloader.dataset
+        val_dataset = val_dataloader.dataset
+        X_val = val_dataset.X
+        y_val_ohe = val_dataset.y
+        y_val = val_dataset.y.argmax(dim=1)
+        n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
+        labels, counts = torch.unique(torch.argmax(forget_dataset.y, dim=1), return_counts=True)
+
+        sample_sizes = []
+
+        X_values = []
+        y_values = []
+        for i, label in enumerate(labels):
+            # find val set indexes that correspond to the label
+            val_label_idx = torch.where(y_val == label)[0]
+            # find sample size
+            sample_size = min(counts[i].item(), len(val_label_idx))
+            sample_sizes.append(sample_size)
+            # draw random samples
+            idxs = torch.randperm(len(val_label_idx))[:sample_size]
+            # draw subset of data based on index
+            X = X_val[val_label_idx[idxs]]
+            y = y_val_ohe[val_label_idx[idxs]]
+            X_values.append(X)
+            y_values.append(y)
+
+        # check if exact distribution could be constructed..
+        if not (torch.tensor(sample_sizes) == counts).all():
+            print("Exact distribution could not be constructed..")
+
+        X_values = torch.cat(X_values)
+        y_values = torch.cat(y_values)
+
+        # set generator for reproducibility
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
+        # Ensure we're using Python native types, not torch.int64
+        dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=int(n_classes))
+        dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
+        return dataloader
     
-    def calculate_entanglement_score(self, retain_loader, forget_loader):
-        retain_embeddings = []
-        forget_embeddings = []
-        N_r, N_f = len(retain_loader), len(forget_loader)
-
-        for batch in retain_loader:
-            x = batch[0].to(self.device)
-            emb = self.model.inference(x, stop_idx=-1)['logits']
-            retain_embeddings.append(emb)
-        
-        for batch in forget_loader:
-            x = batch[0].to(self.device)
-            emb = self.model.inference(x, stop_idx=-1)['logits']
-            forget_embeddings.append(emb)
-        
-        retain_embeddings = torch.cat(retain_embeddings)
-        forget_embeddings = torch.cat(forget_embeddings)
-        
-        
-
-        mu_retain = retain_embeddings.mean(dim=0)
-        mu_forget = forget_embeddings.mean(dim=0)
-        mu_total = mu_retain * (N_r / (N_r + N_f)) + mu_forget * (N_f / (N_r + N_f))
-
-        
-        
-        ES_enumerator = ((retain_embeddings - mu_retain).norm(dim=-1, p=2).pow(2).mean() + (forget_embeddings - mu_forget).norm(dim=-1, p=2).pow(2).mean())
-        ES_denominator = 0.5 * ((mu_retain - mu_total).norm(p=2).pow(2) + (mu_forget - mu_total).norm(p=2).pow(2))
-        ES = ES_enumerator / ES_denominator
-
-        self.model.train()
-
-        return ES
-
-    def MDL(self, retain_loader):
-        self.model.eval()
-        mdl =  0
-        with torch.no_grad():
-            for batch in retain_loader:
-                x = batch[0].to(self.device)
-                y = batch[1].to(self.device)
-
-                model_out = self.model(x)
-                log_likelihood = model_out['probabilities'].gather(dim=1, index=y.argmax(dim=-1).unsqueeze(1)).squeeze(1).log().mean()
-                entropy = self.calculate_entropy(model_out)
-
-                mdl += -log_likelihood + entropy
-        
-        mdl = mdl / len(retain_loader.dataset)
-        return mdl
-
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False):
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce", is_FIM_ratio: bool = False):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -159,10 +161,22 @@ class TeacherAscender:
             - Maximize cross entropy between prediction and y on forget data --> works better for data poisoning.
             - Both?
         """
-        metrics = {'retain': {'acc': [], 'loss': []},
-                   'forget': {'acc': [], 'loss': []},
-                   'val': {'acc': [], 'loss': []}
+
+        validate_err_dataloader = self.construct_validation_set(forget_loader, val_loader)
+
+        if version not in ["ce", "entropy", "ce-retain", "entropy-retain", "ce-retain-no-reg", "entropy-retain-no-reg"]:
+            raise ValueError(f"Invalid version: {version}, must be one of: ce, entropy, ce-retain, entropy-retain, ce-retain-no-reg, entropy-retain-no-reg")
+
+        metrics = {'retain': {'acc': []},
+                   'forget': {'acc': []},
+                   'val': {'acc': []},
+                   "loss_terms": {"reg": [], "reg_weighted": [], "ascend": [], "repair": [], 'full': []}
                   }
+        if self.MIA is not None:
+            metrics['mia'] = []
+
+        if self.js_div_func is not None:
+            metrics['js_div'] = {"retain": [], "forget": [], "val": []}
         
         # calculate FIM for original model on retain set
         original_sd = copy.deepcopy(self.model.state_dict())
@@ -172,19 +186,49 @@ class TeacherAscender:
         FIM_original = self.calculate_FIM(retain_loader) # used for ascend
         FIM_ratio = self.calculate_FIM_ratio(FIM_original, FIM_forget)
 
-        # mdls = []
-        # entanglement_scores = []
-        # retain_terms = []
-        # forget_terms = []
+        # Calculate total number of batches for the inner loop
+        n_batches = len(forget_loader)
+        
+        epoch_iterator = tqdm(range(self.n_epochs), desc='Epochs', leave=True) if verbose else range(self.n_epochs)
+        for epoch in epoch_iterator:
+            if self.MIA is not None:
+                mia_prob = self.MIA(self.model, retain_loader, forget_loader, val_loader)
+                metrics['mia'].append(mia_prob)
 
-        for _ in range(self.n_epochs):
-            
-            # rt = []
-            # ft = []
-            # entanglement_scores.append(self.calculate_entanglement_score(retain_loader, forget_loader))
-            
+                        
+            if self.js_div_func is not None:
+                # JS_divergence(self, probs_u, probs_c, log_base: float = 2.0)
+                probs_u = self.model.inference(retain_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(retain_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['retain'].append(js_div)
+                probs_u = self.model.inference(forget_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(forget_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['forget'].append(js_div)
+                probs_u = self.model.inference(val_loader.dataset.X.to(self.device))['probabilities']
+                probs_c = self.retrain_model.inference(val_loader.dataset.X.to(self.device))['probabilities']
+                js_div = self.js_div_func(probs_u, probs_c)
+                metrics['js_div']['val'].append(js_div)
+
+            if eval:
+                _, forget_acc = self.eval(forget_loader)
+                metrics['forget']['acc'].append(forget_acc)
+                _, retain_acc = self.eval(retain_loader)
+                metrics['retain']['acc'].append(retain_acc)
+                _, val_acc = self.eval(val_loader)
+                metrics['val']['acc'].append(val_acc)
+                _, validate_err_acc = self.eval(validate_err_dataloader)
+                metrics['val']['err_acc'].append(validate_err_acc)
+
+
             #### Gradient ascent
-            for batch in forget_loader:
+            batch_iterator = tqdm(enumerate(forget_loader), 
+                                desc=f'Batch Processing', 
+                                total=n_batches,
+                                leave=False) if verbose else enumerate(forget_loader)
+
+            for batch_idx, batch in batch_iterator:
                 optimizer.zero_grad()
 
                 x_f = batch[0].to(self.device)
@@ -196,37 +240,47 @@ class TeacherAscender:
 
                 out_f = self.model(x_f)
                 out_r = self.model(x_r)
+                
 
-                retain_term = self.calculate_fit_term(out_r, y_r)
-                forget_term = self.calculate_entropy(out_f)
-                reg_term = self.calculate_reg_term(FIM_ratio, original_sd)
-                # loss = -forget_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
-                loss = -forget_term + retain_term + self._lambda / 2 * reg_term # minimize CE, maximize reg term
+                reg_term = self.calculate_reg_term(FIM_ratio, original_sd) if is_FIM_ratio else self.calculate_reg_term(FIM_original, original_sd)
+                weighted_reg_term = self._lambda / 2 * reg_term
+
+                if version == "ce":
+                    forget_term = self.calculate_fit_term(out_f, y_f)
+                    loss = -forget_term + weighted_reg_term # minimize CE, maximize reg term
+                elif version == "entropy":
+                    forget_term = self.calculate_entropy(out_f)
+                    loss = -forget_term + weighted_reg_term # minimize entropy, maximize reg term
+                elif version == "ce-retain":
+                    forget_term = self.calculate_fit_term(out_f, y_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term + weighted_reg_term # minimize CE, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
+                elif version == "entropy-retain":
+                    forget_term = self.calculate_entropy(out_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term + weighted_reg_term # minimize entropy, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
+                elif version == "entropy-retain-no-reg":
+                    forget_term = self.calculate_entropy(out_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term # minimize entropy, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
+                elif version == "ce-retain-no-reg":
+                    forget_term = self.calculate_fit_term(out_f, y_f)
+                    retain_term = self.calculate_fit_term(out_r, y_r)
+                    loss = -forget_term + retain_term # minimize CE, maximize reg term
+                    metrics['loss_terms']['repair'].append(retain_term.item())
+
+                # append loss to metrics
+                metrics['loss_terms']['full'].append(loss.item())
+                metrics['loss_terms']['reg_weighted'].append(weighted_reg_term.item())
+                metrics['loss_terms']['reg'].append(reg_term.item())
+                metrics['loss_terms']['ascend'].append(forget_term.item())
 
                 loss.backward()
                 optimizer.step()
-
-            #     rt.append(retain_term)
-            #     ft.append(forget_term)
-
-            # retain_terms.append(torch.tensor(rt).mean())
-            # forget_terms.append(torch.tensor(ft).mean())
-
-            # mdl = self.MDL(retain_loader)
-            # mdls.append(mdl)
-            if eval:
-                forget_loss, forget_acc = self.eval(forget_loader)
-                metrics['forget']['acc'].append(forget_acc)
-                metrics['forget']['loss'].append(forget_loss)
-
-                retain_loss, retain_acc = self.eval(retain_loader)
-                metrics['retain']['acc'].append(retain_acc)
-                metrics['retain']['loss'].append(retain_loss)
-
-                val_loss, val_acc = self.eval(val_loader)
-                metrics['val']['acc'].append(val_acc)
-                metrics['val']['loss'].append(val_loss)
-            
+        
         if eval:
             return metrics
             

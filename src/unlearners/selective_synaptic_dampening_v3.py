@@ -192,10 +192,8 @@ class SelectiveSynapticDampening(SSD):
         """
         scores = [e['target'] for e in bo_result['result']]
         best_scores_idxs = np.where(scores == max(scores))[0]
-        # pdb.set_trace()
         best_params = [bo_result['result'][i]['params'] for i in best_scores_idxs]
         param_sums = [sum((e['_lambda'], e['alpha'])) for e in best_params]
-        # pdb.set_trace()
         return best_params[np.argmax(param_sums)]
 
     def __call__(self, 
