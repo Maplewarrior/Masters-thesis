@@ -285,7 +285,7 @@ def main():
     fig2.savefig(f"plots/{model_folder}/teacher_ascend_no_fimratio.png")
     # save as pdf
     fig1.savefig(f"plots/{model_folder}/teacher_ascend_fimratio.pdf", bbox_inches='tight')
-    fig2.savefig(f"plots/{model_folder}/teacher_ascend_no_fimrat.pdf", bbox_inches='tight')
+    fig2.savefig(f"plots/{model_folder}/teacher_ascend_no_fimratio.pdf", bbox_inches='tight')
 
 
 
