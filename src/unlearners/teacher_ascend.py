@@ -147,8 +147,8 @@ class TeacherAscender:
         # set generator for reproducibility
         generator = torch.Generator()
         generator.manual_seed(self.model.seed)
-        # Ensure we're using Python native types, not torch.int64
-        dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=int(n_classes))
+        # Pass torch tensors directly instead of converting to numpy
+        dataset = SyntheticDataset(X_values, y_values, n_classes=int(n_classes))
         dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
         return dataloader
     
