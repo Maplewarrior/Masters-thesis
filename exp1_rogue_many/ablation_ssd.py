@@ -42,9 +42,31 @@ def decision_boundary_plot(model,
                            make_pdfs=False, 
                            compress_pdfs=False,
                            layer_target=None,
+                           hyperparams=None,
                            title=None):
     dataset_number = dataset_name.split("_")[1]
     print(f'Dataset number: {dataset_number}')
+    
+    # Create structured directory hierarchy
+    layer_target_str = '_'.join(map(str, layer_target)) if layer_target else 'all'
+    alpha_val = hyperparams.get('alpha', 'default') if hyperparams else 'default'
+    lambda_val = hyperparams.get('lambda', 'default') if hyperparams else 'default'
+    
+    # Create nested directory structure
+    plot_dir = os.path.join(
+        results_dir,
+        f"dataset_{dataset_number}",
+        f"layer_target_{layer_target_str}",
+        f"alpha_{alpha_val}_lambda_{lambda_val}"
+    )
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    # Separate subdirectories for different formats
+    png_dir = os.path.join(plot_dir, "png")
+    pdf_dir = os.path.join(plot_dir, "pdf")
+    os.makedirs(png_dir, exist_ok=True)
+    if make_pdfs:
+        os.makedirs(pdf_dir, exist_ok=True)
     
     # Set common plot styling
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -159,7 +181,7 @@ def decision_boundary_plot(model,
     
     # Improve title and labels
     plt.title(title if title is not None else f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
-              fontsize=14)
+              fontsize=18)
     plt.xlabel('Feature 1', fontsize=12)
     plt.ylabel('Feature 2', fontsize=12)
     
@@ -188,21 +210,25 @@ def decision_boundary_plot(model,
     # Ensure tight layout
     plt.tight_layout()
     
-    # Save with high DPI as PNG
-    superimposed_filename = f"{results_dir}/{dataset_number}_decision_boundary_layer_target_{','.join(map(str, layer_target))}.png"
-    plt.savefig(superimposed_filename, bbox_inches='tight')
+    # Save with cleaner filename structure
+    base_filename = "decision_boundary"
+    
+    # Save PNG with high DPI
+    png_filename = os.path.join(png_dir, f"{base_filename}.png")
+    plt.savefig(png_filename, bbox_inches='tight', dpi=200)
+    print(f"PNG saved to: {png_filename}")
     
     # Save as PDF if enabled
     if make_pdfs:
-        pdf_file = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.pdf"
-        
-        plt.savefig(pdf_file, 
+        pdf_filename = os.path.join(pdf_dir, f"{base_filename}.pdf")
+        plt.savefig(pdf_filename, 
                    bbox_inches='tight', 
                    format='pdf',
                    dpi=150)  # Reduced DPI for PDF
         
         # Add to list for later compression if enabled
-        pdf_files.append(pdf_file)
+        pdf_files.append(pdf_filename)
+        print(f"PDF saved to: {pdf_filename}")
     
     plt.close()
     
@@ -219,6 +245,8 @@ def decision_boundary_plot(model,
         except Exception as e:
             print(f"Error during PDF compression: {e}")
             print("PDFs saved with basic compression only.")
+    
+    return plot_dir  # Return the plot directory for reference
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
@@ -226,7 +254,7 @@ def main(cfg):
     os.makedirs(results_dir, exist_ok=True)
 
     # ============= Load data and prepare data =============
-    for i in range(1, 5):
+    for i in range(1, 6):
         print('-'*100)
         print(f'Running experiment for data/data_{i}.npz')
         print('-'*100)
@@ -332,17 +360,22 @@ def main(cfg):
 
             original_model = copy.deepcopy(unlearned_model)
                 
-            from src.unlearners.ablation_ssd_layerwise import SelectiveSynapticDampening as SelectiveSynapticDampening_ablation
+            from src.unlearners.ablation_ssd_layerwise import SelectiveSynapticDampening_layerwise as SelectiveSynapticDampening_ablation
+
+            hyperparams = {
+                'alpha': 5,
+                'lambda': 3
+            }
 
             dampenings = SelectiveSynapticDampening_ablation(unlearned_model, 
-                                            alpha=1, 
-                                            _lambda=1,
+                                            alpha=hyperparams['alpha'], 
+                                            _lambda=hyperparams['lambda'],
                                             layer_target=layer_target,
                                             device=DEVICE)(full_dataloader=dataloader_train, 
                                                             forget_dataloader=dataloader_forget,
                                                             return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, 
+            plot_dir = decision_boundary_plot(unlearned_model, 
                                 original_model, 
                                 dataloader_retain, 
                                 dataloader_train, 
@@ -350,10 +383,16 @@ def main(cfg):
                                 X_forget, 
                                 cfg, 
                                 layer_target=layer_target,
-                                title=f'Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}\n${{L}}_{{target}}$ = {",".join(map(str, layer_target))}')
+                                hyperparams=hyperparams,
+                                title=f'SSD\n${{L}}_{{target}}$ = {",".join(map(str, layer_target))}\n${{\\alpha}}$ = {hyperparams["alpha"]}, ${{\\lambda}}$ = {hyperparams["lambda"]}')
 
-            visualize_parameter_dampening(dampenings, figsize=(10, 6), title=f'SSD Parameter Dampening\n${{L}}_{{target}}$ = {",".join(map(str, layer_target))}')
-            plt.savefig(os.path.join(results_dir, f"{dataset_name}_ssd_dampening_layer_target_{','.join(map(str, layer_target))}.png"))
+            # Create dampening visualization with structured path
+            visualize_parameter_dampening(dampenings, figsize=(10, 6), title=f'${{L}}_{{target}}$ = {",".join(map(str, layer_target))}\n${{\\alpha}}$ = {hyperparams["alpha"]}, ${{\\lambda}}$ = {hyperparams["lambda"]}', title_fontsize=18)
+            
+            # Save dampening plot in the same structured directory
+            dampening_filename = os.path.join(plot_dir, "png", "parameter_dampening.png")
+            plt.savefig(dampening_filename, bbox_inches='tight', dpi=200)
+            print(f"Parameter dampening plot saved to: {dampening_filename}")
             plt.close()
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import matplotlib.patheffects
 import numpy as np
 import torch
 
-def visualize_parameter_dampening(state_dict, figsize=(10, 6), title=None, ax=None):
+def visualize_parameter_dampening(state_dict, figsize=(10, 6), title=None, ax=None, title_fontsize=14):
     """
     Visualize neural network parameter dampening with a structured layout.
     
@@ -191,7 +191,7 @@ def visualize_parameter_dampening(state_dict, figsize=(10, 6), title=None, ax=No
     
     # Add title with better styling
     if title is not None:
-        ax.set_title(title, fontsize=14, color='black')
+        ax.set_title(title, fontsize=title_fontsize, color='black')
     
     # Add subtle grid lines for better visual separation
     for x in [2.75, 7.75]:
