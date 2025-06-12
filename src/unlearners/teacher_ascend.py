@@ -170,6 +170,7 @@ class TeacherAscender:
         metrics = {'retain': {'acc': []},
                    'forget': {'acc': []},
                    'val': {'acc': []},
+                   'rewind': {'acc': []},
                    "loss_terms": {"reg": [], "reg_weighted": [], "ascend": [], "repair": [], 'full': []}
                   }
         if self.MIA is not None:
@@ -219,7 +220,7 @@ class TeacherAscender:
                 _, val_acc = self.eval(val_loader)
                 metrics['val']['acc'].append(val_acc)
                 _, validate_err_acc = self.eval(validate_err_dataloader)
-                metrics['val']['err_acc'].append(validate_err_acc)
+                metrics['rewind']['acc'].append(validate_err_acc)
 
 
             #### Gradient ascent
