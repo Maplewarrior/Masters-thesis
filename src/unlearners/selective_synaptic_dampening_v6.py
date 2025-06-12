@@ -1,25 +1,21 @@
 import numpy as np
-from functools import partial
 from math import floor
+import warnings
 import copy
 import time
 import pdb
 import torch
-import torch.optim as optim
 from torch.utils.data import DataLoader
-# bayesian optimization modules
+
 import botorch
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
-from botorch.acquisition import LogExpectedImprovement
 from botorch.acquisition import UpperConfidenceBound
+from botorch.exceptions import BadInitialCandidatesWarning
 from botorch.optim import optimize_acqf
-from botorch.utils.transforms import standardize
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.kernels import MaternKernel, ScaleKernel
-from gpytorch.priors import GammaPrior
 from botorch.models.transforms import Normalize, Standardize
-from src.unlearners.base_unlearner import BaseUnlearner
+
 from src.datasets.synthetic_dataset import SyntheticDataset
 from src.utils.misc import check_statedict_equivalent
 
@@ -27,7 +23,8 @@ from src.utils.misc import check_statedict_equivalent
 A torch compatible implementation of SSD v5 with the following additions:
 
 - Sampling from the top k% highest entropy values in forget dataset.
-- A more smooth update parameter rule compared to SSD. 
+- A more smooth update parameter rule compared to SSD.
+
 """
 
 from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
@@ -82,25 +79,52 @@ class SelectiveSynapticDampening(SSD):
         In the case that all classes are not represented in the forget set, then we add some samples from those.
         This, along with adding a retain set, should mitigate catastrophic forgetting.
         """
+        generator = torch.Generator()
+        generator.manual_seed(self.model.seed)
         
         forget_dataset = forget_dataloader.dataset
-        val_dataset = val_dataloader.dataset
-        # X_val = val_dataset.X.to(self.device)
-        # y_val_ohe = val_dataset.y.to(self.device)
-        # y_val = val_dataset.y.argmax(dim=1).to(self.device)
+        y_forget_ohe = forget_dataset.y
+        y_forget = y_forget_ohe.argmax(dim=-1)
         
-        X_val, y_val_ohe, entropies = self.entropy_sampling(val_dataloader)
-        y_val = y_val_ohe.argmax(dim=-1)
+        val_dataset = val_dataloader.dataset
+        X_val = val_dataset.X.to(self.device)
+        y_val_ohe = val_dataset.y.to(self.device)
+        y_val = val_dataset.y.argmax(dim=1).to(self.device)
 
-        # draw random samples from the top k% highest entropy test samples
-        k = int(len(X_val) * self.k)
-        idx_shuffle = torch.randperm(k)
-        X_val = X_val[:k][idx_shuffle]
-        y_val = y_val[:k][idx_shuffle]
-        y_val_ohe = y_val_ohe[:k][idx_shuffle]
+        idx_shuffle = torch.randperm(len(X_val))
+        X_val = X_val[idx_shuffle]
+        y_val = y_val[idx_shuffle]
+        y_val_ohe = y_val_ohe[idx_shuffle]
+        
+
+        # # draw random samples from the top k% highest entropy test samples
+        # X_val, y_val_ohe, entropies = self.entropy_sampling(val_dataloader)
+        # y_val = y_val_ohe.argmax(dim=-1)
+
+        # k = int(len(X_val) * self.k)
+        # idx_shuffle = torch.randperm(len(X_val))
+        # X_val = X_val[idx_shuffle]
+        # y_val = y_val[idx_shuffle]
+        # y_val_ohe = y_val_ohe[idx_shuffle]
 
         n_classes = int(y_val.max()+1) # assumes all classes are in the validation set...
-        forget_labels, forget_counts = torch.unique(y_val, return_counts=True)
+
+        ### Sample according to predicted labels (works better in adversarial settings)
+        # forget_preds = self.model(forget_dataset.X)['predictions']
+        # forget_labels, forget_counts = torch.unique(forget_preds, return_counts=True)
+        # forget_preds_ohe = torch.zeros(len(forget_preds), n_classes).scatter_(1, forget_preds.unsqueeze(1), 1)
+
+        ### Sample according to true forget labels (breaks in adversarial settings)
+        forget_labels, forget_counts = torch.unique(y_forget, return_counts=True)
+        forget_preds_ohe = None
+
+        if forget_labels != y_forget.unique():
+            updated_forget_dataloader = copy.deepcopy(forget_dataloader)
+            updated_forget_dataloader.dataset.y = forget_preds_ohe
+
+        else:
+            updated_forget_dataloader = forget_dataloader
+            
         forget_labels = forget_labels.to(self.device)
         
         sample_sizes = []
@@ -126,40 +150,6 @@ class SelectiveSynapticDampening(SSD):
         if not (torch.tensor(sample_sizes, device=self.device) == forget_counts).all():
             print("Exact distribution could not be constructed..")
         
-        val_labels, val_counts = torch.unique(y_val, return_counts=True)
-        # not all classes are represented in the forget set --> this may lead to catastrophic forgetting when choosing the best param update
-        X_forget_add = []
-        y_forget_add = []
-        generator = torch.Generator()
-        generator.manual_seed(self.model.seed)
-        # if not (val_labels == forget_labels).all():
-        #     X_forget_add.append(forget_dataloader.dataset.X)
-        #     y_forget_add.append(forget_dataloader.dataset.y)
-        #     for i, label in enumerate(val_labels):
-        #         if label in forget_labels: # continue if samples from class already exist
-        #             continue
-        #         # add samples from remaining class(es) to "generalization" set
-        #         sample_size = min(np.min(sample_sizes) // (len(val_labels) - len(forget_labels)), val_counts[i].item() // 2)
-        #         val_label_idx = torch.where(y_val == label)[0]
-        #         idxs = torch.randperm(len(val_label_idx))[:int(2 * sample_size)]
-
-        #         X = X_val[val_label_idx[idxs[:len(idxs) // 2]]]
-        #         y = y_val_ohe[val_label_idx[idxs[:len(idxs) // 2]]]
-        #         X_values.append(X)
-        #         y_values.append(y)
-
-        #         # add to forget set for missing classes
-        #         X = X_val[val_label_idx[idxs[len(idxs) // 2:]]]
-        #         y = y_val_ohe[val_label_idx[idxs[len(idxs) // 2:]]]
-        #         X_forget_add.append(X)
-        #         y_forget_add.append(y)
-
-        #     X_forget = torch.cat(X_forget_add)
-        #     y_forget = torch.cat(y_forget_add)
-        #     forget_dataset = SyntheticDataset(X_forget, y_forget, n_classes=n_classes)
-
-        #     updated_forget_dataloader = DataLoader(forget_dataset, batch_size=4, generator=generator)
-
         X_values = torch.cat(X_values)
         y_values = torch.cat(y_values)
         
@@ -169,7 +159,7 @@ class SelectiveSynapticDampening(SSD):
         # if len(X_forget_add): # if additions to forget dataset were made, return it
         #     return generalization_dataloader, updated_forget_dataloader
         
-        return generalization_dataloader, None
+        return generalization_dataloader, updated_forget_dataloader
 
     def calculate_loss(self, dataloader, n_classes = int):
 
@@ -184,7 +174,7 @@ class SelectiveSynapticDampening(SSD):
             # Compute loss and entropy
             loss = self.model.loss(out, y, reduction='none')  # shape: (batch_size,)
             # entropy = -(out['probabilities'] * torch.log(out['probabilities'] + 1e-8)).sum(dim=-1)  # shape: (batch_size,)
-            total_loss = loss #+ entropy  # shape: (batch_size,)
+            total_loss = loss #entropy  # shape: (batch_size,)
 
             # Get class indices from one-hot labels
             class_indices = y.argmax(dim=-1)  # shape: (batch_size,)
@@ -237,7 +227,7 @@ class SelectiveSynapticDampening(SSD):
 
     def update_gpu_parameters(self, FIM_full, FIM_forget, alphas, lambdas, return_dampening: bool = False):
         all_dampenings = {}
-        """GPU-optimized version of update_parameters that avoids .item() calls"""
+        """GPU-optimized version of update_parameters"""
         with torch.no_grad():
             for i, (name, param) in enumerate(self.model.named_parameters()):
                 param_idx = self.layer_idx_to_parameter_idx(i)
@@ -314,7 +304,7 @@ class SelectiveSynapticDampening(SSD):
                                 gen_losses: np.array,
                                 sd_original,
                                 n_classes: int):
-        """Bayesian optimization using BoTorch with full GPU optimizations"""
+        """Bayesian optimization using BoTorch"""
 
         # Start timer for performance measurement
         start_time = time.time()
@@ -343,7 +333,7 @@ class SelectiveSynapticDampening(SSD):
             )
 
         # Use Sobol sequence for better initial coverage of the search space
-        n_initial = 30
+        n_initial = 10
         sobol_engine = torch.quasirandom.SobolEngine(dimension=2*self.P, scramble=True)
         train_x = sobol_engine.draw(n_initial).to(dtype=torch.double, device=self.device)
 
@@ -369,9 +359,6 @@ class SelectiveSynapticDampening(SSD):
 
         train_obj = torch.cat(train_obj_list)
 
-        # Standardize for better GP performance
-        # train_obj = standardize(train_obj)
-
         # Tracking best results
         best_value = train_obj.max().item()
         best_idx = train_obj.argmax().item()
@@ -383,13 +370,15 @@ class SelectiveSynapticDampening(SSD):
         # For better performance on GPU
         num_restarts = 20  # Increased for better exploration
         raw_samples = 256  # Increased for better initial points in acquisition optimization
+        
+        max_refits = 4 # max number of times to re-fit the GP hyperparameters during optimization
+        num_refits = 0
 
         # Keep track of all evaluated points
         all_x = train_x.clone()
         all_obj = train_obj.clone()
 
         # Set up GP model parameters
-
         gp = SingleTaskGP(
             train_x,
             train_obj.unsqueeze(-1),
@@ -407,16 +396,21 @@ class SelectiveSynapticDampening(SSD):
             # EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
             UCB = UpperConfidenceBound(model=gp, beta=2.5)
 
-            # Use higher num_restarts for better convergence and better GPU utilization
-            candidate, acq_value = optimize_acqf(
-                acq_function=UCB,#EI,
-                bounds=bounds,
-                q=1,
-                num_restarts=num_restarts,
-                raw_samples=raw_samples,
-                options={"batch_limit": 10, "maxiter": 100},
-            )
-
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                candidate, acq_value = optimize_acqf(
+                    acq_function=UCB,#EI,
+                    bounds=bounds,
+                    q=1,
+                    num_restarts=num_restarts,
+                    raw_samples=raw_samples,
+                    options={"batch_limit": 10, "maxiter": 100},
+                )
+                bad_candidates_warning = any(
+                                issubclass(warning.category, BadInitialCandidatesWarning) 
+                                for warning in w
+                            )
+        
             # Extract parameters for the new candidate point
             new_params = {}
             for i in range(self.P):
@@ -434,22 +428,22 @@ class SelectiveSynapticDampening(SSD):
             all_x = torch.cat([all_x, candidate])
             all_obj = torch.cat([all_obj, torch.tensor([new_obj], dtype=torch.double, device=self.device)])
 
-            # Re-standardize the objectives
-            # train_obj = standardize(train_obj)
-
             # update GP with new observations
             gp.set_train_data(train_x, train_obj, strict=False)
-            
-            # # re-learn optimal hyperparameters of GP
-            # gp = SingleTaskGP(
-            # train_x,
-            # train_obj.unsqueeze(-1),
-            # input_transform=Normalize(d=train_x.shape[-1]),
-            # outcome_transform=Standardize(m=1)
-            # )
-            # mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-            # fit_gpytorch_mll(mll)
 
+            # re-fit if all acquisition function values were 0.
+            if bad_candidates_warning and num_refits <= max_refits:
+                print("RE-FITTING GP!!")
+                gp = SingleTaskGP(
+                train_x,
+                train_obj.unsqueeze(-1),
+                input_transform=Normalize(d=train_x.shape[-1]),
+                outcome_transform=Standardize(m=1)
+                )
+                mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
+                fit_gpytorch_mll(mll)
+                num_refits += 1
+            
             # Update best params
             current_best_idx = train_obj.argmax().item()
             current_best = train_obj[current_best_idx].item()
@@ -521,10 +515,10 @@ class SelectiveSynapticDampening(SSD):
         n_classes = torch.unique(validation_dataloader.dataset.y, dim=0).size(0)
 
         start = time.time()
-        generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_dataloader, validation_dataloader)
+        generalization_dataloader, forget_dataloader = self.construct_validation_set(forget_dataloader, validation_dataloader)
         generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
 
-        ### Update forget dataloader to include all classes (avoids catastrophic forgetting)
+        # ### Update forget dataloader to include all classes (avoids catastrophic forgetting)
         # n_forget_classes = torch.unique(forget_dataloader.dataset.y, dim=0).size(0)
         # if n_classes != n_forget_classes:
         #     forget_dataloader_old = copy.deepcopy(forget_dataloader)
