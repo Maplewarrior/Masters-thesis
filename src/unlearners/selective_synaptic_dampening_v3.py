@@ -32,7 +32,7 @@ class SelectiveSynapticDampening(SSD):
     def __init__(self,
                  model,
                  k: int = 1.0, # top-k % entropy test data to sample from when constructing repair set
-                 n_bo_iter: int = 20, # how many iterations to run bayesian optimization
+                 n_bo_iter: int = 100, # how many iterations to run bayesian optimization
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha=None, _lambda=None, device=device)
         assert 0 < k <= 1, 'k must range between [0, 1]'

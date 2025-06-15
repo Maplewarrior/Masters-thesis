@@ -26,8 +26,9 @@ hydra/launcher=ray --multirun
 
 python3 exp2_rogue_one/experiment_run.py 
 data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz" 
-unlearn.method="retrain,ssd,ssd_v2,ssd_v3,ssd_v4,ssd_v6,ssd_v7,assd" 
+unlearn.method="retrain,ssd,ssd_v2,ssd_v3,ssd_v4,ssd_v6,ssd_v6_smooth,ssd_v7,assd"
 hydra/launcher=ray --multirun
+python3 exp2_rogue_many/experiment_run.py data.dataset="data/data_1.npz,data/data_2.npz,data/data_3.npz,data/data_4.npz,data/data_5.npz unlearn.method="retrain,ssd,ssd_v2,ssd_v3,ssd_v4,ssd_v6,ssd_v6_smooth,ssd_v7,assd" hydra/launcher=ray
 """
 
 def load_dataset(file):
@@ -50,18 +51,16 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     dataset_number = dataset_name.split("_")[1]
     title = f"{cfg.unlearn.method}"
     savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-    if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
+    if 'ssd' in cfg.unlearn.method:
         if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
-            title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
+            title = f"α1={hyperparams['alpha_0']:.1f}, λ1={hyperparams['_lambda_0']:.1f}, α2={hyperparams['alpha_1']:.1f}, λ2={hyperparams['_lambda_1']:.1f}, α3={hyperparams['alpha_2']:.1f}, λ3={hyperparams['_lambda_2']:.1f}"
             savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
         else:
-            title = f"{cfg.unlearn.method} α={hyperparams['alpha']:.2f}, λ={hyperparams['_lambda']:.2f}"
-            if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+            title = f"α={hyperparams['alpha']:.1f}, λ={hyperparams['_lambda']:.1f}"
+            if cfg.unlearn.method == "ssd" or "v2" in cfg.unlearn.method:
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.1f}_lambda={hyperparams['_lambda']:.1f}"
             else:
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-    else:
-        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
     
     superimposed_filename = savepath + '.png'
     
@@ -177,10 +176,10 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             legend_handles.append(rogue_point)
     
     # Improve title and labels
-    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method} ({title})", 
-              fontsize=14)
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
+    plt.title(f"Decision Boundary Before and After Unlearning\n({title})", 
+              fontsize=18)
+    plt.xlabel('$x_1$', fontsize=14)
+    plt.ylabel('$x_2$', fontsize=14)
     
     # Add legend with box and all custom entries
     legend = plt.legend(
@@ -285,7 +284,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
 #     return dot
 
 
-@hydra.main(config_path=".", config_name="config")
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
     results_dir = os.path.join(os.path.dirname(__file__), "results")
@@ -330,7 +329,6 @@ def main(cfg):
                             group=cfg.logging.group,
                             mode=cfg.logging.wandb.mode,
                             dir=cfg.logging.dir)
-
 
         dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
 
@@ -386,10 +384,10 @@ def main(cfg):
         
         if cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
-            hyperparams = {'alpha': 30.,
-                           '_lambda': 5.}
-            # hyperparams = {'alpha': 1.,
-            #                '_lambda': 1.}
+            # hyperparams = {'alpha': 30.,
+            #                '_lambda': 5.}
+            hyperparams = {'alpha': 1.,
+                           '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
@@ -406,10 +404,10 @@ def main(cfg):
         
         elif cfg.unlearn.method == "ssd_v2":
             from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
-            hyperparams = {'alpha': 30.,
-                           '_lambda': 5.}
-            # hyperparams = {'alpha': 1.,
-            #                '_lambda': 1.}
+            # hyperparams = {'alpha': 30.,
+            #                '_lambda': 5.}
+            hyperparams = {'alpha': 1.,
+                           '_lambda': 1.}
             dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=hyperparams["alpha"], 
                                        _lambda=hyperparams["_lambda"],
@@ -455,7 +453,7 @@ def main(cfg):
         elif cfg.unlearn.method == "ssd_v6":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
+                                                     P=3,
                                                      k=0.999,
                                                      smooth_dampening=False,
                                                      n_bo_iter=100,
@@ -472,7 +470,7 @@ def main(cfg):
         elif cfg.unlearn.method == "ssd_v6_smooth":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
+                                                     P=3,
                                                      k=0.999,
                                                      smooth_dampening=True,
                                                      n_bo_iter=100,
@@ -489,7 +487,7 @@ def main(cfg):
         elif cfg.unlearn.method == "ssd_v7":
             from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
+                                                     P=3,
                                                      k=0.999,
                                                      n_trials=500,
                                                      device=DEVICE)(full_dataloader=dataloader_train, 
