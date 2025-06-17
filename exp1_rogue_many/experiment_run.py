@@ -372,7 +372,9 @@ def main(cfg):
                    device=DEVICE)(retain_dataloader=dataloader_retain, 
                                   forget_dataloader=dataloader_forget, 
                                   val_dataloader=dataloader_val, 
-                                  n_rounds=10)
+                                  n_rounds=4, # min + max rounds
+                                  n_repair_rounds=6 # min only rounds 
+                                  )
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
         
         elif cfg.unlearn.method == "ssd":
