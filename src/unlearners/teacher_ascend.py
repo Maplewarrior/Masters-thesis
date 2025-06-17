@@ -147,8 +147,8 @@ class TeacherAscender:
         # set generator for reproducibility
         generator = torch.Generator()
         generator.manual_seed(self.model.seed)
-        # Ensure we're using Python native types, not torch.int64
-        dataset = SyntheticDataset(X_values.numpy(), y_values.numpy(), n_classes=int(n_classes))
+        # Pass torch tensors directly instead of converting to numpy
+        dataset = SyntheticDataset(X_values, y_values, n_classes=int(n_classes))
         dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
         return dataloader
     
@@ -170,6 +170,7 @@ class TeacherAscender:
         metrics = {'retain': {'acc': []},
                    'forget': {'acc': []},
                    'val': {'acc': []},
+                   'rewind': {'acc': []},
                    "loss_terms": {"reg": [], "reg_weighted": [], "ascend": [], "repair": [], 'full': []}
                   }
         if self.MIA is not None:
@@ -219,7 +220,7 @@ class TeacherAscender:
                 _, val_acc = self.eval(val_loader)
                 metrics['val']['acc'].append(val_acc)
                 _, validate_err_acc = self.eval(validate_err_dataloader)
-                metrics['val']['err_acc'].append(validate_err_acc)
+                metrics['rewind']['acc'].append(validate_err_acc)
 
 
             #### Gradient ascent

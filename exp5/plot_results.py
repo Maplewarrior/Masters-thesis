@@ -83,13 +83,15 @@ def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5), tit
     
     return fig_acc
 
-def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
+def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5), n_repair_epochs=None):
     """
     Plot MIA probabilities across epochs.
     
     Args:
         mia_results: Dictionary containing MIA probabilities
+        retrained_model_results: Dictionary containing metrics for the retrained model
         figsize: Tuple for figure size (width, height)
+        n_repair_epochs: Number of epochs from the end to highlight as repair phase
     
     Returns:
         matplotlib.figure.Figure: Figure containing MIA plot
@@ -103,6 +105,13 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     
     mia_values = mia_results
     epochs = range(1, len(mia_values) + 1)
+    total_epochs = len(epochs)
+
+    # Add transparent color overlay for the last n repair epochs
+    if n_repair_epochs is not None and n_repair_epochs > 0 and n_repair_epochs <= total_epochs:
+        repair_start_epoch = total_epochs - n_repair_epochs  # Adjust for 0-based indexing
+        ax_mia.axvspan(repair_start_epoch, total_epochs - 1, alpha=0.15, color='orange', 
+                      label=f'Repair Phase (last {n_repair_epochs} epochs)')
 
     retrain_mia_value = retrained_model_results['mia']['acc'][0]
     ax_mia.axhline(y=retrain_mia_value, color=colors[0], linestyle='--', alpha=0.8, linewidth=1.5, label='Retrained Model')
@@ -111,7 +120,6 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
                 marker='o', linewidth=2, markersize=4,
                 color=colors[2], alpha=0.7,
                 label='Unlearned Model (TA)')
-    
 
     ax_mia.set_xlabel('Epoch', fontsize=18)
     ax_mia.set_ylabel('MIA Probability', fontsize=18)
@@ -123,13 +131,14 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     plt.tight_layout()
     return fig_mia
 
-def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
+def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5), n_repair_epochs=None):
     """
     Plot JS divergence probabilities across epochs.
     
     Args:
         js_divergence_results: Dictionary containing JS divergence values
         figsize: Tuple for figure size (width, height)
+        n_repair_epochs: Number of epochs from the end to highlight as repair phase
     
     Returns:
         matplotlib.figure.Figure: Figure containing JS divergence plot
@@ -144,6 +153,15 @@ def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
     fig_js, ax_js = plt.subplots(1, 1, figsize=figsize)
     fig_js.suptitle('JS Divergence between Retrained and Unlearned Model Across Epochs', fontsize=22)
     
+    # Get total epochs from the first dataset (they should all have the same length)
+    total_epochs = len(js_divergence_results[datasets[0]])
+    
+    # Add transparent color overlay for the last n repair epochs
+    if n_repair_epochs is not None and n_repair_epochs > 0 and n_repair_epochs <= total_epochs:
+        repair_start_epoch = total_epochs - n_repair_epochs  # Adjust for 0-based indexing
+        ax_js.axvspan(repair_start_epoch, total_epochs - 1, alpha=0.15, color='orange', 
+                     label=f'Repair Phase (last {n_repair_epochs} epochs)')
+    
     for i, dataset in enumerate(datasets):
         js_div_values = js_divergence_results[dataset]
         epochs = range(1, len(js_div_values) + 1)
@@ -152,7 +170,6 @@ def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
                     marker='o', linewidth=2, markersize=4,
                     color=colors[i], alpha=0.7,
                     label=dataset_labels[i])
-    
 
     ax_js.set_xlabel('Epoch', fontsize=18)
     ax_js.set_ylabel('JS Divergence', fontsize=18)
@@ -650,7 +667,7 @@ def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
 
 def main():
 
-    seed_str = ""
+    seed_str = "_42"
     model_options = os.listdir("results")
     # sort model_options alphabetically
     model_options.sort()
@@ -689,10 +706,9 @@ def main():
         selected_file_name = selected_file.split('.')[0]
 
         plots_dir = os.path.join(base_plots_dir, results_dir)
-        plots_dir_subfolder = os.path.join(plots_dir, selected_file_name)
+        plots_dir_subfolder = plots_dir
 
         os.makedirs(plots_dir, exist_ok=True)
-        os.makedirs(plots_dir_subfolder, exist_ok=True)
 
         mia_results = results['mia']
         js_div_results = results['js_div']
@@ -718,16 +734,15 @@ def main():
 
         # from the experiment_dir get the number before repair_rounds, e.g. scrub_2alpha_2gamma_50rounds_{n}repair_rounds
         if "scrub" in model_folder:
-            # n_repair_epochs = int(model_folder.split('repair_rounds')[0].split('_')[-1])
-            n_repair_epochs = None
+            n_repair_epochs = int(model_folder.split('repair_rounds')[0].split('_')[-1])
         else:
             n_repair_epochs = None
 
 
         fig_size = (10, 8)
 
-        fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results, figsize=fig_size)
-        fig_js_div_epochs = plot_js_divergence_metrics(js_div_results, figsize=fig_size)
+        fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
+        fig_js_div_epochs = plot_js_divergence_metrics(js_div_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
         # fig_js_vs_acc = plot_js_div_vs_retain_acc(results, retrained_model_results)
         # fig_mia_vs_acc = plot_mia_vs_retain_acc(results, retrained_model_results)
         # fig_retain_vs_forget_js = plot_retain_vs_forget_js_div(results, retrained_model_results)
@@ -737,13 +752,13 @@ def main():
         os.makedirs(plots_dir, exist_ok=True)
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.pdf'), bbox_inches='tight')
-        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
+        # fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.pdf'), bbox_inches='tight')
-        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
+        # fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.pdf'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.pdf'), bbox_inches='tight')
-        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
+        # fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.pdf'), bbox_inches='tight')
         plt.close('all')
 
@@ -753,9 +768,9 @@ def main():
             fig_loss = plot_loss_components(results['loss_terms'])
             
             # Save the figure
-            save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
-            fig_loss.savefig(save_path, bbox_inches='tight')
-            print(f"Loss components plot saved to: {save_path}")
+            # save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
+            # fig_loss.savefig(save_path, bbox_inches='tight')
+            # print(f"Loss components plot saved to: {save_path}")
             
             plt.close(fig_loss) # Close the figure to free up memory
         else:

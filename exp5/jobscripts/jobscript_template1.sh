@@ -33,7 +33,6 @@ module load python3/3.11.8
 module load cuda/11.6
 
 # Change to the working directory
-cd ${WORKING_DIR}
-source activate.sh
-cd exp5/
+cd ${WORKING_DIR}/exp5/
+source ${VENV_PATH}/bin/activate
 python experiment_run.py ${RUN_EXPERIMENTS_ARGS}
