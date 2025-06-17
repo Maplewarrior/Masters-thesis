@@ -69,7 +69,7 @@ def get_objective_function_latex(experiment_name: str) -> str:
     if "retain" in experiment_name:
         # Cross entropy loss over one batch of the retained data is added 
         objective = objective[:-1]  # Remove the closing $
-        objective += r" + \frac{\beta}{|\mathcal{B}_r|} \mathcal{L}_{CE}(\bm{x}_k,y_k; \bm{\theta}_u)$"
+        objective += r" + \frac{1}{|\mathcal{B}_r|} \mathcal{L}_{CE}(\bm{x}_k,y_k; \bm{\theta}_u)$"
 
     return objective
 
