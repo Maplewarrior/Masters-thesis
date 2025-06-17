@@ -94,7 +94,7 @@ def plot_data(X, y, rogue_point_idx=None):
         
         plt.scatter(
             X[rogue_point_idx, 0], X[rogue_point_idx, 1],
-            c='black',  # Black for better visibility
+            c='#a05195',
             marker='X',  # X marker for rogue points
             s=150,  # Larger size for emphasis
             linewidth=1.5,
