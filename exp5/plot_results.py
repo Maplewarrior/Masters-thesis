@@ -83,13 +83,15 @@ def plot_accuracy_metrics(results, retrained_model_results, figsize=(16, 5), tit
     
     return fig_acc
 
-def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
+def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5), n_repair_epochs=None):
     """
     Plot MIA probabilities across epochs.
     
     Args:
         mia_results: Dictionary containing MIA probabilities
+        retrained_model_results: Dictionary containing metrics for the retrained model
         figsize: Tuple for figure size (width, height)
+        n_repair_epochs: Number of epochs from the end to highlight as repair phase
     
     Returns:
         matplotlib.figure.Figure: Figure containing MIA plot
@@ -103,6 +105,13 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     
     mia_values = mia_results
     epochs = range(1, len(mia_values) + 1)
+    total_epochs = len(epochs)
+
+    # Add transparent color overlay for the last n repair epochs
+    if n_repair_epochs is not None and n_repair_epochs > 0 and n_repair_epochs <= total_epochs:
+        repair_start_epoch = total_epochs - n_repair_epochs  # Adjust for 0-based indexing
+        ax_mia.axvspan(repair_start_epoch, total_epochs - 1, alpha=0.15, color='orange', 
+                      label=f'Repair Phase (last {n_repair_epochs} epochs)')
 
     retrain_mia_value = retrained_model_results['mia']['acc'][0]
     ax_mia.axhline(y=retrain_mia_value, color=colors[0], linestyle='--', alpha=0.8, linewidth=1.5, label='Retrained Model')
@@ -111,7 +120,6 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
                 marker='o', linewidth=2, markersize=4,
                 color=colors[2], alpha=0.7,
                 label='Unlearned Model (TA)')
-    
 
     ax_mia.set_xlabel('Epoch', fontsize=18)
     ax_mia.set_ylabel('MIA Probability', fontsize=18)
@@ -123,13 +131,14 @@ def plot_mia_metrics(mia_results, retrained_model_results, figsize=(5, 5)):
     plt.tight_layout()
     return fig_mia
 
-def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
+def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5), n_repair_epochs=None):
     """
     Plot JS divergence probabilities across epochs.
     
     Args:
         js_divergence_results: Dictionary containing JS divergence values
         figsize: Tuple for figure size (width, height)
+        n_repair_epochs: Number of epochs from the end to highlight as repair phase
     
     Returns:
         matplotlib.figure.Figure: Figure containing JS divergence plot
@@ -144,6 +153,15 @@ def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
     fig_js, ax_js = plt.subplots(1, 1, figsize=figsize)
     fig_js.suptitle('JS Divergence between Retrained and Unlearned Model Across Epochs', fontsize=22)
     
+    # Get total epochs from the first dataset (they should all have the same length)
+    total_epochs = len(js_divergence_results[datasets[0]])
+    
+    # Add transparent color overlay for the last n repair epochs
+    if n_repair_epochs is not None and n_repair_epochs > 0 and n_repair_epochs <= total_epochs:
+        repair_start_epoch = total_epochs - n_repair_epochs  # Adjust for 0-based indexing
+        ax_js.axvspan(repair_start_epoch, total_epochs - 1, alpha=0.15, color='orange', 
+                     label=f'Repair Phase (last {n_repair_epochs} epochs)')
+    
     for i, dataset in enumerate(datasets):
         js_div_values = js_divergence_results[dataset]
         epochs = range(1, len(js_div_values) + 1)
@@ -152,7 +170,6 @@ def plot_js_divergence_metrics(js_divergence_results, figsize=(5, 5)):
                     marker='o', linewidth=2, markersize=4,
                     color=colors[i], alpha=0.7,
                     label=dataset_labels[i])
-    
 
     ax_js.set_xlabel('Epoch', fontsize=18)
     ax_js.set_ylabel('JS Divergence', fontsize=18)
@@ -724,8 +741,8 @@ def main():
 
         fig_size = (10, 8)
 
-        fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results, figsize=fig_size)
-        fig_js_div_epochs = plot_js_divergence_metrics(js_div_results, figsize=fig_size)
+        fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
+        fig_js_div_epochs = plot_js_divergence_metrics(js_div_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
         # fig_js_vs_acc = plot_js_div_vs_retain_acc(results, retrained_model_results)
         # fig_mia_vs_acc = plot_mia_vs_retain_acc(results, retrained_model_results)
         # fig_retain_vs_forget_js = plot_retain_vs_forget_js_div(results, retrained_model_results)
