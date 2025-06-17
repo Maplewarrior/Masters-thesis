@@ -650,7 +650,7 @@ def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
 
 def main():
 
-    seed_str = ""
+    seed_str = "_42"
     model_options = os.listdir("results")
     # sort model_options alphabetically
     model_options.sort()
@@ -689,10 +689,9 @@ def main():
         selected_file_name = selected_file.split('.')[0]
 
         plots_dir = os.path.join(base_plots_dir, results_dir)
-        plots_dir_subfolder = os.path.join(plots_dir, selected_file_name)
+        plots_dir_subfolder = plots_dir
 
         os.makedirs(plots_dir, exist_ok=True)
-        os.makedirs(plots_dir_subfolder, exist_ok=True)
 
         mia_results = results['mia']
         js_div_results = results['js_div']
@@ -718,8 +717,7 @@ def main():
 
         # from the experiment_dir get the number before repair_rounds, e.g. scrub_2alpha_2gamma_50rounds_{n}repair_rounds
         if "scrub" in model_folder:
-            # n_repair_epochs = int(model_folder.split('repair_rounds')[0].split('_')[-1])
-            n_repair_epochs = None
+            n_repair_epochs = int(model_folder.split('repair_rounds')[0].split('_')[-1])
         else:
             n_repair_epochs = None
 
@@ -737,13 +735,13 @@ def main():
         os.makedirs(plots_dir, exist_ok=True)
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.pdf'), bbox_inches='tight')
-        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.png'), bbox_inches='tight')
+        # fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.pdf'), bbox_inches='tight')
-        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.png'), bbox_inches='tight')
+        # fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.pdf'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.pdf'), bbox_inches='tight')
-        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.png'), bbox_inches='tight')
+        # fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs_{results_dir}_{model_folder}.png'), bbox_inches='tight')
         fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.pdf'), bbox_inches='tight')
         plt.close('all')
 
@@ -753,9 +751,9 @@ def main():
             fig_loss = plot_loss_components(results['loss_terms'])
             
             # Save the figure
-            save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
-            fig_loss.savefig(save_path, bbox_inches='tight')
-            print(f"Loss components plot saved to: {save_path}")
+            # save_path = os.path.join(plots_dir_subfolder, f'loss_components_plot.png')
+            # fig_loss.savefig(save_path, bbox_inches='tight')
+            # print(f"Loss components plot saved to: {save_path}")
             
             plt.close(fig_loss) # Close the figure to free up memory
         else:
