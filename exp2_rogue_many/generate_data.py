@@ -54,18 +54,82 @@ def generate_data(centroids: np.ndarray = None,
 
 
 def plot_data(X, y, rogue_point_idx=None):
-    # nicer colors
-    colors = ['#ffa600', '#a05195', '#f95d6a']
-    colors = [colors[i % len(colors)] for i in range(3)]  # Create 3 evenly spaced colors
+    # Set up figure with higher DPI and better aesthetics
+    plt.figure(figsize=(8, 6), dpi=150)
+    
+    # Use a professional color palette
+    colors = ['#ffa600', '#a05195', '#f95d6a']  # Professional blue, green, red
+    
+    # Set plot style for clean white background
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    # Ensure white background
+    ax = plt.gca()
+    ax.set_facecolor('white')
+    
+    # Plot each class with improved aesthetics
     num_classes = np.unique(y).size
-
     for class_idx in range(num_classes):
-        plt.scatter(X[y == class_idx, 0], X[y == class_idx, 1], color=colors[class_idx], label=f'Class {class_idx}')
+        mask = y == class_idx
+        # If rogue points exist, exclude them from regular class plotting
+        if rogue_point_idx is not None:
+            mask = np.logical_and(mask, ~np.isin(np.arange(len(X)), rogue_point_idx))
+        
+        plt.scatter(
+            X[mask, 0], X[mask, 1],
+            color=colors[class_idx % len(colors)],
+            marker='o',  # Same circular marker for all classes
+            s=70,  # Larger point size
+            alpha=0.8,  # Slight transparency
+            edgecolor='white',  # White edge for better visibility
+            linewidth=0.5,
+            label=f'Class {class_idx}'
+        )
     
+    # Highlight rogue points with a distinctive style
     if rogue_point_idx is not None:
-        plt.scatter(X[rogue_point_idx, 0], X[rogue_point_idx, 1], c='red', marker='x', label=f'Rogue point (class {y[rogue_point_idx][0]})')
+        # Get the class of the rogue points (assuming all rogue points have the same class)
+        rogue_class = y[rogue_point_idx[0]] if isinstance(rogue_point_idx, np.ndarray) else y[rogue_point_idx]
+        
+        plt.scatter(
+            X[rogue_point_idx, 0], X[rogue_point_idx, 1],
+            c='#a05195',
+            marker='X',  # X marker for rogue points
+            s=150,  # Larger size for emphasis
+            linewidth=1.5,
+            edgecolor='white',
+            label=f'Rogue points (class {rogue_class})'
+        )
     
-    plt.legend()
+    # Improve legend
+    plt.legend(
+        frameon=True,
+        framealpha=0.95,
+        facecolor='white',
+        edgecolor='lightgray',
+        loc='best',
+        fontsize=10
+    )
+    
+    # Add labels and title
+    plt.xlabel('Feature 1', fontsize=12)
+    plt.ylabel('Feature 2', fontsize=12)
+    plt.title('Cluster Distribution', fontsize=14, fontweight='bold')
+    
+    # Improve ticks
+    plt.tick_params(direction='out', length=6, width=1)
+    
+    # Add a subtle border
+    for spine in plt.gca().spines.values():
+        spine.set_visible(True)
+        spine.set_color('lightgray')
+    
+    # Ensure equal aspect ratio
+    plt.axis('equal')
+    
+    # Tight layout for better spacing
+    plt.tight_layout()
+    
     return plt
 
 def save_data(X, y, rogue_point_idx, filename=None):
