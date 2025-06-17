@@ -13,7 +13,7 @@ class ParamItem(pydantic.BaseModel):
     _lambda_1: float
 
 
-def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None):
+def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None, exploration_factor=None):
     """Plot the basic objective function samples from BoTorch optimization"""
     # Extract data from results
     alphas = np.array([bo_result[i]['params']['alpha_0'] for i in range(len(bo_result))])
@@ -33,7 +33,7 @@ def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None):
     sc = plt.scatter(alphas, targets, c=sampling_order, cmap=custom_cmap, s=50, edgecolor='k', alpha=0.7)
     plt.xlabel('Alpha')
     plt.ylabel('Objective Value')
-    plt.title('Objective vs Alpha')
+    plt.title(f'Objective vs Alpha (Exploration Factor: {exploration_factor})')
     plt.colorbar(sc, label='Sampling Order (0=early, 1=late)')
     
     # Plot 2: Objective vs Lambda
@@ -41,7 +41,7 @@ def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None):
     sc = plt.scatter(lambdas, targets, c=sampling_order, cmap=custom_cmap, s=50, edgecolor='k', alpha=0.7)
     plt.xlabel('Lambda')
     plt.ylabel('Objective Value')
-    plt.title('Objective vs Lambda')
+    plt.title(f'Objective vs Lambda (Exploration Factor: {exploration_factor})')
     plt.colorbar(sc, label='Sampling Order (0=early, 1=late)')
         
     plt.tight_layout()
@@ -50,15 +50,15 @@ def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None):
     else:
         plt.show()
 
-def plot_convergence_analysis(bo_result: list[ParamItem], savepath=None):
+def plot_convergence_analysis(bo_result: list[ParamItem], savepath=None, exploration_factor=None):
     """Plot convergence behavior of the BoTorch optimization"""
     
     targets = np.array([bo_result[i]['target'] for i in range(len(bo_result))])
     iterations = np.arange(len(targets))
     
     # Calculate running maximum (best found so far)
-    running_max = np.maximum.accumulate(targets)
-    total_best_ind = np.argmax(running_max)
+    running_max = np.maximum.accumulate(targets.round(4))
+    total_best_ind = np.argmax(targets)
     
     plt.figure(figsize=(10, 5))
     
@@ -67,7 +67,7 @@ def plot_convergence_analysis(bo_result: list[ParamItem], savepath=None):
     plt.plot(iterations, running_max, '-', linewidth=2, color=professional_colors[1], label='Best So Far')
     plt.xlabel('Iteration')
     plt.ylabel('Objective Value')
-    plt.title('Optimization Convergence')
+    plt.title(f'Optimization Convergence (Exploration Factor: {exploration_factor})')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.axvline(total_best_ind, color=professional_colors[2], linestyle='--', linewidth=2, label=f'Best: {targets[total_best_ind]:.4f} at iteration {total_best_ind}')

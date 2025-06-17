@@ -36,11 +36,13 @@ class SelectiveSynapticDampening(SSD):
                  k: int, # top-k % entropy test data to sample from when constructing repair set
                  smooth_dampening: bool, # which dampening rule to apply
                  n_bo_iter: int, # how many iterations to run bayesian optimization
+                 exploration_factor: float = 2.5, # exploration factor for the UCB acquisition function
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha=None, _lambda=None, device=device)
         assert 0 < k <= 1, 'k must range between [0, 1]'
         self.P = P
         self.k = k
+        self.exploration_factor = exploration_factor
         self.smooth_dampening = smooth_dampening
         self.n_bo_iter = n_bo_iter 
 
@@ -319,6 +321,8 @@ class SelectiveSynapticDampening(SSD):
             [1000.0] * self.P + [100.0] * self.P  # Upper bounds
         ], dtype=torch.double, device=self.device)
 
+        print("bounds", bounds)
+
         # Prepare objective function wrapper with GPU optimization
         def wrapped_objective(x_dict):
 
@@ -394,7 +398,7 @@ class SelectiveSynapticDampening(SSD):
 
             # Define acquisition function - LogEI often works better than regular EI
             # EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
-            UCB = UpperConfidenceBound(model=gp, beta=2.5)
+            UCB = UpperConfidenceBound(model=gp, beta=self.exploration_factor)
 
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
