@@ -16,7 +16,8 @@ from src.visualization.dampening_visualization import visualize_parameter_dampen
 from src.visualization.bo_plotting import plot_bo_samples_basic, plot_convergence_analysis
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 
-results_dir = os.path.join(os.path.dirname(__file__), "results_ablation_ssd_bo")
+# Correction of save path..
+results_dir = os.path.join(os.path.dirname(__file__), "results_ablation_bo_plots")
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)

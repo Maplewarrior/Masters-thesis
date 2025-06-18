@@ -13,8 +13,8 @@ from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 import pdb
 
-
-results_dir = os.path.join(os.path.dirname(__file__), "results_ablation_ssd_bo")
+# Correction of save path..
+results_dir = os.path.join(os.path.dirname(__file__), "results_ablation_bo_objective")
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
