@@ -97,7 +97,6 @@ class SelectiveSynapticDampening(SSD):
         X_val = X_val[idx_shuffle]
         y_val = y_val[idx_shuffle]
         y_val_ohe = y_val_ohe[idx_shuffle]
-        
 
         # # draw random samples from the top k% highest entropy test samples
         # X_val, y_val_ohe, entropies = self.entropy_sampling(val_dataloader)
@@ -120,7 +119,7 @@ class SelectiveSynapticDampening(SSD):
         forget_labels, forget_counts = torch.unique(y_forget, return_counts=True)
         forget_preds_ohe = None
 
-        if forget_labels != y_forget.unique():
+        if not (forget_labels == y_forget.unique()).all():
             updated_forget_dataloader = copy.deepcopy(forget_dataloader)
             updated_forget_dataloader.dataset.y = forget_preds_ohe
 
@@ -149,7 +148,7 @@ class SelectiveSynapticDampening(SSD):
             y_values.append(y)
 
         # check if exact distribution could be constructed..
-        if not (torch.tensor(sample_sizes, device=self.device) == forget_counts).all():
+        if not (torch.tensor(sample_sizes, device=forget_counts.device) == forget_counts).all():
             print("Exact distribution could not be constructed..")
         
         X_values = torch.cat(X_values)

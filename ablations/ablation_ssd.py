@@ -146,7 +146,7 @@ def decision_boundary_plot(model,
             # --- After Unlearning ---
             contour_u = plt.contour(
                 xx_u.numpy(), yy_u.numpy(), unlearned_mask,
-                colors=['#003f5c'],  # Blue like
+                colors=['#FC9E4F'],  # Blue like
                 linestyles='solid',
                 linewidths=2,
             )
@@ -182,8 +182,8 @@ def decision_boundary_plot(model,
     # Improve title and labels
     plt.title(title if title is not None else f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
               fontsize=18)
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
+    plt.xlabel('$x_1$', fontsize=14)
+    plt.ylabel('$x_2$', fontsize=14)
     
     # Add legend with box and all custom entries
     legend = plt.legend(
@@ -193,7 +193,7 @@ def decision_boundary_plot(model,
         facecolor='white',
         edgecolor='lightgray',
         loc='best',
-        fontsize=12
+        fontsize=14
     )
     
     # Improve ticks
@@ -363,9 +363,13 @@ def main(cfg):
             from src.unlearners.ablation_ssd_layerwise import SelectiveSynapticDampening_layerwise as SelectiveSynapticDampening_ablation
 
             hyperparams = {
-                'alpha': 5,
-                'lambda': 3
+                'alpha': 30,
+                'lambda': 5
             }
+            # hyperparams = {
+            #     'alpha': 1,
+            #     'lambda': 1
+            # }
 
             dampenings = SelectiveSynapticDampening_ablation(unlearned_model, 
                                             alpha=hyperparams['alpha'], 

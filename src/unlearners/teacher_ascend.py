@@ -152,7 +152,7 @@ class TeacherAscender:
         dataloader = DataLoader(dataset, batch_size=val_dataloader.batch_size)
         return dataloader
     
-    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "ce", is_FIM_ratio: bool = False):
+    def __call__(self, retain_loader, forget_loader, val_loader=None, eval: bool = False, verbose: bool = True, version: str = "entropy-retain", is_FIM_ratio: bool = True):
         """
         Performs gradient ascend on forget set labels while regularizing with ∑ F (p_u - p_o)^2
 
@@ -161,8 +161,8 @@ class TeacherAscender:
             - Maximize cross entropy between prediction and y on forget data --> works better for data poisoning.
             - Both?
         """
-
-        validate_err_dataloader = self.construct_validation_set(forget_loader, val_loader)
+        if val_loader is not None:
+            validate_err_dataloader = self.construct_validation_set(forget_loader, val_loader)
 
         if version not in ["ce", "entropy", "ce-retain", "entropy-retain", "ce-retain-no-reg", "entropy-retain-no-reg"]:
             raise ValueError(f"Invalid version: {version}, must be one of: ce, entropy, ce-retain, entropy-retain, ce-retain-no-reg, entropy-retain-no-reg")

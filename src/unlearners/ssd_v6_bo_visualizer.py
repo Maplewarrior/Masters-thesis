@@ -19,7 +19,12 @@ from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDamp
 from src.utils.misc import check_statedict_equivalent
 
 class SSDVisualizer(SelectiveSynapticDampening):
-    def __init__(self, model, P: int, k: int, smooth_dampening: bool, n_bo_iter: int, device: str = 'cpu') -> None:
+    def __init__(self, model, 
+                 P: int = 1, 
+                 k: int = 0.999, 
+                 smooth_dampening: bool = False, 
+                 n_bo_iter: int = 100, 
+                 device: str = 'cpu') -> None:
         super().__init__(model, P, k, smooth_dampening, n_bo_iter, device)
 
     def bo_objective_function(self,
@@ -33,7 +38,7 @@ class SSDVisualizer(SelectiveSynapticDampening):
         """Objective function for BoTorch optimization"""
         # Extract parameters from the parameterization dict - directly on device
         alphas = torch.tensor([parameterization[f'alpha_{i}'] for i in range(self.P)], device=self.device)
-        lambdas = torch.ones_like(alphas)
+        lambdas = torch.ones_like(alphas) * 1
 
         # Load original weights
         self.model.load_state_dict(sd_original)
@@ -79,7 +84,7 @@ class SSDVisualizer(SelectiveSynapticDampening):
         # Define raw bounds for the problem
         bounds = torch.tensor([
             [0.1] * self.P,  # Lower bounds
-            [100.0] * self.P  # Upper bounds
+            [200.0] * self.P  # Upper bounds
         ], dtype=torch.double, device=self.device)
 
         # Prepare objective function wrapper with GPU optimization
@@ -96,7 +101,7 @@ class SSDVisualizer(SelectiveSynapticDampening):
             )
 
         # Use Sobol sequence for better initial coverage of the search space
-        n_initial = 5
+        n_initial = 10
         sobol_engine = torch.quasirandom.SobolEngine(dimension=self.P, scramble=True)
         train_x = sobol_engine.draw(n_initial).to(dtype=torch.double, device=self.device)
 
@@ -133,8 +138,8 @@ class SSDVisualizer(SelectiveSynapticDampening):
         n_iterations = self.n_bo_iter  # You can adjust this based on your needs
 
         # For better performance on GPU
-        num_restarts = 40  # Increased for better exploration
-        raw_samples = 512  # Increased for better initial points in acquisition optimization
+        num_restarts = 20  # Increased for better exploration
+        raw_samples = 256  # Increased for better initial points in acquisition optimization
 
         # Keep track of all evaluated points
         all_x = train_x.clone()
@@ -156,12 +161,12 @@ class SSDVisualizer(SelectiveSynapticDampening):
             iter_start = time.time()
 
             # Define acquisition function - LogEI often works better than regular EI
-            EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
-            # UCB = UpperConfidenceBound(model=gp, beta=5.)
+            # EI = LogExpectedImprovement(model=gp, best_f=train_obj.max(), maximize=True)
+            UCB = UpperConfidenceBound(model=gp, beta=2.5)
 
             # Use higher num_restarts for better convergence and better GPU utilization
             candidate, acq_value = optimize_acqf(
-                acq_function=EI,
+                acq_function=UCB,
                 bounds=bounds,
                 q=1,
                 num_restarts=num_restarts,
@@ -237,6 +242,36 @@ class SSDVisualizer(SelectiveSynapticDampening):
         total_time = time.time() - start_time
         print(f"Optimization completed in {total_time:.2f}s with {n_initial + n_iterations} function evaluations")
         return {'result': all_results, 'max': best_raw_params}
+    
+    def search_hyperparameters_exhaustive(self, full_loader, forget_loader, val_loader, alphas):
+        
+        targets = []
+        sd_original = copy.deepcopy(self.model.state_dict())
+        FIM_full = self.calculate_FIM(full_loader)
+        FIM_forget = self.calculate_FIM(forget_loader)
+        n_classes = full_loader.dataset.y.size(1)
+
+        generalization_dataloader, updated_forget_loader = self.construct_validation_set(forget_loader, val_loader)
+        generalization_losses = self.calculate_loss(generalization_dataloader, n_classes)
+        
+        def wrapped_objective(x_dict):
+
+            return self.bo_objective_function(
+                parameterization=x_dict,
+                FIM_full=FIM_full,
+                FIM_forget=FIM_forget,
+                forget_loader=forget_loader,
+                gen_losses=generalization_losses,
+                sd_original=sd_original,
+                n_classes=n_classes
+            )
+        
+        for i, alpha in enumerate(alphas):
+            new_params = {'alpha_0': alpha}
+            L_bo = wrapped_objective(new_params)
+            targets.append(L_bo.item())
+        
+        return targets
 
     def __call__(self,
                  full_dataloader,

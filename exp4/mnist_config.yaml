@@ -34,7 +34,7 @@ data:
 
 trainer: 
   lr: 0.001
-  n_epochs: 15
+  n_epochs: 20
   disable_tqdm: False
   do_early_stopping: False #True
   weight_decay: 0.0
