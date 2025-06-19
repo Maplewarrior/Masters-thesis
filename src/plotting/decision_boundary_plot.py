@@ -5,6 +5,8 @@ import numpy as np
 import os
 
 def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, X_forget, results_dir, plot_title=None, filename=None):
+    if filename is None:
+        filename = "decision_boundary"
     save_path = os.path.join(results_dir, filename) + '.pdf'
 
     # Set common plot styling
