@@ -12,8 +12,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.visualization.dampening_visualization import visualize_parameter_dampening
 from src.plotting.decision_boundary_plot import decision_boundary_plot
 
-results_dir = os.path.join(os.path.dirname(__file__), "results")
-git_root = get_git_root()
+
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
@@ -53,18 +52,26 @@ def ssd_bo_title(hyperparams):
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
-    # results_dir = os.path.join(os.path.dirname(__file__), "TA_results")
-    os.makedirs(results_dir, exist_ok=True)
 
-    # ============= Load data and prepare data =============
+    # ============= Preparing data and results directory =============
+    git_root = get_git_root()
     dataset_path = cfg.data.dataset
     # path relative to current working directory
     dataset_path = os.path.join(git_root, dataset_path)
-    validation_path = os.path.join(git_root, "data/rogue_many/validation_data.npz")
+    validation_path = os.path.join("/",*dataset_path.split("/")[1:-1], "validation_data.npz")
 
+    rogue = dataset_path.split("/")[-2] # rogue_many or rogue_one
+    results_dir = os.path.join(os.path.dirname(__file__), "results", rogue)
+    os.makedirs(results_dir, exist_ok=True)
+
+
+    # ============== Load data ============== 
     X, y, forget_idxs = load_dataset(dataset_path)
     # retrain data should be all the data except the index of the rogue point
     X_val, y_val, _ = load_dataset(validation_path)
+
+    if forget_idxs.ndim == 0:
+        forget_idxs = torch.tensor([forget_idxs])
 
     # Convert forget_idx to a set for faster lookup
     forget_idx_set = set(forget_idxs.tolist())
