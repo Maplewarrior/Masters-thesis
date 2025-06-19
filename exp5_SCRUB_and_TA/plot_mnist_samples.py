@@ -6,7 +6,7 @@ import sys
 # Add the parent directory to the Python path to allow for package imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from exp5.prepare_image_data_v2 import download_dataset
+from exp5_SCRUB_and_TA.prepare_image_data_v2 import download_dataset
 
 def plot_mnist_samples():
     """
