@@ -1,6 +1,8 @@
 # %%
 import numpy as np
 from matplotlib import pyplot as plt
+from src.utils.get_git_root_path import get_git_root
+import os
 
 seed = 42
 np.random.seed(seed)
@@ -51,7 +53,6 @@ def generate_data(centroids: np.ndarray = None,
         return X, y, rogue_point_idxs
     
     return X, y, None
-
 
 def plot_data(X, y, rogue_point_idx=None):
     # Set up figure with higher DPI and better aesthetics
@@ -143,15 +144,13 @@ def save_fig(plot, filename, folder):
 
 # %% 
 if __name__ == "__main__":
-    import os
     # hardcode centroids, stds, sizes
     centroids = np.array([[0, -3], [-3, 3], [3, 3]])
     stds = np.array([[0.7, 0.7], [0.7, 0.7], [0.7, 0.7]])
     sizes = np.array([20, 20, 20])
     validation_sizes = np.array([10, 10, 10])
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    data_folder = os.path.join(current_dir, 'data')
+    data_folder = os.path.join(get_git_root(), 'data', 'rogue_many')
     data_plots_folder = os.path.join(data_folder, 'plots')
     os.makedirs(data_plots_folder, exist_ok=True)
 

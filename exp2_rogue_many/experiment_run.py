@@ -1,20 +1,19 @@
 import hydra
-import wandb
 import torch
 from torch.utils.data import DataLoader
 import os
 import numpy as np
-from omegaconf import OmegaConf
 from src.datasets.synthetic_dataset import SyntheticDataset
 import copy
 import matplotlib.pyplot as plt
-
+from src.utils.get_git_root_path import get_git_root
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.visualization.dampening_visualization import visualize_parameter_dampening
 from src.plotting.decision_boundary_plot import decision_boundary_plot
 
 results_dir = os.path.join(os.path.dirname(__file__), "results")
+git_root = get_git_root()
 
 def load_dataset(file):
     npz_file = np.load(file, allow_pickle=True)
@@ -60,8 +59,8 @@ def main(cfg):
     # ============= Load data and prepare data =============
     dataset_path = cfg.data.dataset
     # path relative to current working directory
-    dataset_path = os.path.join(os.path.dirname(__file__), dataset_path)
-    validation_path = os.path.join(os.path.dirname(__file__), "data/validation_data.npz")
+    dataset_path = os.path.join(git_root, dataset_path)
+    validation_path = os.path.join(git_root, "data/rogue_many/validation_data.npz")
 
     X, y, forget_idxs = load_dataset(dataset_path)
     # retrain data should be all the data except the index of the rogue point
