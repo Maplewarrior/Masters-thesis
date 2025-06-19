@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 
 from src.models.neural_network import NeuralNet
 from src.trainers.neural_network_trainer import NeuralNetworkTrainer
+from src.utils.get_git_root_path import get_git_root
+from src.plotting.decision_boundary_plot import decision_boundary_plot
 
 from src.evaluation.decision_boundary import DecisionBoundaryCreator
 
@@ -34,244 +36,29 @@ def load_dataset(file):
     return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, dataset_name, X_forget, cfg, make_pdfs=True, compress_pdfs=True):
-    dataset_number = dataset_name.split("_")[1]
-    
-    # Set common plot styling
-    plt.style.use('seaborn-v0_8-whitegrid')
-    
-    # Get the classes of the rogue points
-    X, y = dataloader_train.dataset.X, dataloader_train.dataset.y
-    X_retain, y_retain = dataloader_retrain.dataset.X, dataloader_retrain.dataset.y
-    
-    # If y is onehot, convert it to class indices
-    if len(y.shape) == 2 and y.shape[1] > 1:
-        y = torch.argmax(y, dim=1)
-        y_retain = torch.argmax(y_retain, dim=1)
-    
-    # Professional color palette
-    professional_colors = ['#ffa600', '#a05195', '#f95d6a', '#8172B3', '#CCB974', '#64B5CD']
-    
-    # Find the classes of the rogue points
-    rogue_classes = []
-    rogue_colors = []
-    for i in range(X_forget.shape[0]):
-        distances = np.sum((X.numpy() - X_forget[i].numpy())**2, axis=1)
-        rogue_class = y[np.argmin(distances)].item()
-        rogue_classes.append(rogue_class)
-        rogue_colors.append(professional_colors[rogue_class % len(professional_colors)])
-    
-    # List to store PDF files for later compression
-    pdf_files = []
-    
-    # Create creators for both models
-    unlearned_creator = DecisionBoundaryCreator(model, dataloader_retrain)
-    original_creator = DecisionBoundaryCreator(original_model, dataloader_train)
-    
-    # Get the decision boundaries but don't plot them yet
-    xx_o, yy_o, decision_boundary_original = original_creator.create_decision_boundary((-9, 9), (-9, 9))
-    xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-9, 9), (-9, 9))
-    
-    # Create a single figure
-    plt.figure(figsize=(8, 7), dpi=200)
-    
-    # Get number of unique classes
-    classes = np.unique(y)
-    num_classes = len(classes)
-    
-    # Professional color palette for classes
-    colors = [professional_colors[i % len(professional_colors)] for i in range(len(classes))]
-    colors = [plt.matplotlib.colors.to_rgba(color) for color in colors]
-    custom_cmap = plt.matplotlib.colors.ListedColormap(colors)
-    
-    # Plot the unlearned decision boundary with lower opacity
-    plt.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
-                 alpha=0.4, cmap=custom_cmap)
-    
-
-    unlearned_creator.plot_retain_data(X_retain, y_retain, classes, colors)
-
-
-    for class_idx in range(num_classes):
-        for neighbor_class in range(class_idx + 1, num_classes):
-            # Original model boundaries - dashed lines
-            original_mask = np.logical_or(
-                decision_boundary_original.numpy() == class_idx,
-                decision_boundary_original.numpy() == neighbor_class
-            )
-            # --- Before Unlearning ---
-            contour_o = plt.contour(
-                xx_o.numpy(), yy_o.numpy(), original_mask,
-                colors=['#353535'],  # Jet
-                linestyles='dotted',
-                linewidths=2,
-            )
-            
-            # Unlearned model boundaries
-            unlearned_mask = np.logical_or(
-                decision_boundary_unlearned.numpy() == class_idx,
-                decision_boundary_unlearned.numpy() == neighbor_class
-            )
-            # --- After Unlearning ---
-            contour_u = plt.contour(
-                xx_u.numpy(), yy_u.numpy(), unlearned_mask,
-                colors=['#FC9E4F'],  # Blue like
-                linestyles='solid',
-                linewidths=2,
-            )
-            
-    # Get the axis to enhance
-    ax = plt.gca()
-    ax.set_facecolor('white')
-    
-    # Store the handles for legend
-    legend_handles = []
-    
-    # Add custom legend entries for the two boundaries
-    from matplotlib.lines import Line2D    
-    original_legend = Line2D([0], [0], color='#353535', lw=2, linestyle='dotted', label='Before Unlearning')
-    unlearned_legend = Line2D([0], [0], color='#FC9E4F', lw=2, linestyle='solid', label='After Unlearning')
-    legend_handles.extend([original_legend, unlearned_legend])
-    
-    # Add rogue points with two different styles
-    for i, (x_point, rogue_class, rogue_color) in enumerate(zip(X_forget, rogue_classes, rogue_colors)):
-        rogue_point = plt.scatter(
-            x_point[0], x_point[1], 
-            color=rogue_color, 
-            marker="X", 
-            s=100,
-            linewidth=1,
-            edgecolor='white',
-            zorder=10,  # Higher zorder to ensure visibility
-            label=f"Forget observations" if i == 0 else "_nolegend_"
-        )
-        if i == 0:
-            legend_handles.append(rogue_point)
-    
-    # Improve title and labels
-    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
-              fontsize=14)
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
-    
-    # Add legend with box and all custom entries
-    legend = plt.legend(
-        handles=legend_handles,
-        frameon=True,
-        framealpha=0.95,
-        facecolor='white',
-        edgecolor='lightgray',
-        loc='best',
-        fontsize=12
-    )
-    
-    # Improve ticks
-    ax.tick_params(direction='out', length=6, width=1)
-    
-    # Add a subtle border
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color('lightgray')
-    
-    # Add grid with light alpha
-    plt.grid(True, alpha=0.3)
-    
-    # Ensure tight layout
-    plt.tight_layout()
-    
-    # Save with high DPI as PNG
-    superimposed_filename = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.png"
-    plt.savefig(superimposed_filename, bbox_inches='tight')
-    
-    # Save as PDF if enabled
-    if make_pdfs:
-        pdf_file = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.pdf"
-        
-        plt.savefig(pdf_file, 
-                   bbox_inches='tight', 
-                   format='pdf',
-                   dpi=150)  # Reduced DPI for PDF
-        
-        # Add to list for later compression if enabled
-        pdf_files.append(pdf_file)
-    
-    plt.close()
-    
-    # Further compress PDFs with Ghostscript if enabled
-    if compress_pdfs and pdf_files:
-        try:
-            from src.utils.pdf_compression import compress_pdf_with_ghostscript
-            
-            print("Further compressing PDFs with Ghostscript...")
-            for pdf_file in pdf_files:
-                compress_pdf_with_ghostscript(pdf_file, quality='ebook')
-        except ImportError:
-            print("PDF compression module not found. PDFs saved with basic compression only.")
-        except Exception as e:
-            print(f"Error during PDF compression: {e}")
-            print("PDFs saved with basic compression only.")
-
-# def create_simple_model_visualization(model, save_path, input_shape):
-#     """Create a simple flowchart visualization of the model architecture.
-    
-#     Args:
-#         model: The neural network model to visualize
-#         save_path: Path to save the visualization
-#         input_shape: Shape of the input data (for labeling input node)
-#     """
-#     dot = graphviz.Digraph(comment='Neural Network Architecture')
-    
-#     # Set graph attributes for better appearance
-#     dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
-    
-#     # Set node attributes
-#     dot.attr('node', shape='box', style='filled,rounded', 
-#              fillcolor='#E8F0FE', color='#4285F4', 
-#              fontname='Helvetica', fontsize='14', fontcolor='#333333')
-    
-#     # Set edge attributes
-#     dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    
-#     # Add input node
-#     dot.node('input', f'Input\n({input_shape} features)', shape='oval')
-    
-#     # Add nodes for each layer in the Sequential model
-#     prev_node = 'input'
-#     for i, layer in enumerate(model.net):
-#         if isinstance(layer, nn.Linear):
-#             node_name = f'linear_{i}'
-#             label = f'Linear\n{layer.in_features} → {layer.out_features}'
-#             dot.node(node_name, label)
-#             dot.edge(prev_node, node_name)
-#             prev_node = node_name
-#         elif isinstance(layer, nn.ReLU):
-#             node_name = f'relu_{i}'
-#             dot.node(node_name, 'ReLU')
-#             dot.edge(prev_node, node_name)
-#             prev_node = node_name
-    
-#     # Add output node
-#     dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-#     dot.edge(prev_node, 'output')
-    
-#     # Render the visualization
-#     dot.render(save_path, format='png')
-#     return dot
-
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
-    os.makedirs(results_dir, exist_ok=True)
 
-    # ============= Load data and prepare data =============
+    # ============= Preparing data and results directory =============
+    git_root = get_git_root()
     dataset_path = cfg.data.dataset
     # path relative to current working directory
-    dataset_path = os.path.join(os.path.dirname(__file__), dataset_path)
-    validation_path = os.path.join(os.path.dirname(__file__), "data/validation_data.npz")
+    dataset_path = os.path.join(git_root, dataset_path)
+    validation_path = os.path.join("/",*dataset_path.split("/")[1:-1], "validation_data.npz")
 
+    rogue = dataset_path.split("/")[-2] # rogue_many or rogue_one
+    results_dir = os.path.join(os.path.dirname(__file__), "results", rogue)
+    os.makedirs(results_dir, exist_ok=True)
+
+
+    # ============== Load data ============== 
     X, y, forget_idxs = load_dataset(dataset_path)
     # retrain data should be all the data except the index of the rogue point
     X_val, y_val, _ = load_dataset(validation_path)
+
+    if forget_idxs.ndim == 0:
+        forget_idxs = torch.tensor([forget_idxs])
 
     # Convert forget_idx to a set for faster lookup
     forget_idx_set = set(forget_idxs.tolist())
@@ -294,32 +81,16 @@ def main(cfg):
     dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
     dataloader_retain = DataLoader(dataset_retain, batch_size=batch_size, shuffle=True)
     dataloader_forget = DataLoader(dataset_forget, batch_size=batch_size, shuffle=True)
-
-    # ============= Initialize logger =============
-    if cfg.logging.logger == "wandb":
-        cfg_dict = OmegaConf.to_container(cfg, resolve=True) # ? Convert to dict to avoid issues with wandb
-
-        os.environ["WANDB_MODE"] = cfg.logging.wandb.mode
-        wandb.setup(settings=wandb.Settings(mode=cfg.logging.wandb.mode))
-        logger = wandb.init(project=cfg.logging.project, 
-                            config=cfg_dict, 
-                            name=cfg.logging.name, 
-                            group=cfg.logging.group,
-                            mode=cfg.logging.wandb.mode,
-                            dir=cfg.logging.dir)
-
-
-        dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
-
-    else:
-        raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
     
+    dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
+    dataset_number = dataset_name.split("_")[1]
+
+    # No logger, this could be changed to a wandb logger if needed
+    logger = None 
+
     if cfg.unlearn.method == "retrain":
 
         model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
-        # Generate a simplified visualization
-        nn_model_image_path = os.path.join(results_dir, f"nn_model_architecture")
-        # create_simple_model_visualization(model, nn_model_image_path, X.shape[1])
 
         original_model = copy.deepcopy(model)
 
@@ -345,7 +116,10 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+
+        plot_title = f"Retrained"
+        decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary" 
+        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
 
     else:
         if cfg.unlearn.method not in ['amnesiac', 'sisa']:
@@ -375,7 +149,9 @@ def main(cfg):
                                   n_rounds=4, # min + max rounds
                                   n_repair_rounds=6 # min only rounds 
                                   )
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            plot_title = f"SCRUB+R"
+            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
         
         elif cfg.unlearn.method == "ssd":
             from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening
@@ -386,7 +162,9 @@ def main(cfg):
                                        device=DEVICE)(full_dataloader=dataloader_train, 
                                                       forget_dataloader=dataloader_forget)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            plot_title = f"SSD"
+            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
         
         elif cfg.unlearn.method == 'sae':
             from src.models.neural_network import NeuralNetRS
@@ -410,7 +188,9 @@ def main(cfg):
             sae_unlearner = SAEUnlearner(unlearned_model, alpha=0.9, device=DEVICE)
             sae_unlearner(dataloader_retain, dataloader_forget)
 
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            plot_title = f"SAE"
+            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
       
         elif cfg.unlearn.method == "amnesiac":
             from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
@@ -440,7 +220,9 @@ def main(cfg):
             AmnesiacUnlearner(model=unlearned_model, 
                               unlearn_parameters=cfg.unlearn)(indices_to_forget=forget_idxs)
 
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg)
+            plot_title = f"Amnesiac"
+            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
 
         elif cfg.unlearn.method == "sisa":
             import shutil
@@ -488,8 +270,9 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=forget_idxs)
 
-            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
-                                  compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=True)#   cfg.get('make_pdfs',True))
+            plot_title = f"SISA"
+            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, X_forget, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
                                 
             # remove saved SISA weights
             shutil.rmtree(f'{weights_dir}/sisa/{sisa.experiment_id}')
