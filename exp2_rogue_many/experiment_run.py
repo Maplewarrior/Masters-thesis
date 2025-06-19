@@ -92,23 +92,8 @@ def main(cfg):
     dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
     dataset_number = dataset_name.split("_")[1]
 
-    # ============= Initialize logger =============
-    if cfg.logging.logger == "wandb":
-        cfg_dict = OmegaConf.to_container(cfg, resolve=True) # ? Convert to dict to avoid issues with wandb
-
-        os.environ["WANDB_MODE"] = cfg.logging.wandb.mode
-        wandb.setup(settings=wandb.Settings(mode=cfg.logging.wandb.mode))
-        logger = wandb.init(project=cfg.logging.project, 
-                            config=cfg_dict, 
-                            name=cfg.logging.name, 
-                            group=cfg.logging.group,
-                            mode=cfg.logging.wandb.mode,
-                            dir=cfg.logging.dir)
-
-
-
-    else:
-        raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
+    # No logger, this could be changed to a wandb logger if needed
+    logger = None 
     
     if cfg.unlearn.method == "retrain":
 
