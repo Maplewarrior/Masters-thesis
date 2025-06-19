@@ -1,0 +1,70 @@
+# @package _global_
+absolute_root_path: local #local # if this is set to "local" we use the __file__ to infer the absolute directory. Otherwise provide and absolute path.
+
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+# Weights & Biases logging
+logging:
+  logger: "wandb" # wandb, sqlite, or disabled
+  project: "machine-unlearning"
+  name: "experiment_4"
+  group: "synthetic_data_evaluation"
+  dir: "./logs/wandb"
+  wandb: 
+    mode: offline #"offline"
+
+# Data generation parameters
+data:
+  seed: 42
+  dataset_name: "MNIST"
+  subsample_size: 10000
+  n_forget_points: 100
+  batch_size: 16
+  n_classes: 10
+  n_channels: 3
+  # cifar parameters
+  split_type: "tsne_box" # "tsne_box" or "random"
+  tsne_box_coordinates: 
+    x_min: 10.2
+    x_max: 11.0
+    y_min: -4.3
+    y_max: -0.4
+  image_size:
+    - 32
+    - 32
+  patch_size:
+    - 4
+    - 4
+
+trainer: 
+  lr: 0.001
+  n_epochs: 15
+  disable_tqdm: False
+  do_early_stopping: False #True
+  weight_decay: 0.0
+  optimizer_name: Adam
+  lr_scheduler: 
+
+model: 
+  seeds: [42, 43, 44] #MNIST: 42
+  model_type: 'neural-network'
+  neural_network_parameters:
+    width_factor: 4 # MNIST: 4
+    n_layers: 3 # MNIST: 3
+
+unlearn:
+  do_gradient_ascent: False
+  method: "scrub" # "scrub" or "teacher_ascend"
+  teacher_ascend:
+    versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true], ["ce-retain-no-reg", false], ["entropy-retain-no-reg", false]]
+    n_epochs: 100
+    _lambda: 64 # 64
+  scrub:
+    alpha: 2
+    gamma: 2
+    n_rounds: 50
+    n_repair_rounds: 5
+
