@@ -201,3 +201,5 @@ outputs/
 *.pth.tar.gz.part.1
 *.pth.tar.gz.part.2
 *.cyberducksegment
+
+*.DS_Store
