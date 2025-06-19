@@ -57,19 +57,28 @@ def get_objective_function_latex(experiment_name: str) -> str:
     objective = ""
     if "ce" in experiment_name:
         if "fimratio" in experiment_name:
-            objective = r"$-\frac{1}{|\mathcal{D}_f|}\sum_{\bm{x}_i,y_i} \mathcal{L}_{CE}(\bm{x}_i,y_i; \bm{\theta}_u) + \frac{\lambda}{2} \sum_j \frac{\hat{i}^{(\mathcal{D}_r)}_j}{\hat{i}^{(\mathcal{D}_f)}_j} (\theta_{u,j} - \theta_{orig,j})^2$"
+            objective = r"$- \frac{1}{|\mathcal{D}_f|}\sum_{(\boldsymbol{x}_i,y_i)\in \mathcal{D}_f} \mathcal{L}_{CE}(\boldsymbol{x}_i,y_i; \boldsymbol{\theta}_u) +  \frac{\lambda}{2} \sum_j \frac{i_j^{\mathcal{D}_r}}{i_j^{\mathcal{D}_f}}\left(\theta_{u, j}-\theta_{\text {orig }, j}\right)^2 $"
         else:
-            objective = r"$-\frac{1}{|\mathcal{D}_f|}\sum_{\bm{x}_i,y_i} \mathcal{L}_{CE}(\bm{x}_i,y_i; \bm{\theta}_u) + \frac{\lambda}{2} \sum_j \hat{i}^{(\mathcal{D}_r)}_j (\theta_{u,j} - \theta_{orig,j})^2$"
+            objective = r"$- \frac{1}{|\mathcal{D}_f|}\sum_{(\boldsymbol{x}_i,y_i)\in \mathcal{D}_f} \mathcal{L}_{CE}(\boldsymbol{x}_i,y_i; \boldsymbol{\theta}_u) + \frac{\lambda}{2} \sum_j i_j^{\left(\mathcal{D}_r\right)}\left(\theta_{u, j}-\theta_{\text {orig }, j}\right)^2$"
     elif "entropy" in experiment_name:
         if "fimratio" in experiment_name:
-            objective = r"$-\frac{1}{|\mathcal{D}_f|}\sum_{\bm{x}_i,y_i} H_{\mathcal{M}_{\bm{\theta}_u}}(\bm{x}_i) + \frac{\lambda}{2} \sum_j \frac{\hat{i}^{(\mathcal{D}_r)}_j}{\hat{i}^{(\mathcal{D}_f)}_j} (\theta_{u,j} - \theta_{orig,j})^2$"
+            objective = r"$-\frac{1}{\left|\mathcal{D}_f\right|} \sum_{(\boldsymbol{x}_i, y_i)\in\mathcal{D}_f} H_{\mathcal{M}_{\theta_u}}\left(\boldsymbol{x}_i\right) + \frac{\lambda}{2} \sum_j \frac{i_j^{\mathcal{D}_r}}{i_j^{\mathcal{D}_f}}\left(\theta_{u, j}-\theta_{\text {orig }, j}\right)^2$"
         else:   
-            objective = r"$-\frac{1}{|\mathcal{D}_f|}\sum_{\bm{x}_i,y_i} H_{\mathcal{M}_{\bm{\theta}_u}}(\bm{x}_i) + \frac{\lambda}{2} \sum_j \hat{i}^{(\mathcal{D}_r)}_j (\theta_{u,j} - \theta_{orig,j})^2$"
+            objective = r"$-\frac{1}{\left|\mathcal{D}_f\right|} \sum_{(\boldsymbol{x}_i, y_i)\in\mathcal{D}_f} H_{\mathcal{M}_{\theta_u}}\left(\boldsymbol{x}_i\right) + \frac{\lambda}{2} \sum_j i_j^{\left(\mathcal{D}_r\right)}\left(\theta_{u, j}-\theta_{\text {orig }, j}\right)^2$"
 
     if "retain" in experiment_name:
         # Cross entropy loss over one batch of the retained data is added 
         objective = objective[:-1]  # Remove the closing $
-        objective += r" + \frac{1}{|\mathcal{B}_r|} \mathcal{L}_{CE}(\bm{x}_k,y_k; \bm{\theta}_u)$"
+        if "ce" in experiment_name:
+            if "fimratio" in experiment_name:
+                objective += r" \\ \phantom{- \frac{1}{|\mathcal{D}_f|}\sum_{(\boldsymbol{x}_i,y_i)\in \mathcal{D}_f} \mathcal{L}_{CE}(\boldsymbol{x}_i,y_i; \boldsymbol{\theta}_u)} + \frac{1}{\left|\mathcal{B}_r \right|}\sum_{(\boldsymbol{x}_k,y_k)\in\mathcal{B}_r} \mathcal{L}_{C E}\left(\boldsymbol{x}_k, y_k ; \boldsymbol{\theta}_u\right)$"
+            else:
+                objective += r" \\ \phantom{- \frac{1}{|\mathcal{D}_f|}\sum_{(\boldsymbol{x}_i,y_i)\in \mathcal{D}_f} \mathcal{L}_{CE}(\boldsymbol{x}_i,y_i; \boldsymbol{\theta}_u)} + \frac{1}{\left|\mathcal{B}_r \right|}\sum_{(\boldsymbol{x}_k,y_k)\in\mathcal{B}_r} \mathcal{L}_{C E}\left(\boldsymbol{x}_k, y_k ; \boldsymbol{\theta}_u\right)$"
+        elif "entropy" in experiment_name:
+            if "fimratio" in experiment_name:
+                objective += r" \\ \phantom{-\frac{1}{\left|\mathcal{D}_f\right|} \sum_{(\boldsymbol{x}_i, y_i)\in\mathcal{D}_f} H_{\mathcal{M}_{\theta_u}}\left(\boldsymbol{x}_i\right)} + \frac{1}{\left|\mathcal{B}_r \right|}\sum_{(\boldsymbol{x}_k,y_k)\in\mathcal{B}_r} \mathcal{L}_{C E}\left(\boldsymbol{x}_k, y_k ; \boldsymbol{\theta}_u\right)$"
+            else:
+                objective += r" \\ \phantom{-\frac{1}{\left|\mathcal{D}_f\right|} \sum_{(\boldsymbol{x}_i, y_i)\in\mathcal{D}_f} H_{\mathcal{M}_{\theta_u}}\left(\boldsymbol{x}_i\right)} + \frac{1}{\left|\mathcal{B}_r \right|}\sum_{(\boldsymbol{x}_k,y_k)\in\mathcal{B}_r} \mathcal{L}_{C E}\left(\boldsymbol{x}_k, y_k ; \boldsymbol{\theta}_u\right)$"
 
     return objective
 
@@ -280,13 +289,68 @@ def main():
                   frameon=True,
                   bbox_transform=fig.transFigure)
 
-    # save the figures to png
-    fig1.savefig(f"plots/{model_folder}/teacher_ascend_fimratio.png")
-    fig2.savefig(f"plots/{model_folder}/teacher_ascend_no_fimratio.png")
+
     # save as pdf
     fig1.savefig(f"plots/{model_folder}/teacher_ascend_fimratio.pdf", bbox_inches='tight')
     fig2.savefig(f"plots/{model_folder}/teacher_ascend_no_fimratio.pdf", bbox_inches='tight')
 
+    # Create individual plots for specific experiments
+    individual_experiments = [
+        'ta_metrics_ce',
+        'ta_metrics_entropy', 
+        'ta_metrics_entropy-retain',
+        'ta_metrics_entropy-retain_fimratio'
+    ]
+    
+    for exp_name in individual_experiments:
+        if exp_name in all_results:
+            # Create individual figure with consistent dimensions
+            fig_ind, ax_ind = plt.subplots(1, 1, figsize=(8, 6))
+            
+            # Get results for this experiment
+            results = all_results[exp_name]
+            retain_acc = results["retain"]["acc"]
+            forget_acc = results["forget"]["acc"]
+            val_acc = results["val"]["acc"]
+            
+            epochs = range(0, len(retain_acc))
+            
+            # Plot with consistent styling
+            ax_ind.plot(epochs, retain_acc, 
+                       marker='o', linewidth=2, markersize=5,
+                       color=retain_color, alpha=0.8, label='Retain')
+            
+            ax_ind.plot(epochs, forget_acc, 
+                       marker='s', linewidth=2, markersize=5,
+                       color=forget_color, alpha=0.8, label='Forget')
+            
+            ax_ind.plot(epochs, val_acc, 
+                       marker='^', linewidth=2, markersize=5,
+                       color=val_color, alpha=0.8, label='Validation')
+            
+            # Add retrained model lines
+            retrained_line_color = '#f95d6a'
+            ax_ind.axhline(y=retrained_retain_acc, color=retrained_line_color, linestyle='--', 
+                          alpha=0.9, linewidth=1.5, label=f'Retrained Model - Retain Acc ({retrained_retain_acc:.2f})')
+            ax_ind.axhline(y=retrained_forget_acc, color=retrained_line_color, linestyle=':', 
+                          alpha=0.9, linewidth=1.5, label=f'Retrained Model - Forget Acc ({retrained_forget_acc:.2f})')
+            
+            # Styling
+            ax_ind.set_xlabel('Epoch', fontsize=18)
+            ax_ind.set_ylabel('Accuracy', fontsize=18)
+            ax_ind.tick_params(axis='both', which='major', labelsize=16)
+            ax_ind.grid(True, alpha=0.3)
+            ax_ind.set_ylim(0, 1.1)
+            ax_ind.legend(fontsize=14, loc='best')
+            
+            # Save individual plot
+            fig_ind.tight_layout()
+            fig_ind.savefig(f"plots/{model_folder}/{exp_name}.pdf", bbox_inches='tight')
+            plt.close(fig_ind)
+            
+            print(f"Created individual plot for {exp_name}")
+        else:
+            print(f"Warning: {exp_name} not found in results")
 
 
 if __name__ == "__main__":
