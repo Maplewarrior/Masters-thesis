@@ -5,200 +5,143 @@ import matplotlib.patheffects
 import numpy as np
 import torch
 
-def visualize_parameter_dampening(state_dict, figsize=(10, 6), title=None, ax=None, title_fontsize=14):
+def visualize_parameter_dampening(
+    state_dict,
+    figsize=(14, 7), # Adjusted for potentially wider layout
+    title=None,
+    ax=None,
+    title_fontsize=16,
+    circle_radius=0.15,
+    h_spacing_factor=3.0,
+    v_spacing_factor=1.2
+):
     """
-    Visualize neural network parameter dampening with a structured layout.
-    
-    Parameters:
-    state_dict: Dictionary containing dampening values for each parameter
-    figsize: Tuple for figure size (ignored if ax is provided)
-    ax: Optional matplotlib axis to plot on (if None, creates new figure)
+    Visualize neural network parameter dampening with a dynamic, space-optimized layout,
+    aligned labels, and vertical separators.
     """
-    
     # Network architecture
-    layer_sizes = [2, 16, 8, 3]  # input, hidden1, hidden2, output
-    layer_names = ['', 'Input', 'Hidden', 'Output']
-    
-    # Create figure and axis with better proportions or use provided ax
+    layer_sizes = [2, 16, 8, 3]
+    layer_names = ['Input', 'Hidden 1', 'Hidden 2', 'Output']
+
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
-        created_fig = True
     else:
         fig = ax.get_figure()
-        created_fig = False
-        
-    ax.set_xlim(0, 10.5)
-    ax.set_ylim(2, 7.5)
-    ax.set_aspect('equal')
+
     ax.axis('off')
-    
-    if created_fig:
-        fig.patch.set_facecolor('white')
-    
-    # Create custom colormap with better contrast
+    ax.set_aspect('equal', adjustable='box')
+    fig.patch.set_facecolor('white')
+
+    # Custom colormap
     colors = ['#ffa600', '#ff7c43', '#f95d6a', '#d45087', '#a05195', '#665191', '#2f4b7c', '#003f5c']
-    n_bins = 512
-    cmap = LinearSegmentedColormap.from_list('dampening', colors, N=n_bins)
-    
-    # Position parameters with better spacing
-    layer_x_positions = [0.05, 3, 6.5, 10.7]
-    weight_circle_radius = 0.08
-    bias_circle_radius = 0.08
-    def calculate_grid_layout(rows, cols, center_x, center_y, spacing=0.12):
-        """Calculate positions for a grid of circles"""
-        positions = []
-        start_x = center_x - (cols - 1) * spacing / 2
-        start_y = center_y + (rows - 1) * spacing / 2
-        
-        for row in range(rows):
-            for col in range(cols):
-                x = start_x + col * spacing
-                y = start_y - row * spacing
-                positions.append((x, y))
-        return positions
-    
-    # Draw nodes for each layer
-    for layer_idx, (layer_size, layer_name, x_pos) in enumerate(zip(layer_sizes, layer_names, layer_x_positions)):
-        
-        # Draw weight matrices
-        if layer_idx > 0:
-            # Get weight matrix
-            
-            weight_keys = [k for k in state_dict.keys() if 'weight' in k and 'bias' not in k]
-            if len(weight_keys) > layer_idx - 1:
-                weights = state_dict[weight_keys[layer_idx-1]]
-            
-            if weights is not None:
-                if isinstance(weights, torch.Tensor):
-                    weights = weights.detach().numpy()
-                
-                # Draw weight matrix as a grid with better positioning
-                prev_layer_size = layer_sizes[layer_idx - 1]
-                current_layer_size = layer_size
-                
-                # Adjust weight position based on layer to prevent overlap
-                if layer_idx == 1:  # First hidden layer
-                    weight_x = x_pos - 1.8
-                    weight_spacing = 0.2
-                elif layer_idx == 2:  # Second hidden layer  
-                    weight_x = x_pos - 1.5
-                    weight_spacing = 0.2
-                else:  # Output layer
-                    weight_x = x_pos - 1.5
-                    weight_spacing = 0.2
-                
-                # Calculate grid positions for weight matrix
-                grid_positions = calculate_grid_layout(current_layer_size, prev_layer_size, 
-                                                     weight_x, 4, spacing=weight_spacing)
-                
-                for target_idx in range(current_layer_size):
-                    for source_idx in range(prev_layer_size):
-                        pos_idx = target_idx * prev_layer_size + source_idx
-                        if pos_idx < len(grid_positions):
-                            x, y = grid_positions[pos_idx]
-                            
-                            if target_idx < weights.shape[0] and source_idx < weights.shape[1]:
-                                weight_val = weights[target_idx, source_idx]
-                                color = cmap(weight_val)
-                                circle = patches.Circle((x, y), weight_circle_radius, 
-                                                      facecolor=color, edgecolor='black', 
-                                                      linewidth=0.2, alpha=0.9)
-                                ax.add_patch(circle)
-            
-            # Draw bias vector with better positioning
-            bias_key = f'layer{layer_idx-1}.bias'
-            possible_bias_keys = [
-                f'layer{layer_idx-1}.bias',
-                f'{layer_idx-1}.bias',
-                f'linear{layer_idx}.bias',
-                f'fc{layer_idx}.bias',
-                f'layers.{layer_idx-1}.bias'
-            ]
-            
-            bias_values = None
-            for key in possible_bias_keys:
-                if key in state_dict:
-                    bias_values = state_dict[key]
-                    break
-            
-            if bias_values is None:
-                bias_keys = [k for k in state_dict.keys() if 'bias' in k]
-                if len(bias_keys) >= layer_idx:
-                    bias_values = state_dict[bias_keys[layer_idx-1]]
-            
-            if bias_values is not None:
-                if isinstance(bias_values, torch.Tensor):
-                    bias_values = bias_values.detach().numpy()
-                
-                # Draw bias vector with proper spacing to avoid overlap
-                if layer_idx == 1:  # First hidden layer
-                    bias_x = x_pos - 1.2
-                elif layer_idx == 2:  # Second hidden layer
-                    bias_x = x_pos + 0.4
-                else:  # Output layer
-                    bias_x = x_pos - 0.4
-                    
-                bias_spacing = 0.2
-                bias_positions = calculate_grid_layout(layer_size, 1, bias_x, 4, spacing=bias_spacing)
-                
-                for i, bias_val in enumerate(bias_values):
-                    if i < len(bias_positions):
-                        x, y = bias_positions[i]
-                        color = cmap(bias_val)
-                        circle = patches.Circle((x, y), bias_circle_radius, 
-                                              facecolor=color, edgecolor='black', 
-                                              linewidth=0.2, alpha=0.9)
-                        ax.add_patch(circle)
-                        
-                        # Add 'B' for bias with better styling
-                        # ax.text(x, y, '', ha='center', va='center', 
-                        #        fontsize=6, fontweight='bold', color='white',
-                        #        path_effects=[plt.matplotlib.patheffects.withStroke(linewidth=1, foreground='black')])
-        
-        
-        # Add weight and bias labels for non-input layers with better positioning
-        if layer_idx > 0:
-            if layer_idx == 1:
-                weight_label_x = x_pos - 1.9
-                bias_label_x = x_pos - 0.5
-            elif layer_idx == 2:
-                weight_label_x = x_pos - 1.5
-                bias_label_x = x_pos + 0.4
-            else:
-                weight_label_x = x_pos - 1.5
-                bias_label_x = x_pos - 0.3
-            layer_label_x = (weight_label_x + bias_label_x) / 2
-                
-            # Add layer labels with better styling
-            ax.text(weight_label_x, 6.8, f'{layer_name}\n$w$: {layer_size}×{layer_sizes[layer_idx-1]}  $b$: {layer_size}×1', 
-                   ha='center', va='center', fontsize=11, color='black',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8, edgecolor='gray'))
-    
+    cmap = LinearSegmentedColormap.from_list('dampening', colors, N=512)
 
-    # Add colorbar with horizontal orientation at the bottom
+    # --- Dynamic Layout Calculation ---
+    all_coords = []
+    current_x = 0
+    circle_diameter = 2 * circle_radius
+    h_gap = circle_diameter * h_spacing_factor
+    v_spacing = circle_diameter * v_spacing_factor
+
+    # --- NEW: Calculate a single Y position for all labels based on the tallest layer ---
+    max_rows = max(layer_sizes)
+    max_height = (max_rows - 1) * v_spacing
+    label_y_pos = (max_height / 2) + circle_diameter * 4 # Use max height for consistent y-position
+
+    for i in range(1, len(layer_sizes)):
+        prev_layer_size = layer_sizes[i - 1]
+        current_layer_size = layer_sizes[i]
+
+        # --- Position Weight Matrix ---
+        weight_width = (prev_layer_size - 1) * v_spacing
+        weight_height = (current_layer_size - 1) * v_spacing
+        y_start_w = -(weight_height / 2)
+        x_start_w = current_x
+
+        weight_key = f'layer{i-1}.weight'
+        weights = state_dict.get(weight_key)
+        if weights is not None:
+            if isinstance(weights, torch.Tensor):
+                weights = weights.detach().numpy()
+
+            for r in range(current_layer_size):
+                for c in range(prev_layer_size):
+                    x = x_start_w + c * v_spacing
+                    y = y_start_w + r * v_spacing
+                    all_coords.append((x, y))
+                    color = cmap(weights[r, c])
+                    circle = patches.Circle((x, y), circle_radius, facecolor=color, edgecolor='black', linewidth=0.2)
+                    ax.add_patch(circle)
+
+        current_x += weight_width + h_gap
+
+        # --- Position Bias Vector ---
+        bias_height = (current_layer_size - 1) * v_spacing
+        y_start_b = -(bias_height / 2)
+        x_start_b = current_x
+
+        bias_key = f'layer{i-1}.bias'
+        biases = state_dict.get(bias_key)
+        if biases is not None:
+            if isinstance(biases, torch.Tensor):
+                biases = biases.detach().numpy()
+
+            for r in range(current_layer_size):
+                x = x_start_b
+                y = y_start_b + r * v_spacing
+                all_coords.append((x, y))
+                color = cmap(biases[r])
+                circle = patches.Circle((x, y), circle_radius, facecolor=color, edgecolor='black', linewidth=0.2)
+                ax.add_patch(circle)
+
+        # --- Add Labels using the pre-calculated shared Y position ---
+        weight_label_x = x_start_w + weight_width / 2
+        ax.text(
+            weight_label_x, label_y_pos, # MODIFIED: Using shared y-position
+            f'{layer_names[i]}\n$w$: ${current_layer_size} \\times {prev_layer_size}$, $b$: ${current_layer_size} \\times 1$',
+            ha='center', va='center', fontsize=11, color='black',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9, edgecolor='gray')
+        )
+
+        # Update current_x for the next layer's gap
+        current_x += circle_diameter
+
+        # --- NEW: Add a transparent vertical divider between layers ---
+        if i < len(layer_sizes) - 1:
+            divider_x = current_x + h_gap / 2
+            ax.axvline(
+                x=divider_x, color='lightgray', linestyle='--',
+                linewidth=1, alpha=0.7, ymin=0.1, ymax=0.9 # ymin/max constrain line vertically
+            )
+
+        # Add the rest of the gap after the divider's position is calculated
+        current_x += h_gap
+
+    # --- Auto-set axis limits based on content ---
+    if all_coords:
+        x_coords, y_coords = zip(*all_coords)
+        x_min, x_max = min(x_coords), max(x_coords)
+        y_min, y_max = min(y_coords), max(y_coords)
+
+        # Ensure y-limits accommodate the high labels
+        y_max = max(y_max, label_y_pos)
+
+        padding_x = circle_diameter * 3
+        padding_y = circle_diameter * 3
+        ax.set_xlim(x_min - padding_x, x_max + padding_x)
+        ax.set_ylim(y_min - padding_y, y_max + padding_y)
+
+
+    # --- Add Colorbar ---
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
-    sm.set_array([])
-
-    # Create horizontal colorbar at the bottom
-    cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', shrink=0.8, aspect=20, pad=0.1, fraction=0.05)
-
-    # Set label and tick size
-    cbar.set_label(f'$\\beta$\n(1 = No Dampening, 0 = Full Dampening)', 
-                fontsize=9)
-    cbar.ax.tick_params(labelsize=8)
-
+    cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', pad=0.08, aspect=50, shrink=0.75)
+    cbar.set_label(r'$\beta$ (1 = No Dampening, 0 = Full Dampening)', fontsize=12)
+    cbar.ax.tick_params(labelsize=10)
     cbar.ax.invert_xaxis()
-    
-    # Add title with better styling
-    if title is not None:
-        ax.set_title(title, fontsize=title_fontsize, color='black')
-    
-    # Add subtle grid lines for better visual separation
-    for x in [2.75, 7.75]:
-        ax.axvline(x=x, color='lightgray', linestyle='--', alpha=0.4, linewidth=0.8)
-    
-    if created_fig:
-        plt.tight_layout()
+
+    if title:
+        ax.set_title(title, fontsize=title_fontsize, y=1.0, pad=20, color='black', weight='bold')
+
     return fig, ax
 
 # Example usage:
@@ -236,4 +179,5 @@ if __name__ == "__main__":
     
     # Create visualization
     fig, ax = visualize_parameter_dampening(example_state_dict)
+    # Save the figure
     plt.show()
