@@ -139,7 +139,6 @@ def save_data(X, y, rogue_point_idx, filename=None):
 
 def save_fig(plot, filename, folder):
     """Save both to png and pdf"""
-    plot.savefig(os.path.join(folder, filename + '.png'))
     plot.savefig(os.path.join(folder, filename + '.pdf'))
 
 # %% 
