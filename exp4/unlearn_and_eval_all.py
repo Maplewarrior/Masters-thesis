@@ -1,7 +1,7 @@
 import subprocess
 
 seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-methods =  ['ssd', 'assd', 'ssd_v6', 'ssd_v6_smooth', 'ssd_v7', 'scrubr', 'sae', 'amnesiac', 'sisa']
+methods =  ['ssd', 'assd', 'ssd_v6', 'ssd_v6_smooth', 'ssd_v6_paired', 'scrubr', 'sae', 'amnesiac', 'sisa', 'teacher-ascend']
 if __name__ == '__main__':
     import subprocess
     for seed in seeds:

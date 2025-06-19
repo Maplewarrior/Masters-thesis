@@ -146,9 +146,9 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
     # Improve title and labels
     plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method}", 
-              fontsize=14)
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
+              fontsize=18)
+    plt.xlabel('$x_1$', fontsize=14)
+    plt.ylabel('$x_2$', fontsize=14)
     
     # Add legend with box and all custom entries
     legend = plt.legend(
@@ -364,7 +364,8 @@ def main(cfg):
                            device=DEVICE)(retain_dataloader=dataloader_retain, 
                                           forget_dataloader=dataloader_forget, 
                                           val_dataloader=dataloader_val, 
-                                          n_rounds=10)
+                                          n_rounds=4,
+                                          n_repair_rounds=6)
             
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg,
                                   compress_pdfs=cfg.get('compress_pdfs', True), make_pdfs=cfg.get('make_pdfs', True))

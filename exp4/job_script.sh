@@ -6,7 +6,7 @@
 
 # BSUB -gpu "num=1:mode=exclusive_process"
 
-#BSUB -W 03:00                  # set walltime limit hh:mm
+#BSUB -W 04:00                  # set walltime limit hh:mm
 #BSUB -R "rusage[mem=32GB]"     # memory request
 #BSUB -R "select[gpu32gb]"      # memory request
 

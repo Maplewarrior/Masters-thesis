@@ -85,7 +85,7 @@ def plot_data(X, y, rogue_point_idx=None):
     if rogue_point_idx is not None:
         plt.scatter(
             X[rogue_point_idx, 0], X[rogue_point_idx, 1],
-            c='black',  # Black for better visibility
+            c='#a05195',
             marker='X',  # X marker for rogue point
             s=150,  # Larger size for emphasis
             linewidth=1.5,
@@ -178,6 +178,7 @@ if __name__ == "__main__":
     rogue_point = (centroids[1], np.array([1]))
     X, y, rogue_point_idx = generate_data(centroids, stds, sizes, rogue_point=rogue_point)
     plot = plot_data(X,y, rogue_point_idx)
+    plot.title('Simple synthetic dataset (rogue point with same centroid as the class with a same label)', fontsize=14, fontweight='bold')
     save_data(X, y, rogue_point_idx, os.path.join(data_folder, 'data_2.npz'))
     save_fig(plot, 'data_2', data_plots_folder)
     plt.close()
