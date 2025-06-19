@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import os
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from src.utils.get_git_root_path import get_git_root
 
 seed = 42
 np.random.seed(seed)
@@ -131,8 +132,6 @@ def save_data(X, y, rogue_point_idx, filename=None):
 
 def save_fig(plot, filename, folder):
     """Save both to png and pdf with improved quality"""
-    # Save as PNG with high DPI
-    plot.savefig(os.path.join(folder, filename + '.png'), dpi=300, bbox_inches='tight')
     # Save as PDF with high quality
     plot.savefig(os.path.join(folder, filename + '.pdf'), bbox_inches='tight')
 
@@ -144,7 +143,7 @@ if __name__ == "__main__":
     sizes = np.array([20, 20, 20])
     validation_sizes = np.array([10, 10, 10])
 
-    data_folder = 'exp2_rogue_one/data'
+    data_folder = os.path.join(get_git_root(), 'data', 'rogue_one')
     data_plots_folder = os.path.join(data_folder, 'plots')
     os.makedirs(data_plots_folder, exist_ok=True)
 
