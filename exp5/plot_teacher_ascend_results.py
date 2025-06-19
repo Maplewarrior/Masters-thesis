@@ -304,8 +304,8 @@ def main():
     
     for exp_name in individual_experiments:
         if exp_name in all_results:
-            # Create individual figure
-            fig_ind, ax_ind = plt.subplots(1, 1, figsize=(12, 8))
+            # Create individual figure with consistent dimensions
+            fig_ind, ax_ind = plt.subplots(1, 1, figsize=(8, 6))
             
             # Get results for this experiment
             results = all_results[exp_name]
