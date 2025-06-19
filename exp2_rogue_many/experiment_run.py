@@ -34,29 +34,9 @@ def load_dataset(file):
 
     return torch.from_numpy(X), torch.from_numpy(y), forget_idxs
 
-def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, 
-                           dataset_name, X_forget, cfg, hyperparams,
-                           make_pdfs=True, 
-                           compress_pdfs=True,
-                           ):
-    dataset_number = dataset_name.split("_")[1]
-    title = f"{cfg.unlearn.method}"
-    savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-    if 'ssd' in cfg.unlearn.method and cfg.unlearn.method != 'assd':
-        if 'v6' in cfg.unlearn.method or 'v7' in cfg.unlearn.method:
-            title = f"{cfg.unlearn.method} α1={hyperparams['alpha_0']:.2f}, λ1={hyperparams['_lambda_0']:.2f}, α2={hyperparams['alpha_1']:.2f}, λ2={hyperparams['_lambda_1']:.2f}"
-            savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-        else:
-            title = f"{cfg.unlearn.method} α={hyperparams['alpha']:.2f}, λ={hyperparams['_lambda']:.2f}"
-            if 'v3' in cfg.unlearn.method or 'v4' in cfg.unlearn.method:
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-            else:
-                savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha={hyperparams['alpha']:.2f}_lambda={hyperparams['_lambda']:.2f}"
-    else:
-        savepath = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}"
-    
-    superimposed_filename = savepath + '.png'
-    
+def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader_train, X_forget, plot_title=None, filename=None):
+    save_path = os.path.join(results_dir, filename) + '.pdf'
+
     # Set common plot styling
     plt.style.use('seaborn-v0_8-whitegrid')
     
@@ -81,9 +61,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         rogue_classes.append(rogue_class)
         rogue_colors.append(professional_colors[rogue_class % len(professional_colors)])
     
-    # List to store PDF files for later compression
-    pdf_files = []
-    
     # Create creators for both models
     unlearned_creator = DecisionBoundaryCreator(model, dataloader_retrain)
     original_creator = DecisionBoundaryCreator(original_model, dataloader_train)
@@ -106,7 +83,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
     # Plot the unlearned decision boundary with lower opacity
     plt.pcolormesh(xx_u.numpy(), yy_u.numpy(), decision_boundary_unlearned.numpy(),
-                 alpha=0.4, cmap=custom_cmap)
+                 alpha=0.4, cmap=custom_cmap, rasterized=True)
     
 
     unlearned_creator.plot_retain_data(X_retain, y_retain, classes, colors)
@@ -169,7 +146,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             legend_handles.append(rogue_point)
     
     # Improve title and labels
-    plt.title(f"Decision Boundary\nBefore and After Unlearning for {cfg.unlearn.method} ({title})", 
+    plt.title(plot_title if plot_title is not None else "", 
               fontsize=14)
     plt.xlabel('Feature 1', fontsize=12)
     plt.ylabel('Feature 2', fontsize=12)
@@ -199,39 +176,33 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     # Ensure tight layout
     plt.tight_layout()
     
-    # Save with high DPI as PNG
-    plt.savefig(superimposed_filename, bbox_inches='tight')
     
-    # Save as PDF if enabled
-    if make_pdfs:
-        pdf_file = f"{results_dir}/{dataset_number}_decision_boundary_{cfg.unlearn.method}_superimposed.pdf"
-        
-        plt.savefig(pdf_file, 
-                   bbox_inches='tight', 
-                   format='pdf',
-                   dpi=150)  # Reduced DPI for PDF
-        
-        # Add to list for later compression if enabled
-        pdf_files.append(pdf_file)
+    plt.savefig(save_path, 
+                bbox_inches='tight', 
+                format='pdf',
+                dpi=150)  # Reduced DPI for PDF
     
     plt.close()
-    
-    # Further compress PDFs with Ghostscript if enabled
-    if compress_pdfs and pdf_files:
-        try:
-            from src.utils.pdf_compression import compress_pdf_with_ghostscript
-            
-            print("Further compressing PDFs with Ghostscript...")
-            for pdf_file in pdf_files:
-                compress_pdf_with_ghostscript(pdf_file, quality='ebook')
-        except ImportError:
-            print("PDF compression module not found. PDFs saved with basic compression only.")
-        except Exception as e:
-            print(f"Error during PDF compression: {e}")
-            print("PDFs saved with basic compression only.")
 
 def count_updated_params(original_model, unlearned_model):
     pass
+
+def ssd_bo_title(hyperparams):
+    
+    plt_tit = ""
+
+    n_hyperparam_pairs = int((len(hyperparams["max"]) - 1)/2)
+    for i in range(n_hyperparam_pairs):
+        alpha = hyperparams["max"][f"alpha_{i}"]
+        lamb = hyperparams["max"][f"_lambda_{i}"]
+        num = i + 1
+        plt_tit += f"$\\alpha_{num}={alpha:.2f}$, $\\lambda_{num}={lamb:.2f}$"
+        if i < n_hyperparam_pairs - 1:  # Add comma and space except for last item
+            plt_tit += ",   "
+
+    plt_tit = plt_tit.rstrip(', ')
+
+    return plt_tit
 
 @hydra.main(config_path=".", config_name="config")
 def main(cfg):
@@ -270,6 +241,9 @@ def main(cfg):
     dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
     dataloader_retain = DataLoader(dataset_retain, batch_size=batch_size, shuffle=True)
     dataloader_forget = DataLoader(dataset_forget, batch_size=batch_size, shuffle=True)
+    
+    dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
+    dataset_number = dataset_name.split("_")[1]
 
     # ============= Initialize logger =============
     if cfg.logging.logger == "wandb":
@@ -285,7 +259,6 @@ def main(cfg):
                             dir=cfg.logging.dir)
 
 
-        dataset_name = cfg.data.dataset.split("/")[-1].split(".")[0]
 
     else:
         raise NotImplementedError(f"Logger {cfg.logging.logger} not implemented")
@@ -324,7 +297,9 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, {})
+        decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}"
+        plot_title = f"Retrained"
+        decision_boundary_plot(model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
 
     else:
         unlearned_model = NeuralNet(M=X.shape[1], n_classes=cfg.data.n_classes, seed=cfg.model.seed)
@@ -354,9 +329,10 @@ def main(cfg):
                                                  forget_dataloader=dataloader_forget,
                                                  return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha{hyperparams['alpha']}_lambda{hyperparams['_lambda']}"
+            plot_title = f"SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_alpha={hyperparams["alpha"]}_lambda={hyperparams["_lambda"]}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v2":
@@ -372,10 +348,11 @@ def main(cfg):
                                                       forget_dataloader=dataloader_forget,
                                                       return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}_alpha{hyperparams['alpha']}_lambda{hyperparams['_lambda']}"
+            plot_title = f"SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
             
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_alpha={hyperparams["alpha"]}_lambda={hyperparams["_lambda"]}_dampening.png')
         
         elif cfg.unlearn.method == "ssd_v3":
@@ -386,30 +363,18 @@ def main(cfg):
                                                                     validation_dataloader=dataloader_val,
                                                                     return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}" # ? Do not include hyperparams in the filename, because these are not static. They are found with BO.
+            plot_title = f"BO-SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
             
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
 
-        elif cfg.unlearn.method == "ssd_v4":
-            from src.unlearners.selective_synaptic_dampening_v4 import SelectiveSynapticDampening
-            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model, 
-                                                     device=DEVICE)(full_dataloader=dataloader_train, 
-                                                                    forget_dataloader=dataloader_forget,
-                                                                    validation_dataloader=dataloader_val,
-                                                                    return_dampening=True)
-            
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
-
-            fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
-            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
-        
         elif cfg.unlearn.method == "ssd_v6":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+            P = 2 # TODO: Hyperparam to config
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
+                                                     P=P,
                                                      k=0.999,
                                                      smooth_dampening=False,
                                                      n_bo_iter=100,
@@ -418,15 +383,19 @@ def main(cfg):
                                                                     validation_dataloader=dataloader_val,
                                                                     return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max'])
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}_P{P}" # ? Do not include hyperparams in the filename, because these are not static. They are found with BO.
+            
+
+            plot_title = f"BO-SSD\n{ssd_bo_title(hyperparams)}"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
 
         elif cfg.unlearn.method == "ssd_v6_smooth":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+            P = 2 # TODO: Hyperparam to config
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
+                                                     P=P,
                                                      k=0.999,
                                                      smooth_dampening=True,
                                                      n_bo_iter=100,
@@ -435,45 +404,22 @@ def main(cfg):
                                                                     validation_dataloader=dataloader_val,
                                                                     return_dampening=True)
             
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max'])
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}_P{P}" # ? Do not include hyperparams in the filename, because these are not static. They are found with BO.
+            
+            plot_title = f"BO-SSD (smooth)\n{ssd_bo_title(hyperparams)}"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
             
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
-
-        
-        elif cfg.unlearn.method == "ssd_v7":
-            from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
-            hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
-                                                     P=2,
-                                                     k=0.999,
-                                                     n_trials=500,
-                                                     device=DEVICE)(full_dataloader=dataloader_train, 
-                                                                    forget_dataloader=dataloader_forget,
-                                                                    validation_dataloader=dataloader_val,
-                                                                    return_dampening=True)
-            
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams['max']['params'])
-            fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
-            plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
-
-        elif cfg.unlearn.method == "teacher_ascend":
-            from src.unlearners.teacher_ascend import TeacherAscender
-            hyperparams = {'n_epochs': 15, '_lambda': 8}
-            ta = TeacherAscender(unlearned_model, 
-                                 n_epochs=hyperparams['n_epochs'], 
-                                _lambda=hyperparams['_lambda'], device=DEVICE)
-            
-            ta(dataloader_retain, dataloader_forget)
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
-            
+    
         elif cfg.unlearn.method == "assd":
             from src.unlearners.adaptive_ssd import AdaptiveSSD
             hyperparams, dampenings = AdaptiveSSD(unlearned_model, device=DEVICE)(dataloader_train, dataloader_forget, return_dampening=True)
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, cfg, hyperparams)
+            decision_boundary_filename = f"{dataset_number}_decision_boundary_{cfg.unlearn.method}" # ? Do not include hyperparams in the filename, because these are not static. They are found with BO.
+            plot_title = f"Adaptive SSD"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataset_name, X_forget, plot_title=plot_title, filename=decision_boundary_filename)
+            
             fig = visualize_parameter_dampening(dampenings)
-            dataset_number = dataset_name.split("_")[1]
             plt.savefig(f'{results_dir}/{dataset_number}_{cfg.unlearn.method}_dampening.png')
         
         else:
