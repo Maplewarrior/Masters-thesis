@@ -19,8 +19,6 @@ def main(cfg):
     validation_path = os.path.join("/",*dataset_path.split("/")[1:-1], "validation_data.npz")
 
     rogue = dataset_path.split("/")[-2] # rogue_many or rogue_one
-    # replace _ with nothing
-    rogue = rogue.replace("_", "")
 
     # ============== Load data ============== 
     dataloader_train, dataloader_val, dataloader_retain, dataloader_forget, forget_idxs = get_data(dataset_path, validation_path, cfg.data.batch_size, cfg.data.n_classes)
@@ -31,7 +29,7 @@ def main(cfg):
     # No logger, this could be changed to a wandb logger if needed
     logger = None 
 
-    decision_boundary_filename = f"{dataset_number}{rogue}_decision_boundary" 
+    decision_boundary_filename = f"{dataset_number}_decision_boundary" 
 
     if cfg.unlearn.method == "retrain":
 
@@ -61,7 +59,7 @@ def main(cfg):
                                        disable_tqdm=cfg.trainer.disable_tqdm, 
                                        do_early_stopping=cfg.trainer.do_early_stopping)()
 
-        results_dir = os.path.join(os.path.dirname(__file__), "results", cfg.unlearn.method)
+        results_dir = os.path.join(os.path.dirname(__file__), "results", cfg.unlearn.method, rogue)
         os.makedirs(results_dir, exist_ok=True)
 
         plot_title = f"Retrained"
@@ -102,7 +100,7 @@ def main(cfg):
                                   n_repair_rounds=n_repair_rounds # min only rounds 
                                   )
             
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_gamma{gamma}_n_rounds{n_rounds}_n_repair_rounds{n_repair_rounds}")
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_gamma{gamma}_n_rounds{n_rounds}_n_repair_rounds{n_repair_rounds}", rogue)
             os.makedirs(results_dir, exist_ok=True)
             plot_title = f"SCRUB+R"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
@@ -120,7 +118,7 @@ def main(cfg):
                                                       forget_dataloader=dataloader_forget)
             
             # add hyperparameters to results folder name
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_lambda{_lambda}")
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_lambda{_lambda}", rogue)
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"SSD"
@@ -152,7 +150,7 @@ def main(cfg):
             sae_unlearner = SAEUnlearner(unlearned_model, alpha=alpha, device=DEVICE)
             sae_unlearner(dataloader_retain, dataloader_forget)
 
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_layer_num{layer_num}")
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_layer_num{layer_num}", rogue)
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"SAE"
@@ -186,11 +184,10 @@ def main(cfg):
             AmnesiacUnlearner(model=unlearned_model, 
                               unlearn_parameters=cfg.unlearn)(indices_to_forget=forget_idxs)
 
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}")
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}", rogue)
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"Amnesiac"
-            decision_boundary_filename = f"{dataset_number}{rogue}_{cfg.unlearn.method}_decision_boundary"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
 
         elif cfg.unlearn.method == "sisa":
@@ -240,11 +237,10 @@ def main(cfg):
             sisa_unlearner = SISAUnlearner(sisa)
             sisa_unlearner(forget_indices=forget_idxs)
 
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_n_shards{cfg.sisa.n_shards}_n_slices{cfg.sisa.n_slices}")
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_n_shards{cfg.sisa.n_shards}_n_slices{cfg.sisa.n_slices}", rogue)
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"SISA"
-            decision_boundary_filename = f"{dataset_number}{rogue}_{cfg.unlearn.method}_decision_boundary"
             decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
                                 
             # remove saved SISA weights
