@@ -22,5 +22,5 @@ This will generate the datasets including plots in your repo root directory's da
 Now we run the experiment on each of the dataset configuration, moving the rogue point(s).
 
 ```bash
-python exp2_rogue_many/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd,ssd-ll,ssd-bo,ssd-bo-pairwise,ssd-bo-pairwise-smooth" hydra/launcher=ray --multirun
+python exp2_rogue_many/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd,ssd-layerwise,ssd-bo,ssd-bo-pairwise,ssd-bo-pairwise-smooth" hydra/launcher=ray --multirun
 ```
