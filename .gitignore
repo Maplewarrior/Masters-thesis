@@ -9,6 +9,7 @@ venv/
 # dataset files
 data/
 sisa/
+
 experiments/
 # Exclude configs/experiments/ from gitignore
 !configs/experiments/
