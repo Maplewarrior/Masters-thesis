@@ -1,22 +1,19 @@
 import torch
-import torch.optim as optim
-from src.unlearners.base_unlearner import BaseUnlearner
-import pdb
 from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
 
 """
 This version of SSD only applies dampening in the final layer of the model
 """
 
-
-class SelectiveSynapticDampening(SSD):
+class SelectiveSynapticDampeningLayerwise(SSD):
     def __init__(self, 
                  model,
                  alpha: float,
                  _lambda: float,
+                 layer_target: list[int] = None,
                  device: str = 'cpu') -> None:
         super().__init__(model, alpha, _lambda, device)
-        
+        self.layer_target = layer_target
 
     def __call__(self, 
                  full_dataloader,
@@ -37,7 +34,8 @@ class SelectiveSynapticDampening(SSD):
         with torch.no_grad():
             for name, param in self.model.named_parameters():
                 # skip the first layers :D
-                if int(name.split('.')[1]) <= 2:
+                if int(name.split('.')[1]) not in self.layer_target:
+                    print(f"Layer {int(name.split('.')[1])} is not in the target layer")
                     all_dampenings[name] = torch.ones_like(param)
                     continue
                 updated_parameter = param.data.clone()
@@ -58,5 +56,3 @@ class SelectiveSynapticDampening(SSD):
         
         if return_dampening:
             return all_dampenings
-
-        

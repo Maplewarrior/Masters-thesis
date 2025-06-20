@@ -6,15 +6,12 @@ Dampening is applied to all model layers.
 
 
 import numpy as np
-from math import floor
 import warnings
 import copy
 import time
-import pdb
 import torch
 from torch.utils.data import DataLoader
 
-import botorch
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from botorch.acquisition import UpperConfidenceBound
@@ -28,7 +25,7 @@ from src.utils.misc import check_statedict_equivalent
 
 from src.unlearners.selective_synaptic_dampening import SelectiveSynapticDampening as SSD
 
-class SelectiveSynapticDampening(SSD):
+class SelectiveSynapticDampeningBO(SSD):
     def __init__(self,
                  model,
                  k: int = 1.0, # top-k % entropy test data to sample from when constructing repair set

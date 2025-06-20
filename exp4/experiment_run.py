@@ -515,7 +515,7 @@ def main(cfg):
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampening(unlearned_model, 
+        ssd = SelectiveSynapticDampeningBOPairwise(unlearned_model, 
                                          alpha=hyperparams["alpha"], 
                                          _lambda=hyperparams["_lambda"],
                                           device=DEVICE)
@@ -566,12 +566,12 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, assd_experiment_specs)
 
     elif cfg.unlearn.method == 'ssd_v6':
-        from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 1, 'k': 0.99, 'smooth_dampening': False, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
+        ssd = SelectiveSynapticDampeningBOPairwise(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
                                          smooth_dampening=hyperparams['smooth_dampening'], n_bo_iter=hyperparams['n_bo_iter'], 
                                          device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
@@ -581,12 +581,12 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
 
     elif cfg.unlearn.method == 'ssd_v6_paired':
-        from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 3, 'k': 0.99, 'smooth_dampening': False, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
+        ssd = SelectiveSynapticDampeningBOPairwise(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
                                          smooth_dampening=hyperparams['smooth_dampening'], n_bo_iter=hyperparams['n_bo_iter'], 
                                          device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
@@ -596,12 +596,12 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
     
     elif cfg.unlearn.method == 'ssd_v6_smooth':
-        from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 1, 'k': 0.99, 'smooth_dampening': True, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
+        ssd = SelectiveSynapticDampeningBOPairwise(unlearned_model, P=hyperparams['P'], k=hyperparams['k'], 
                                          smooth_dampening=hyperparams['smooth_dampening'], n_bo_iter=hyperparams['n_bo_iter'], 
                                          device=DEVICE)
         ssd_v6_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
@@ -610,19 +610,6 @@ def main(cfg):
         run_and_eval(ssd_v6_fn, ssd_v6_experiment_specs)
         eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
 
-    # elif cfg.unlearn.method == 'ssd_v7':
-    #     from src.unlearners.selective_synaptic_dampening_v7 import SelectiveSynapticDampening
-    #     hyperparams = {'P': 1, 'k': 0.75, 'n_trials': 100}
-    #     dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-    #                                                                                                         dataloader_forget, dataloader_val,
-    #                                                                                                         cfg.model.seed)
-    #     ssd = SelectiveSynapticDampening(unlearned_model, P=hyperparams['P'],k=hyperparams['k'],n_trials=hyperparams['n_trials'], device=DEVICE)
-    #     ssd_v7_fn = lambda: ssd(dataloader_train, dataloader_forget, dataloader_val)
-    #     ssd_v7_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
-    #                                               results_dir, 'SSD v7', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
-    #     run_and_eval(ssd_v7_fn, ssd_v7_experiment_specs)
-    #     eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v7_experiment_specs)
-        
     elif cfg.unlearn.method == 'sae':
         from src.models.SAE import SAE
         from src.models.neural_net_with_sae import NeuralNetWithSAE

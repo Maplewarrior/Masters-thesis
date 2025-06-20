@@ -15,10 +15,10 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.priors import GammaPrior
 from botorch.models.transforms import Normalize, Standardize
-from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
+from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
 from src.utils.misc import check_statedict_equivalent
 
-class SSDVisualizer(SelectiveSynapticDampening):
+class SSDVisualizer(SelectiveSynapticDampeningBOPairwise):
     def __init__(self, model, 
                  P: int = 1, 
                  k: int = 0.999, 
