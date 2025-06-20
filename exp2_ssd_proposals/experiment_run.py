@@ -8,7 +8,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.visualization.dampening_visualization import visualize_parameter_dampening
 from src.plotting.decision_boundary_plot import decision_boundary_plot
 from src.utils.load_rogue_data import get_data
-
+from src.visualization.bo_plotting import plot_convergence_analysis
 
 def count_updated_params(original_model, unlearned_model):
     pass
@@ -163,6 +163,7 @@ def main(cfg):
         elif cfg.unlearn.method == "ssd-bo":
             from src.unlearners.selective_synaptic_dampening_v3 import SelectiveSynapticDampening
             k = 1
+            bo_plot_exploration_factor = 2.5
 
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model, 
                                                      n_bo_iter=100,
@@ -176,7 +177,6 @@ def main(cfg):
             os.makedirs(results_dir, exist_ok=True)
             
 
-            import pdb; pdb.set_trace()
             plot_title = f"BO-SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
@@ -187,6 +187,9 @@ def main(cfg):
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
             P = 2 # TODO: Hyperparam to config
             k = 0.999
+
+            bo_plot_exploration_factor = 2.5 # ? This will be appended to the convergence plot filename. You could have multiple convergence plots for the same method (hyperparams).
+
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
                                                      P=P,
                                                      k=k,
@@ -205,10 +208,19 @@ def main(cfg):
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
 
+
+            # Plot convergence analysis
+            plot_convergence_analysis(hyperparams['result'], 
+                                    savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
+                                    exploration_factor=bo_plot_exploration_factor)
+
         elif cfg.unlearn.method == "ssd-bo-pairwise-smooth":
             from src.unlearners.selective_synaptic_dampening_v6 import SelectiveSynapticDampening
             P = 2 # TODO: Hyperparam to config
             k = 0.999
+
+            bo_plot_exploration_factor = 2.5 # ? This will be appended to the convergence plot filename. You could have multiple convergence plots for the same method (hyperparams).
+
             hyperparams, dampenings = SelectiveSynapticDampening(unlearned_model,
                                                      P=P,
                                                      k=k,
@@ -227,6 +239,11 @@ def main(cfg):
             
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
+
+            # Plot convergence analysis
+            plot_convergence_analysis(hyperparams['result'], 
+                                    savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
+                                    exploration_factor=bo_plot_exploration_factor)
     
         elif cfg.unlearn.method == "assd":
             from src.unlearners.adaptive_ssd import AdaptiveSSD
