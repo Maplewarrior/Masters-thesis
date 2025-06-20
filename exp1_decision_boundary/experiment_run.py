@@ -31,7 +31,7 @@ def main(cfg):
     # No logger, this could be changed to a wandb logger if needed
     logger = None 
 
-    decision_boundary_filename = f"{dataset_number}{rogue}_{cfg.unlearn.method}_decision_boundary" 
+    decision_boundary_filename = f"{dataset_number}{rogue}_decision_boundary" 
 
     if cfg.unlearn.method == "retrain":
 
