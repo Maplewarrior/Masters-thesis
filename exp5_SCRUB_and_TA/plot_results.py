@@ -664,7 +664,6 @@ def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
 
     return selected_experiment
 
-
 def main():
 
     seed_str = "_42"
@@ -778,10 +777,6 @@ def main():
         else:
             print("No 'loss_terms' data found to plot.")
 
-        # except FileNotFoundError:
-        #     print(f"Error: The selected directory '{results_dir}' was not found.")
-        # except Exception as e:
-        #     print(f"An error occurred while listing directory contents: {e}")
 
 if __name__ == "__main__":
     main() 
