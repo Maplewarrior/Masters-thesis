@@ -10,13 +10,12 @@ from src.utils.get_git_root_path import get_git_root
 from src.utils.load_rogue_data import get_data
 
 # Correction of save path..
-results_dir = os.path.join(os.path.dirname(__file__), "results_ablation_bo_objective")
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg):
     DEVICE = 'cpu' #('cuda' if torch.cuda.is_available() else 'cpu')
+    results_dir = os.path.join(os.path.dirname(__file__), "results", "ablation_bo_objective")
     os.makedirs(results_dir, exist_ok=True)
-    os.makedirs(f"{results_dir}/objective_shape", exist_ok=True)
 
     N_points = 10000
     # set appropriate pbounds for each dataset (where objective is not always constant)
@@ -95,7 +94,7 @@ def main(cfg):
     # Customize the plot appearance
     plt.xlabel(r'$\alpha$', fontsize=14, fontweight='bold', color='#333333')
     plt.ylabel(r'$\mathcal{L}_{BO}$', fontsize=14, fontweight='bold', color='#333333')
-    plt.title(r'Objective value as a function of $\alpha$. Here $\lambda=1$ is fixed.', fontsize=18, fontweight='bold', 
+    plt.title(r'$\mathcal{L}_{BO}$ as a function of $\alpha$. $\lambda=1$', fontsize=18, fontweight='bold', 
             color='#2c3e50', pad=20)
 
     # Add legend with custom styling
@@ -115,8 +114,8 @@ def main(cfg):
 
 
     # Optional: Save the plot with high quality
-    filename = f"{dataset_number}_objective_vs_alpha" if not smooth_dampen else f"{dataset_number}_objective_vs_alpha_smooth"
-    plt.savefig(f'{results_dir}/objective_shape/{filename}.pdf')
+    filename = f"{dataset_number}_LBO_vs_alpha_lambda1" if not smooth_dampen else f"{dataset_number}_objective_vs_alpha_lambda1_smooth"
+    plt.savefig(f'{results_dir}/{filename}.pdf') 
 
 
 if __name__ == '__main__':
