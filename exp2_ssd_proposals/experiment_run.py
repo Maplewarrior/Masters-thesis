@@ -139,27 +139,38 @@ def main(cfg):
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
         
-        elif cfg.unlearn.method == "ssd-ll":
-            from src.unlearners.selective_synaptic_dampening_v2 import SelectiveSynapticDampening
+        elif cfg.unlearn.method == "ssd-layerwise":
+            from src.unlearners.ablation_ssd_layerwise import SelectiveSynapticDampening_layerwise as SelectiveSynapticDampening_ablation
+
+            layer_target = [1,2,3] # TODO: Hyperparam to config
             alpha = 1
             _lambda = 1
 
-            dampenings = SelectiveSynapticDampening(unlearned_model,
-                                       alpha=alpha, 
-                                       _lambda=_lambda,
-                                       device=DEVICE)(full_dataloader=dataloader_train, 
-                                                      forget_dataloader=dataloader_forget,
-                                                      return_dampening=True)
+            layer_target_actual = [(l - 1)*2 for l in layer_target] # ? Skip the relu between layers
+            dampenings = SelectiveSynapticDampening_ablation(unlearned_model, 
+                                            alpha=alpha, 
+                                            _lambda=_lambda,
+                                            layer_target=layer_target_actual,
+                                            device=DEVICE)(full_dataloader=dataloader_train, 
+                                                            forget_dataloader=dataloader_forget,
+                                                            return_dampening=True)
             
-            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_lambda{_lambda}", rogue)
-            os.makedirs(results_dir, exist_ok=True)
 
-            plot_title = f"SSD\n$\\alpha={alpha:.2f}$, $\\lambda={_lambda:.2f}$"
-            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
+            # Create structured directory hierarchy
+            layer_target_str = '_'.join(map(str, layer_target)) if layer_target else 'all'
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
-            plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
-        
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_layers{layer_target_str}_alpha{alpha}_lambda{_lambda}", rogue)
+            os.makedirs(results_dir, exist_ok=True)
+            title = f'SSD\n${{L}}_{{target}}$ = {",".join(map(str, layer_target))}\n${{\\alpha}}$ = {alpha}, ${{\\lambda}}$ = {_lambda}'
+
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=title, filename=decision_boundary_filename)
+            
+            # Create dampening visualization with structured path
+            visualize_parameter_dampening(dampenings, type='stacked')
+            # Save dampening plot in the same structured directory  
+            dampening_filename = os.path.join(results_dir, f"{dataset_number}_dampenings.pdf")
+            plt.savefig(dampening_filename)
+
         elif cfg.unlearn.method == "ssd-bo":
             from src.unlearners.selective_synaptic_dampening_v3 import SelectiveSynapticDampening
             k = 1
