@@ -55,7 +55,7 @@ def main(cfg):
 
     decision_boundary_filename = f"{dataset_number}_decision_boundary"
     
-    dampening_type = 'original'
+    dampening_plot_type = 'stacked'
 
     if cfg.unlearn.method == "retrain":
 
@@ -135,7 +135,8 @@ def main(cfg):
             plot_title = f"SSD\n$\\alpha={alpha:.2f}$, $\\lambda={_lambda:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
         
         elif cfg.unlearn.method == "ssd-ll":
@@ -156,7 +157,7 @@ def main(cfg):
             plot_title = f"SSD\n$\\alpha={alpha:.2f}$, $\\lambda={_lambda:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
         
         elif cfg.unlearn.method == "ssd-bo":
@@ -174,10 +175,12 @@ def main(cfg):
             results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_k{k}", rogue)
             os.makedirs(results_dir, exist_ok=True)
             
+
+            import pdb; pdb.set_trace()
             plot_title = f"BO-SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
 
         elif cfg.unlearn.method == "ssd-bo-pairwise":
@@ -199,7 +202,7 @@ def main(cfg):
 
             plot_title = f"BO-SSD\n{ssd_bo_title(hyperparams)}"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
 
         elif cfg.unlearn.method == "ssd-bo-pairwise-smooth":
@@ -222,7 +225,7 @@ def main(cfg):
             plot_title = f"BO-SSD (smooth)\n{ssd_bo_title(hyperparams)}"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
     
         elif cfg.unlearn.method == "assd":
@@ -235,7 +238,7 @@ def main(cfg):
             plot_title = f"Adaptive SSD"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
-            fig = visualize_parameter_dampening(dampenings, type=dampening_type)
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
         
         else:
