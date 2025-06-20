@@ -190,7 +190,7 @@ def main(cfg):
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"Amnesiac"
-            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_filename = f"{dataset_number}{rogue}_{cfg.unlearn.method}_decision_boundary"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
 
         elif cfg.unlearn.method == "sisa":
@@ -244,7 +244,7 @@ def main(cfg):
             os.makedirs(results_dir, exist_ok=True)
 
             plot_title = f"SISA"
-            decision_boundary_filename = f"{dataset_number}_{cfg.unlearn.method}_decision_boundary"
+            decision_boundary_filename = f"{dataset_number}{rogue}_{cfg.unlearn.method}_decision_boundary"
             decision_boundary_plot(sisa, sisa_pre_unlearning, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
                                 
             # remove saved SISA weights
