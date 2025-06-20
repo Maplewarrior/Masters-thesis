@@ -740,6 +740,8 @@ def main():
 
 
         fig_size = (10, 8)
+        plot_name_postfix = f'_{selected_file_name}' if "ta_metrics_entropy-retain_fimratio" not in selected_file_name else f''
+
 
         fig_mia_epochs = plot_mia_metrics(mia_results, retrained_model_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
         fig_js_div_epochs = plot_js_divergence_metrics(js_div_results, figsize=fig_size, n_repair_epochs=n_repair_epochs)
@@ -753,13 +755,13 @@ def main():
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.png'), bbox_inches='tight')
         # fig_acc.savefig(os.path.join(plots_dir_subfolder, f'accuracy_loss_results.pdf'), bbox_inches='tight')
         # fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
-        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results.pdf'), bbox_inches='tight')
+        fig_mia_epochs.savefig(os.path.join(plots_dir_subfolder, f'mia_epochs_results{plot_name_postfix}.pdf'), bbox_inches='tight')
         # fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results_{results_dir}_{model_folder}.png'), bbox_inches='tight')
-        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results.pdf'), bbox_inches='tight')
+        fig_js_div_epochs.savefig(os.path.join(plots_dir_subfolder, f'js_div_epochs_results{plot_name_postfix}.pdf'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.png'), bbox_inches='tight')
         # fig_acc_tradeoff.savefig(os.path.join(plots_dir_subfolder, f'retain_vs_forget_acc.pdf'), bbox_inches='tight')
         # fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs_{results_dir}_{model_folder}.png'), bbox_inches='tight')
-        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs.pdf'), bbox_inches='tight')
+        fig_retain_forget_epochs.savefig(os.path.join(plots_dir_subfolder, f'retain_forget_accuracy_epochs{plot_name_postfix}.pdf'), bbox_inches='tight')
         plt.close('all')
 
         # Now, plot the loss components
