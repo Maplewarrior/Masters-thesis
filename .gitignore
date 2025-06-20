@@ -19,6 +19,7 @@ experiments/
 *.so
 
 results/
+results_*/
 
 # Distribution / packaging
 .Python
