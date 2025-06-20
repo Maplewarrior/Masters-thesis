@@ -5,6 +5,54 @@ import matplotlib.patheffects
 import numpy as np
 import torch
 from torch import tensor
+import torch.nn as nn
+
+def get_architecture_from_state_dict(state_dict: dict) -> list:
+    """
+    Dynamically inspects a PyTorch state_dict and deduces the network architecture.
+
+    This function is designed for sequential models where weight keys follow a
+    sortable naming convention (e.g., 'layer.0.weight', 'net.2.weight').
+
+    Args:
+        state_dict (dict): The PyTorch state_dict object.
+
+    Returns:
+        list: A list of integers representing the layer sizes,
+              e.g., [input_features, hidden1_features, ..., output_features].
+              Returns an empty list if no weight keys are found.
+    """
+    # 1. Find all keys that correspond to weights.
+    weight_keys = [k for k in state_dict.keys() if 'weight' in k]
+
+    if not weight_keys:
+        print("Warning: No 'weight' keys found in the state_dict.")
+        return []
+
+    # 2. Sort keys to ensure correct layer order.
+    #    This sort is robust for multi-digit layer numbers (e.g., 'net.10.weight').
+    try:
+        weight_keys.sort(key=lambda x: int(x.split('.')[1]))
+    except (IndexError, ValueError):
+        print("Warning: Could not sort keys by layer number. Using simple alphabetical sort.")
+        weight_keys.sort()
+
+    # 3. Build the architecture list from the tensor shapes.
+    arch = []
+    
+    # The input feature size of the network is the 'in_features' of the first layer.
+    # For a weight tensor, shape is (out_features, in_features).
+    first_layer_shape = state_dict[weight_keys[0]].shape
+    arch.append(first_layer_shape[1])
+
+    # The subsequent sizes are the 'out_features' of each layer.
+    for key in weight_keys:
+        shape = state_dict[key].shape
+        arch.append(shape[0])
+
+    return arch
+
+
 
 def visualize_parameter_dampening_stacked(
     state_dict,
@@ -371,8 +419,7 @@ def visualize_parameter_dampening(state_dict,
                                     type=None,
                                     layer_sizes=None):
     if type == 'stacked':
-        if layer_sizes is None:
-            raise ValueError("layer_sizes must be provided for stacked visualization")
+        layer_sizes = get_architecture_from_state_dict(state_dict)
         fig, ax = visualize_parameter_dampening_stacked(state_dict, layer_sizes=layer_sizes, figsize=figsize, title=title, ax=ax, title_fontsize=title_fontsize, circle_radius=circle_radius, h_spacing_factor=h_spacing_factor, v_spacing_factor=v_spacing_factor)
     else:
         fig, ax = visualize_parameter_dampening_original(state_dict, figsize=figsize, title=title, ax=ax, title_fontsize=title_fontsize)
@@ -391,9 +438,8 @@ if __name__ == "__main__":
     }
     
 
-    model_architecture = [2, 16, 8, 3]
     # Create visualization
-    fig, ax = visualize_parameter_dampening(example_state_dict, type='original', layer_sizes=model_architecture)
+    fig, ax = visualize_parameter_dampening(example_state_dict, type='stacked')
     # Save the figure
     plt.savefig('dampening_visualization.pdf')
     plt.show()
