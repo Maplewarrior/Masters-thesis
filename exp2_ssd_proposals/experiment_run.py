@@ -120,13 +120,25 @@ def main(cfg):
             alpha = 30
             _lambda = 1
 
-            dampenings = SelectiveSynapticDampening(unlearned_model,
+            ssd_model = SelectiveSynapticDampening(unlearned_model,
                                        alpha=alpha, 
                                        _lambda=_lambda,
-                                       device=DEVICE)(
-                                                 full_dataloader=dataloader_train, 
-                                                 forget_dataloader=dataloader_forget,
-                                                 return_dampening=True)
+                                       device=DEVICE)
+            
+
+            FIM_full = ssd_model.calculate_FIM(dataloader_train)
+            FIM_forget = ssd_model.calculate_FIM(dataloader_forget)
+
+            epsilon = 1e-12
+            FIM_ratio = {key: FIM_forget[key] / (FIM_full[key] + epsilon) for key in FIM_full}
+
+
+            dampenings = ssd_model(full_dataloader=dataloader_train,
+                                   forget_dataloader=dataloader_forget,
+                                   FIM_full=FIM_full,
+                                   FIM_forget=FIM_forget,
+                                   return_dampening=True)
+                      
             
             # add hyperparameters to results folder name
             results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_alpha{alpha}_lambda{_lambda}", rogue)
@@ -138,6 +150,14 @@ def main(cfg):
 
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
+
+            plt.close()
+            plt.clf()
+
+
+            fig = visualize_parameter_dampening(FIM_ratio, type=dampening_plot_type, FIM_ratio=True, alpha_hyperparam=alpha)
+            plt.savefig(f'{results_dir}/{dataset_number}_FIM_ratio_dampening_selection.pdf')
+
         
         elif cfg.unlearn.method == "ssd-layerwise":
             from src.unlearners.selective_synaptic_dampening_layerwise import SelectiveSynapticDampeningLayerwise as SelectiveSynapticDampening_ablation
