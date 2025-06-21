@@ -60,10 +60,15 @@ def visualize_parameter_dampening_stacked(
     figsize=(12, 8),
     title=None,
     ax=None,
-    title_fontsize=16,
+    title_fontsize=36,
     circle_radius=0.15,
     h_spacing_factor=5.0,
-    v_spacing_factor=1.2
+    v_spacing_factor=1.2,
+    layer_label_fontsize=22,
+    cbar_label_fontsize=24,
+    cbar_tick_labelsize=20,
+    padding_x_factor=0.02,
+    padding_y_abs=None
 ):
     """
     Visualize neural network parameter dampening with a precisely aligned,
@@ -112,7 +117,7 @@ def visualize_parameter_dampening_stacked(
     l1_circle_h = (l1_size - 1) * v_spacing
     l1_weight_w = (l0_size - 1) * v_spacing
     l1_x_center = l1_weight_w / 2
-    l1_y_center = 0
+    l1_y_center = 0 
 
     weights_l1 = state_dict[weight_keys[0]].detach().numpy()
     x_start_w1 = l1_x_center - l1_weight_w / 2
@@ -134,8 +139,8 @@ def visualize_parameter_dampening_stacked(
     master_y_top_edge = (l1_y_center + l1_circle_h / 2) + circle_radius
     l1_label_y_center = master_y_top_edge + (label_box_height / 2)
     master_y_top_label = l1_label_y_center + (label_box_height / 2)
-    ax.text(x_start_b1 / 2, l1_label_y_center, f'{layer_names[1]}\n$w$: ${l1_size} \\times {l0_size}$, $b$: ${l1_size} \\times 1$',
-            ha='center', va='center', fontsize=11, bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
+    ax.text(x_start_b1 / 2, l1_label_y_center + 0.3, f'{layer_names[1]}\n$w$: ${l1_size} \\times {l0_size}$, $b$: ${l1_size} \\times 1$',
+            ha='center', va='center', fontsize=layer_label_fontsize, weight='bold', bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
 
     # --- Column 2 Horizontal Position ---
     col2_x_start = x_start_b1 + circle_diameter + h_gap
@@ -162,9 +167,9 @@ def visualize_parameter_dampening_stacked(
         x, y = x_start_b2, y_start_w2 - r * v_spacing
         all_coords.append((x, y))
         ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(biases_l2[r]), ec='black', lw=0.2))
-    ax.text(l2_x_center, l2_label_y_center, f'{layer_names[2]}\n$w$: ${l2_size} \\times {l1_size_}$, $b$: ${l2_size} \\times 1$',
-            ha='center', va='center', fontsize=11, bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
-    l2_bottom_edge = (l2_y_center - l2_circle_h / 2) - circle_radius
+    ax.text(l2_x_center, l2_label_y_center + 0.3, f'{layer_names[2]}\n$w$: ${l2_size} \\times {l1_size_}$, $b$: ${l2_size} \\times 1$',
+            ha='center', va='center', fontsize=layer_label_fontsize, weight='bold', bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
+
 
     # --- Block 3: Draw "Output" ---
     l3_size, l2_size_ = layer_sizes[3], layer_sizes[2]
@@ -189,27 +194,33 @@ def visualize_parameter_dampening_stacked(
         x, y = x_start_b3, y_start_w3 - r * v_spacing
         all_coords.append((x, y))
         ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(biases_l3[r]), ec='black', lw=0.2))
-    ax.text(l3_x_center, l3_label_y_center, f'{layer_names[3]}\n$w$: ${l3_size} \\times {l2_size_}$, $b$: ${l3_size} \\times 1$',
-            ha='center', va='center', fontsize=11, bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
+    ax.text(l3_x_center, l3_label_y_center + 0.3, f'{layer_names[3]}\n$w$: ${l3_size} \\times {l2_size_}$, $b$: ${l3_size} \\times 1$',
+            ha='center', va='center', fontsize=layer_label_fontsize, weight='bold', bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
 
 
     # --- Finalize Plot ---
     if all_coords:
         x_coords, y_coords = zip(*all_coords)
-        padding_x = (max(x_coords) - min(x_coords)) * 0.05
+        padding_x = (max(x_coords) - min(x_coords)) * padding_x_factor
+        
+        if padding_y_abs is None:
+            padding_y = circle_radius
+        else:
+            padding_y = padding_y_abs
+
         ax.set_xlim(min(x_coords) - padding_x, max(x_coords) + padding_x)
-        ax.set_ylim(master_y_bottom_edge - circle_diameter, master_y_top_label + circle_diameter)
+        ax.set_ylim(master_y_bottom_edge - padding_y, master_y_top_label + padding_y)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
     cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', pad=0.08, aspect=40, shrink=0.5)
-    cbar.set_label(r'$\beta$ (1 = No Dampening, 0 = Full Dampening)', fontsize=12)
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label(r'$\beta$ (1 = No Dampening, 0 = Full Dampening)', fontsize=cbar_label_fontsize)
+    cbar.ax.tick_params(labelsize=cbar_tick_labelsize)
     cbar.ax.invert_xaxis()
 
     if title:
         ax.set_title(title, fontsize=title_fontsize, y=0.98, color='black', weight='bold')
 
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     return fig, ax
 
 def visualize_parameter_dampening_original(state_dict, figsize=(12, 8), title=None, ax=None, title_fontsize=14):
@@ -413,15 +424,36 @@ def visualize_parameter_dampening(state_dict,
                                     figsize=(12, 8),
                                     title=None,
                                     ax=None,
-                                    title_fontsize=16,
+                                    title_fontsize=36,
                                     circle_radius=0.15,
                                     h_spacing_factor=5.0,
                                     v_spacing_factor=1.2,
                                     type=None,
-                                    layer_sizes=None):
+                                    layer_sizes=None,
+                                    layer_label_fontsize=20,
+                                    cbar_label_fontsize=24,
+                                    cbar_tick_labelsize=18,
+                                    padding_x_factor=0.02,
+                                    padding_y_abs=None):
     if type == 'stacked':
-        layer_sizes = get_architecture_from_state_dict(state_dict)
-        fig, ax = visualize_parameter_dampening_stacked(state_dict, layer_sizes=layer_sizes, figsize=figsize, title=title, ax=ax, title_fontsize=title_fontsize, circle_radius=circle_radius, h_spacing_factor=h_spacing_factor, v_spacing_factor=v_spacing_factor)
+        if layer_sizes is None:
+            layer_sizes = get_architecture_from_state_dict(state_dict)
+        fig, ax = visualize_parameter_dampening_stacked(
+            state_dict, 
+            layer_sizes=layer_sizes, 
+            figsize=figsize, 
+            title=title, 
+            ax=ax, 
+            title_fontsize=title_fontsize, 
+            circle_radius=circle_radius, 
+            h_spacing_factor=h_spacing_factor, 
+            v_spacing_factor=v_spacing_factor,
+            layer_label_fontsize=layer_label_fontsize,
+            cbar_label_fontsize=cbar_label_fontsize,
+            cbar_tick_labelsize=cbar_tick_labelsize,
+            padding_x_factor=padding_x_factor,
+            padding_y_abs=padding_y_abs
+        )
     else:
         fig, ax = visualize_parameter_dampening_original(state_dict, figsize=figsize, title=title, ax=ax, title_fontsize=title_fontsize)
 
@@ -438,9 +470,32 @@ if __name__ == "__main__":
         'net.4.bias': torch.rand(3)
     }
     
-
     # Create visualization
     fig, ax = visualize_parameter_dampening(example_state_dict, type='stacked')
-    # Save the figure
-    plt.savefig('dampening_visualization.pdf')
+
+    # --- Robust Cropping Logic ---
+    # This approach removes whitespace by resizing the figure to match the
+    # aspect ratio of its content before saving.
+    
+    # Get the final data limits from the axes.
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    
+    # Calculate the aspect ratio of the plot content.
+    # We use abs() to handle potentially inverted axes.
+    data_aspect_ratio = abs(ylim[1] - ylim[0]) / abs(xlim[1] - xlim[0])
+    
+    # Get the current figure size in inches.
+    fig_width, fig_height = fig.get_size_inches()
+    
+    # Set a new figure width that matches the data's aspect ratio.
+    # We keep the height constant and adjust the width.
+    fig.set_size_inches(fig_height / data_aspect_ratio, fig_height)
+    
+    # Adjust artist positions to fit into the new figure size.
+    fig.tight_layout()
+    
+    # Save the figure. `bbox_inches='tight'` will now correctly trim any
+    # minor remaining padding, and `pad_inches=0` crops to the very edge.
+    plt.savefig('dampening_visualization.pdf', bbox_inches='tight', pad_inches=0)
     plt.show()
