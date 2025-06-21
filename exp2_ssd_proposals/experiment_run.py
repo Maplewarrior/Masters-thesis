@@ -162,9 +162,9 @@ def main(cfg):
         elif cfg.unlearn.method == "ssd-layerwise":
             from src.unlearners.selective_synaptic_dampening_layerwise import SelectiveSynapticDampeningLayerwise as SelectiveSynapticDampening_ablation
 
-            layer_target = [1,2,3] # TODO: Hyperparam to config
-            alpha = 30
-            _lambda = 1
+            layer_target = cfg.unlearn.ssd_layerwise.layer_target
+            alpha = cfg.unlearn.ssd_layerwise.alpha
+            _lambda = cfg.unlearn.ssd_layerwise._lambda
 
             layer_target_actual = [(l - 1)*2 for l in layer_target] # ? Skip the relu between layers
             dampenings = SelectiveSynapticDampening_ablation(unlearned_model, 

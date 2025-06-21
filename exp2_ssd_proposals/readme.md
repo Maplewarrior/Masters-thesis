@@ -24,3 +24,9 @@ Now we run the experiment on each of the dataset configuration, moving the rogue
 ```bash
 python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd,ssd-layerwise,ssd-bo,ssd-bo-pairwise,ssd-bo-pairwise-smooth,ssd-bo-smooth" hydra/launcher=ray --multirun
 ```
+
+
+Run for all ssd-layerwise combinations:
+```bash
+python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd-layerwise" unlearn.ssd_layerwise.layer_target="[1,2,3],[1,2],[2,3],[1,3],[1,2,3]" unlearn.ssd_layerwise.alpha="1,30" unlearn.ssd_layerwise._lambda="1,5" hydra/launcher=ray --multirun
+```
