@@ -26,7 +26,17 @@ python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1
 ```
 
 
-Run for all ssd-layerwise combinations:
+Run all combinations of `ssd` hyperparameters:
+```bash
+python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd" unlearn.ssd.alpha="1,30" unlearn.ssd._lambda="1" hydra/launcher=ray --multirun
+```
+
+Run all combination of `ssd-bo-pairwise` and `ssd-bo-pairwise-smooth`:
+```bash
+python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd-bo-pairwise,ssd-bo-pairwise-smooth" unlearn.ssd_bo_pairwise.P="1,3" unlearn.ssd_bo_pairwise.k="0.999" unlearn.ssd_bo_pairwise_smooth.P="1,3" unlearn.ssd_bo_pairwise_smooth.k="0.999" hydra/launcher=ray --multirun
+```
+
+Run for all `ssd-layerwise` combinations:
 ```bash
 python exp2_ssd_proposals/experiment_run.py data.dataset="data/rogue_many/data_1.npz,data/rogue_many/data_2.npz,data/rogue_many/data_3.npz,data/rogue_many/data_4.npz,data/rogue_many/data_5.npz" unlearn.method="ssd-layerwise" unlearn.ssd_layerwise.layer_target="[1,2,3],[1,2],[2,3],[1,3],[1,2,3]" unlearn.ssd_layerwise.alpha="1,30" unlearn.ssd_layerwise._lambda="1,5" hydra/launcher=ray --multirun
 ```

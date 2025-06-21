@@ -45,4 +45,21 @@ unlearn:
     layer_target: [2,3]
     alpha: 1
     _lambda: 1
-
+  ssd:
+    alpha: 30
+    _lambda: 1
+  ssd_bo:
+    k: 1
+    bo_plot_exploration_factor: 2.5
+  ssd_bo_smooth:
+    P: 1
+    k: 1
+    bo_plot_exploration_factor: 2.5
+  ssd_bo_pairwise:
+    P: 3
+    k: 0.999
+    bo_plot_exploration_factor: 2.5
+  ssd_bo_pairwise_smooth:
+    P: 3
+    k: 0.999
+    bo_plot_exploration_factor: 2.5
