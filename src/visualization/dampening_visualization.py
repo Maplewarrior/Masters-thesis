@@ -104,7 +104,7 @@ def visualize_parameter_dampening_stacked(
         cbar_label = '$\\hat{i}_j^{(\\mathcal{D}_f)} / \\hat{i}_j^{(\\mathcal{D})}$'
 
     norm = plt.Normalize(vmin=0, vmax=vmax)
-    layer_names = ['Input', 'Hidden 1', 'Hidden 2', 'Output'] # Can be customized if needed
+    layer_names = ['', 'Input', 'Hidden 1', 'Output'] # Can be customized if needed
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -116,6 +116,8 @@ def visualize_parameter_dampening_stacked(
     fig.patch.set_facecolor('white')
 
     colors = ['#ffa600', '#ff7c43', '#f95d6a', '#d45087', '#a05195', '#665191', '#2f4b7c', '#003f5c']
+    if FIM_ratio:
+        colors = colors[::-1]
     cmap = LinearSegmentedColormap.from_list('dampening', colors, N=512)
     
     all_coords = []
@@ -141,7 +143,7 @@ def visualize_parameter_dampening_stacked(
             val = weights_l1[r, c]
             ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
             if FIM_ratio and val > alpha_hyperparam:
-                ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+                ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
 
     x_start_b1 = x_start_w1 + l1_weight_w + h_gap
     biases_l1 = state_dict[bias_keys[0]].detach().numpy()
@@ -151,7 +153,7 @@ def visualize_parameter_dampening_stacked(
         val = biases_l1[r]
         ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
         if FIM_ratio and val > alpha_hyperparam:
-            ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+            ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
 
     master_y_bottom_edge = (l1_y_center - l1_circle_h / 2) - circle_radius
     master_y_top_edge = (l1_y_center + l1_circle_h / 2) + circle_radius
@@ -181,7 +183,7 @@ def visualize_parameter_dampening_stacked(
             val = weights_l2[r, c]
             ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
             if FIM_ratio and val > alpha_hyperparam:
-                ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+                ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
     x_start_b2 = x_start_w2 + l2_weight_w + h_gap
     biases_l2 = state_dict[bias_keys[1]].detach().numpy()
     for r in range(l2_size):
@@ -190,7 +192,7 @@ def visualize_parameter_dampening_stacked(
         val = biases_l2[r]
         ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
         if FIM_ratio and val > alpha_hyperparam:
-            ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+            ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
     ax.text(l2_x_center, l2_label_y_center + 0.3, f'{layer_names[2]}\n$w$: ${l2_size} \\times {l1_size_}$, $b$: ${l2_size} \\times 1$',
             ha='center', va='center', fontsize=layer_label_fontsize, weight='bold', bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
 
@@ -214,7 +216,7 @@ def visualize_parameter_dampening_stacked(
             val = weights_l3[r, c]
             ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
             if FIM_ratio and val > alpha_hyperparam:
-                ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+                ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
     x_start_b3 = x_start_w3 + l3_weight_w + h_gap
     biases_l3 = state_dict[bias_keys[2]].detach().numpy()
     for r in range(l3_size):
@@ -223,7 +225,7 @@ def visualize_parameter_dampening_stacked(
         val = biases_l3[r]
         ax.add_patch(patches.Circle((x, y), circle_radius, facecolor=cmap(norm(val)), ec='black', lw=0.2))
         if FIM_ratio and val > alpha_hyperparam:
-            ax.text(x, y, 'x', ha='center', va='center', color='black', fontsize=16, fontweight='bold')
+            ax.text(x, y, 'x', ha='center', va='center', color='white', fontsize=18, fontweight='bold')
     ax.text(l3_x_center, l3_label_y_center + 0.3, f'{layer_names[3]}\n$w$: ${l3_size} \\times {l2_size_}$, $b$: ${l3_size} \\times 1$',
             ha='center', va='center', fontsize=layer_label_fontsize, weight='bold', bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9, ec='gray'))
 
@@ -246,7 +248,7 @@ def visualize_parameter_dampening_stacked(
     cbar.set_label(cbar_label, fontsize=cbar_label_fontsize)
     cbar.ax.tick_params(labelsize=cbar_tick_labelsize)
     if FIM_ratio:
-        cbar.ax.axvline(alpha_hyperparam, color='k', linestyle='--', linewidth=2)
+        cbar.ax.axvline(alpha_hyperparam, color='white', linestyle='--', linewidth=4)
         cbar.ax.text(alpha_hyperparam, 1.5, r'$\alpha$', color='k', ha='center', va='bottom', fontsize=cbar_tick_labelsize)
     if not FIM_ratio:
         cbar.ax.invert_xaxis()
