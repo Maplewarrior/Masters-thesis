@@ -477,7 +477,7 @@ class SelectiveSynapticDampeningBO(SSD):
         all_dampenings = self.update_gpu_parameters(FIM_full, FIM_forget, **{'alphas': alphas, 'lambdas': lambdas}, return_dampening=return_dampening)
         # print(f'SD identical? {self.check_statedict_equivalent(sd_original, self.model.state_dict())}')
         # return best_params
-        return bo_result['max'], all_dampenings
+        return bo_result, all_dampenings
 
 
 """

@@ -15,7 +15,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.priors import GammaPrior
 from botorch.models.transforms import Normalize, Standardize
-from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
 from src.utils.misc import check_statedict_equivalent
 
 class SSDVisualizer(SelectiveSynapticDampeningBOPairwise):

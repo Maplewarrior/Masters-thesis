@@ -117,10 +117,10 @@ def main(cfg):
             # hyperparams = {'alpha': 30.,
             #                '_lambda': 5.}
             
-            alpha = 1
+            alpha = 30
             _lambda = 1
 
-            dampenings = SelectiveSynapticDampeningBO(unlearned_model,
+            dampenings = SelectiveSynapticDampening(unlearned_model,
                                        alpha=alpha, 
                                        _lambda=_lambda,
                                        device=DEVICE)(
@@ -140,10 +140,10 @@ def main(cfg):
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
         
         elif cfg.unlearn.method == "ssd-layerwise":
-            from unlearners.selective_synaptic_dampening_layerwise import SelectiveSynapticDampeningLayerwise as SelectiveSynapticDampening_ablation
+            from src.unlearners.selective_synaptic_dampening_layerwise import SelectiveSynapticDampeningLayerwise as SelectiveSynapticDampening_ablation
 
             layer_target = [1,2,3] # TODO: Hyperparam to config
-            alpha = 1
+            alpha = 30
             _lambda = 1
 
             layer_target_actual = [(l - 1)*2 for l in layer_target] # ? Skip the relu between layers
@@ -172,7 +172,7 @@ def main(cfg):
             plt.savefig(dampening_filename)
 
         elif cfg.unlearn.method == "ssd-bo":
-            from unlearners.selective_synaptic_dampening_BO import SelectiveSynapticDampeningBO
+            from src.unlearners.selective_synaptic_dampening_BO import SelectiveSynapticDampeningBO
             k = 1
             bo_plot_exploration_factor = 2.5
 
@@ -186,22 +186,59 @@ def main(cfg):
             
             results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_k{k}", rogue)
             os.makedirs(results_dir, exist_ok=True)
-            
+            max_hyperparams = hyperparams['max']
 
-            plot_title = f"BO-SSD\n$\\alpha={hyperparams['alpha']:.2f}$, $\\lambda={hyperparams['_lambda']:.2f}$"
+            plot_title = f"BO-SSD\n$\\alpha={max_hyperparams['alpha']:.2f}$, $\\lambda={max_hyperparams['_lambda']:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
             plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
 
+            # Plot convergence analysis
+            plot_convergence_analysis(hyperparams['result'], 
+                                    savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
+                                    exploration_factor=bo_plot_exploration_factor)
+            
+        elif cfg.unlearn.method == "ssd-bo-smooth":
+            from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+            k = 1
+            P = 1
+            bo_plot_exploration_factor = 2.5
+
+            hyperparams, dampenings = SelectiveSynapticDampeningBOPairwise(unlearned_model, 
+                                                     P=P,
+                                                     smooth_dampening=True,
+                                                     n_bo_iter=100,
+                                                     k=k,
+                                                     device=DEVICE)(full_dataloader=dataloader_train, 
+                                                                    forget_dataloader=dataloader_forget,
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
+            
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_P{P}_k{k}", rogue)
+
+            os.makedirs(results_dir, exist_ok=True)
+            max_hyperparams = hyperparams['max']
+
+            plot_title = f"BO-SSD (smooth)\n$\\alpha={max_hyperparams['alpha_0']:.2f}$, $\\lambda={max_hyperparams['_lambda_0']:.2f}$"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
+            
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
+            plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
+
+            # Plot convergence analysis
+            plot_convergence_analysis(hyperparams['result'], 
+                                    savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
+                                    exploration_factor=bo_plot_exploration_factor)
+
         elif cfg.unlearn.method == "ssd-bo-pairwise":
-            from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
-            P = 2 # TODO: Hyperparam to config
+            from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+            P = 3 # TODO: Hyperparam to config
             k = 0.999
 
             bo_plot_exploration_factor = 2.5 # ? This will be appended to the convergence plot filename. You could have multiple convergence plots for the same method (hyperparams).
 
-            hyperparams, dampenings = SelectiveSynapticDampeningBO(unlearned_model,
+            hyperparams, dampenings = SelectiveSynapticDampeningBOPairwise(unlearned_model,
                                                      P=P,
                                                      k=k,
                                                      smooth_dampening=False,
@@ -226,13 +263,13 @@ def main(cfg):
                                     exploration_factor=bo_plot_exploration_factor)
 
         elif cfg.unlearn.method == "ssd-bo-pairwise-smooth":
-            from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
-            P = 2 # TODO: Hyperparam to config
+            from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+            P = 3 # TODO: Hyperparam to config
             k = 0.999
 
             bo_plot_exploration_factor = 2.5 # ? This will be appended to the convergence plot filename. You could have multiple convergence plots for the same method (hyperparams).
 
-            hyperparams, dampenings = SelectiveSynapticDampeningBO(unlearned_model,
+            hyperparams, dampenings = SelectiveSynapticDampeningBOPairwise(unlearned_model,
                                                      P=P,
                                                      k=k,
                                                      smooth_dampening=True,

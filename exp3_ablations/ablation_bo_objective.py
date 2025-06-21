@@ -65,7 +65,7 @@ def main(cfg):
                                 do_early_stopping=cfg.trainer.do_early_stopping)()
     
 
-    from unlearners.selective_synaptic_dampening_BO_visualizer import SSDVisualizer
+    from src.unlearners.selective_synaptic_dampening_BO_visualizer import SSDVisualizer
     ssd_visualizer = SSDVisualizer(model, 
                                 P=1, 
                                 smooth_dampening=smooth_dampen, 
