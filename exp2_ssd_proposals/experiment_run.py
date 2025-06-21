@@ -198,6 +198,38 @@ def main(cfg):
             plot_convergence_analysis(hyperparams['result'], 
                                     savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
                                     exploration_factor=bo_plot_exploration_factor)
+            
+        elif cfg.unlearn.method == "ssd-bo-smooth":
+            from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+            k = 1
+            P = 1
+            bo_plot_exploration_factor = 2.5
+
+            hyperparams, dampenings = SelectiveSynapticDampeningBOPairwise(unlearned_model, 
+                                                     P=P,
+                                                     smooth_dampening=True,
+                                                     n_bo_iter=100,
+                                                     k=k,
+                                                     device=DEVICE)(full_dataloader=dataloader_train, 
+                                                                    forget_dataloader=dataloader_forget,
+                                                                    validation_dataloader=dataloader_val,
+                                                                    return_dampening=True)
+            
+            results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}_P{P}_k{k}", rogue)
+
+            os.makedirs(results_dir, exist_ok=True)
+            max_hyperparams = hyperparams['max']
+
+            plot_title = f"BO-SSD (smooth)\n$\\alpha={max_hyperparams['alpha_0']:.2f}$, $\\lambda={max_hyperparams['_lambda_0']:.2f}$"
+            decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
+            
+            fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
+            plt.savefig(f'{results_dir}/{dataset_number}_dampenings.pdf')
+
+            # Plot convergence analysis
+            plot_convergence_analysis(hyperparams['result'], 
+                                    savepath=f'{results_dir}/{dataset_number}_convergence_{bo_plot_exploration_factor}.pdf',
+                                    exploration_factor=bo_plot_exploration_factor)
 
         elif cfg.unlearn.method == "ssd-bo-pairwise":
             from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
