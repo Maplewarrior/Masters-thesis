@@ -139,7 +139,12 @@ def main(cfg):
             nn_trainer = NeuralNetworkTrainer(neural_net, dataloader_train, dataloader_val)
             nn_trainer.train()
             original_model = copy.deepcopy(neural_net)
-            
+
+            # Make a retrained model
+            neural_net_retrained = NeuralNetRS(dataloader_train.dataset.X.shape[1], cfg.data.n_classes)
+            nn_trainer_retrained = NeuralNetworkTrainer(neural_net_retrained, dataloader_retain, dataloader_val)
+            nn_trainer_retrained.train()
+
             # instantiate & train SAE
             sae = SAE(d=8, m=32, _lambda=1.).to(DEVICE)
             unlearned_model = NeuralNetWithSAE(neural_net, sae, layer_num=layer_num)
@@ -156,6 +161,10 @@ def main(cfg):
             plot_title = f"SAE"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
       
+            plot_title = f"Retrained (SAE)"
+            retrained_decision_boundary_filename = f"{dataset_number}_retrained_decision_boundary"
+            decision_boundary_plot(neural_net_retrained, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=retrained_decision_boundary_filename)
+
         elif cfg.unlearn.method == "amnesiac":
             from src.unlearners.amnesiac_unlearner import AmnesiacUnlearner
             from src.models.amnesiac_model import AmnesiacModel

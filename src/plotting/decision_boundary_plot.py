@@ -42,7 +42,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     xx_u, yy_u, decision_boundary_unlearned = unlearned_creator.create_decision_boundary((-9, 9), (-9, 9))
     
     # Create a single figure
-    plt.figure(figsize=(8, 7), dpi=200)
+    fig = plt.figure(figsize=(8, 7), dpi=200, constrained_layout=True)
     
     # Get number of unique classes
     classes = np.unique(y)
@@ -98,8 +98,8 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     
     # Add custom legend entries for the two boundaries
     from matplotlib.lines import Line2D    
-    original_legend = Line2D([0], [0], color='#353535', lw=2, linestyle='dotted', label='Before Unlearning')
-    unlearned_legend = Line2D([0], [0], color='#FC9E4F', lw=2, linestyle='solid', label='After Unlearning')
+    original_legend = Line2D([0], [0], color='#353535', lw=2, linestyle='dotted', label='Original')
+    unlearned_legend = Line2D([0], [0], color='#FC9E4F', lw=2, linestyle='solid', label='Unlearned')
     legend_handles.extend([original_legend, unlearned_legend])
     
     # Add rogue points with two different styles
@@ -112,30 +112,31 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
             linewidth=1,
             edgecolor='white',
             zorder=10,  # Higher zorder to ensure visibility
-            label=f"Forget observations" if i == 0 else "_nolegend_"
+            label="Forget obs." if i == 0 else "_nolegend_"
         )
         if i == 0:
             legend_handles.append(rogue_point)
     
     # Improve title and labels
     plt.title(plot_title if plot_title is not None else "", 
-              fontsize=14)
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
+              fontsize=26)
+    plt.xlabel('Feature 1', fontsize=22)
+    plt.xlabel('Feature 1', fontsize=22)
+    plt.ylabel('Feature 2', fontsize=22)
     
     # Add legend with box and all custom entries
-    legend = plt.legend(
+    fig.legend(
         handles=legend_handles,
-        frameon=True,
-        framealpha=0.95,
-        facecolor='white',
-        edgecolor='lightgray',
-        loc='best',
-        fontsize=12
+        loc='outside lower center',
+        ncol=len(legend_handles),
+        frameon=False,
+        fontsize=20,
+        bbox_to_anchor=(0.55, -0.1),  # Add vertical spacing above legend
+        columnspacing=0.5  # Reduce spacing between legend items (default is 2.0)
     )
     
     # Improve ticks
-    ax.tick_params(direction='out', length=6, width=1)
+    ax.tick_params(direction='out', length=6, width=1, labelsize=20)
     
     # Add a subtle border
     for spine in ax.spines.values():
@@ -146,7 +147,7 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
     plt.grid(True, alpha=0.3)
     
     # Ensure tight layout
-    plt.tight_layout()
+    # plt.tight_layout() # No longer needed with constrained_layout
     
     
     plt.savefig(save_path, 
