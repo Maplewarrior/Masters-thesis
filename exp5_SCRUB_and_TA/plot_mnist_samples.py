@@ -1,5 +1,5 @@
+# This code just plots some MNIST samples for the paper.
 import matplotlib.pyplot as plt
-import numpy as np
 import os
 import sys
 

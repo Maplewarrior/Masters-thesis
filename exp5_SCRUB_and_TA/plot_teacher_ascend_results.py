@@ -50,8 +50,6 @@ def select_experiment_folder(base_dir: str = 'results/teacher_ascend') -> str:
 
     return selected_experiment
 
-
-
 def get_objective_function_latex(experiment_name: str) -> str:
     """Get the LaTeX string representation of the objective function."""
     objective = ""
@@ -81,7 +79,6 @@ def get_objective_function_latex(experiment_name: str) -> str:
                 objective += r" \\ \phantom{-\frac{1}{\left|\mathcal{D}_f\right|} \sum_{(\boldsymbol{x}_i, y_i)\in\mathcal{D}_f} H_{\mathcal{M}_{\theta_u}}\left(\boldsymbol{x}_i\right)} + \frac{1}{\left|\mathcal{B}_r \right|}\sum_{(\boldsymbol{x}_k,y_k)\in\mathcal{B}_r} \mathcal{L}_{C E}\left(\boldsymbol{x}_k, y_k ; \boldsymbol{\theta}_u\right)$"
 
     return objective
-
 
 def main():
     # Set paper-friendly style at the start
@@ -351,7 +348,6 @@ def main():
             print(f"Created individual plot for {exp_name}")
         else:
             print(f"Warning: {exp_name} not found in results")
-
 
 if __name__ == "__main__":
     main() 
