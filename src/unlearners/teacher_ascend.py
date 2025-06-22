@@ -13,13 +13,13 @@ from src.datasets.synthetic_dataset import SyntheticDataset
 """
 
 class TeacherAscender:
-    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None) -> None:
+    def __init__(self, model, n_epochs: int, _lambda: float, device: str = 'cpu', MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None, lr: float = 1e-2) -> None:
         self.model = model
         self.n_epochs = n_epochs
         self._lambda = _lambda
         self.device = device
         self.MIA = MIA
-
+        self.lr = lr
         if js_div_func is not None:
             assert retrain_model is not None, "retrain_model must be provided if js_div_func is provided"
 
@@ -181,7 +181,7 @@ class TeacherAscender:
         
         # calculate FIM for original model on retain set
         original_sd = copy.deepcopy(self.model.state_dict())
-        optimizer = optim.Adam(self.model.parameters(), lr=1e-2)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         FIM_forget = self.calculate_FIM(forget_loader) # used for descend
         FIM_original = self.calculate_FIM(retain_loader) # used for ascend
