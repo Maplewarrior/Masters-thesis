@@ -15,6 +15,6 @@
 # #BSUB -B			 # notify when start
 #BSUB -N                       # notify when end
 
-cd Masters-thesis
+cd /zhome/d6/f/156047/Masters-thesis
 source venv/bin/activate
 python3 exp4/unlearn_and_eval_all.py

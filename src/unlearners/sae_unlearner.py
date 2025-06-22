@@ -27,26 +27,31 @@ class SAEUnlearner(BaseUnlearner):
         self.device = device
 
     def get_Z_matrix(self, dataloader):
-        Z = []
-        self.model.sae.eval()
-        with torch.no_grad():
-            for batch in dataloader:
-                x = batch[0].to(self.device)
-                z = self.model(x)['z']
-                Z.append(z)
-        return torch.cat(Z)
+        Z_sum = torch.zeros(self.model.sae.m, device=self.device) # [feature dim x dictionary size]
+        Z_count = torch.zeros(self.model.sae.m, device=self.device) # [dictionary size]
+
+        for batch in dataloader:
+            x = batch[0].to(self.device)
+            z = self.model.inference(x)['z']
+            Z_sum += z.sum(dim=0)
+            idxs, counts = torch.unique(torch.where(z > 0)[1], return_counts=True)
+            Z_count[idxs] += counts
+        
+        active_idxs = torch.where(Z_count > 0)[0]
+        active_counts = Z_count[active_idxs]
+        return Z_sum, active_idxs, active_counts
     
-    def calculate_dampening_factors(self, Z_retain, Z_forget):
-        retain_feature_idxs, retain_feature_counts = torch.unique(torch.where(Z_retain > 0)[1], return_counts=True)
-        forget_feature_idxs, forget_feature_counts = torch.unique(torch.where(Z_forget > 0)[1], return_counts=True)
+    def calculate_dampening_factors(self, retain_loader, forget_loader):
+        Z_retain, retain_feature_idxs, retain_feature_counts = self.get_Z_matrix(retain_loader)
+        Z_forget, forget_feature_idxs, forget_feature_counts = self.get_Z_matrix(forget_loader)
 
         # normalized_retain_counts = retain_feature_counts / Z_retain.size(0)
         # normalized_forget_counts = forget_feature_counts / Z_forget.size(0)
 
         dampening_factors = []
         
-        mean_retain_activations = Z_retain.sum(dim=0)[retain_feature_idxs] / retain_feature_counts
-        mean_forget_activations = Z_forget.sum(dim=0)[forget_feature_idxs] / forget_feature_counts
+        mean_retain_activations = (Z_retain[retain_feature_idxs] / retain_feature_counts).to(self.device)
+        mean_forget_activations = (Z_forget[forget_feature_idxs] / forget_feature_counts).to(self.device)
         
         # assert alpha >= 1, 'alpha must be greater than 1'
         for i, forget_idx in enumerate(forget_feature_idxs):
@@ -65,10 +70,11 @@ class SAEUnlearner(BaseUnlearner):
         """
         A method that dampens the dictionary matrix features based on how active they are in the forget vs retain set.
         """
+        
         Z_retain = self.get_Z_matrix(dataloader=retain_loader)
         Z_forget = self.get_Z_matrix(dataloader=forget_loader)
 
-        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(Z_retain, Z_forget)
+        dampening_factors, forget_feature_idxs = self.calculate_dampening_factors(retain_loader, forget_loader)
 
         with torch.no_grad():
             W_dec = self.model.sae.decoder.weight.data.clone()

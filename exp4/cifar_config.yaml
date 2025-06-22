@@ -21,7 +21,7 @@ logging:
 data:
   dataset_name: "CIFAR10" #"MNIST"
   subsample_size: #MNIST: 10000
-  n_forget_points: 150 # MNIST: 150
+  n_forget_points: 100 # MNIST: 150
   batch_size: 128 #MNIST: 16
   n_classes: 10
   n_channels: 3
@@ -54,7 +54,7 @@ amnesiac:
   gradient_checkpoint_dir: /work3/s204138/MachineUnlearning #/Users/michaelharborg/Desktop/Masters-thesis/exp4/weights
 
 model: 
-  seed: 50 #MNIST: 42
+  seed: 42 #MNIST: 42
   model_type: vision-transformer #'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4

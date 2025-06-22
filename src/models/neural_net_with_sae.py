@@ -26,11 +26,20 @@ class NeuralNetWithSAE(BaseModel):
         """
         # compute forward pass up to layer_num
         x_act = self.neural_net.inference(x, start_idx=0, stop_idx=self.layer_num)['logits']
+        original_shape = x_act.size()
+        if x_act.ndim > 2:
+            x_act = x_act.view(-1, self.sae.d)  # collapse batch_size and sequence_length dimensions
+        
         # compute sae reconstruction
-        sae_out = self.sae(x_act)     
-        sae_out['xact'] = x_act    
+        sae_out = self.sae(x_act.view(-1, self.sae.d))
+        sae_out['xact'] = x_act
+
         # compute remaining forward pass using reconstruction
-        nn_out = self.neural_net.inference(sae_out['xhat'], start_idx=self.layer_num, stop_idx=None)
+        if len(original_shape) > 2:
+            nn_out = self.neural_net.inference(sae_out['xhat'].view(original_shape), start_idx=self.layer_num, stop_idx=None)
+        else:
+            nn_out = self.neural_net.inference(sae_out['xhat'], start_idx=self.layer_num, stop_idx=None)
+
         nn_out.update(sae_out) # update output dictionary
         return nn_out
     

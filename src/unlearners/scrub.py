@@ -23,7 +23,7 @@ class DistillKL(nn.Module):
         return loss
 
 class ScrubR(BaseUnlearner):
-    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None):
+    def __init__(self, model, original_model, alpha, gamma, device: str, MIA: callable = None, js_div_func: callable = None, retrain_model: callable = None, lr: float = 1e-3):
         super().__init__(model, {'alpha': alpha, 'gamma': gamma})
         self.original_model = original_model
         # self.__freeze_original_model()

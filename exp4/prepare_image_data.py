@@ -93,7 +93,6 @@ def preprocess_cifar_data(train_dataset, test_dataset):
     X_train = X_train / 255
     X_test = X_test / 255
 
-    
     train_channel_mean = X_train.mean(dim=(0, 1, 2)).tolist()
     train_channel_std = X_train.std(dim=(0, 1, 2)).tolist()
 
@@ -244,8 +243,7 @@ class CIFARDataset(Dataset):
             #                                         transforms.Normalize(train_channel_means, train_channel_std)
             #                                         ])
             cifar_image_augments = v2.AutoAugment(policy = transforms.AutoAugmentPolicy.CIFAR10)
-            self.augmentations = transforms.Compose([
-                                                     cifar_image_augments, 
+            self.augmentations = transforms.Compose([cifar_image_augments, 
                                                      transforms.Normalize(train_channel_means, train_channel_std)])
         else:
             self.augmentations = transforms.Compose([transforms.Normalize(train_channel_means, train_channel_std)])
@@ -331,8 +329,12 @@ def get_cifar_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: in
     test_dataset = CIFARDataset(X_test, y_test, dataset_name, patch_size, train_channel_mean, train_channel_std, 'test', use_indices=True)
     train_loader, retain_loader, forget_loader, test_loader = create_image_dataloaders(train_dataset, retain_dataset, forget_dataset, 
                                                                                        test_dataset, batch_size, seed)
-    retain_loader_no_aug = DataLoader(CIFARDataset(X_retain, y_retain, dataset_name, patch_size, train_channel_mean, train_channel_std, 'validation', use_indices=True))
-    return train_loader, retain_loader, retain_loader_no_aug, forget_loader, test_loader, forget_idxs
+    
+    train_loader_no_aug = DataLoader(CIFARDataset(X_train, y_train, dataset_name, patch_size, train_channel_mean, train_channel_std, 'validation', use_indices=True),
+                                     batch_size=batch_size, shuffle=True)
+    retain_loader_no_aug = DataLoader(CIFARDataset(X_retain, y_retain, dataset_name, patch_size, train_channel_mean, train_channel_std, 'validation', use_indices=True),
+                                      batch_size=batch_size, shuffle=True)
+    return train_loader, train_loader_no_aug, retain_loader, retain_loader_no_aug, forget_loader, test_loader, forget_idxs
     
 def get_image_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: int, subsample_size: int, patch_size: tuple[int], batch_size: int, seed: int):
     if dataset_name == 'MNIST':
