@@ -113,7 +113,8 @@ def build_vit(cfg: dict) -> nn.Module:
                     n_patches=n_patches,
                     dropout_prob=vit_params.dropout_prob,
                     tau=vit_params.tau,
-                    pooling_type=vit_params.pooling_type
+                    pooling_type=vit_params.pooling_type,
+                    seed=cfg.model.seed
                     )
     return vit_model
 
@@ -156,7 +157,6 @@ def eval_single_model(model,
     else:
         wrong_preds = {'model-name': [],
                        'wrong-preds': []}
-
     mia_model = MIA(device=device)
     UE = UnlearningEvaluator(device=device)
     retain_probs, y_retain = UE.get_model_probs(model, dataloader_retain)
@@ -181,7 +181,6 @@ def eval_single_model(model,
     wrong_preds['model-name'].append(model_name)
     wrong_preds['wrong-preds'].append(disagree_idxs)
 
-
     with open(f'{result_dir}/all_results.json', 'w') as f:
         json.dump(results, f)
     
@@ -189,52 +188,6 @@ def eval_single_model(model,
         json.dump(wrong_preds, f)
 
     return results
-    
-def create_simple_model_visualization(model, save_path, input_shape):
-    """Create a simple flowchart visualization of the model architecture.
-    
-    Args:
-        model: The neural network model to visualize
-        save_path: Path to save the visualization
-        input_shape: Shape of the input data (for labeling input node)
-    """
-    dot = graphviz.Digraph(comment='Neural Network Architecture')
-    
-    # Set graph attributes for better appearance
-    dot.attr(rankdir='LR', bgcolor='white', dpi='300', fontname='Helvetica')
-    
-    # Set node attributes
-    dot.attr('node', shape='box', style='filled,rounded', 
-             fillcolor='#E8F0FE', color='#4285F4', 
-             fontname='Helvetica', fontsize='14', fontcolor='#333333')
-    
-    # Set edge attributes
-    dot.attr('edge', color='#4285F4', penwidth='1.5', arrowsize='0.8')
-    # Add input node
-    dot.node('input', f'Input\n({input_shape} features)', shape='oval')
-    
-    # Add nodes for each layer in the Sequential model
-    prev_node = 'input'
-    for i, layer in enumerate(model.net):
-        if isinstance(layer, nn.Linear):
-            node_name = f'linear_{i}'
-            label = f'Linear\n{layer.in_features} → {layer.out_features}'
-            dot.node(node_name, label)
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-        elif isinstance(layer, nn.ReLU):
-            node_name = f'relu_{i}'
-            dot.node(node_name, 'ReLU')
-            dot.edge(prev_node, node_name)
-            prev_node = node_name
-    
-    # Add output node
-    dot.node('output', f'Output\n({model.net[-1].out_features} classes)', shape='oval')
-    dot.edge(prev_node, 'output')
-    
-    # Render the visualization
-    dot.render(save_path, format='png')
-    return dot
 
 def get_model_predictions(model: nn.Module, dataloader, device: str):
     # ensure shuffle is turned off
@@ -354,8 +307,8 @@ def eval_js_divergence(unlearned_model, retrained_model, original_model,
     with open(f'{experiment_specs.result_dir}/JS_divergence_results.json', 'w') as f:
         json.dump(results, f)
 
-# @hydra.main(config_path=".", config_name="cifar_config")
-@hydra.main(version_base=None, config_path=".", config_name="mnist_config")
+@hydra.main(version_base=None, config_path=".", config_name="cifar_config")
+# @hydra.main(version_base=None, config_path=".", config_name="mnist_config")
 def main(cfg):
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -381,7 +334,8 @@ def main(cfg):
                                                                                                                  batch_size=cfg.data.batch_size,
                                                                                                                  seed=cfg.model.seed)
     else:
-        dataloader_train, dataloader_retain, dataloader_retain_no_aug, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
+        dataloader_train_with_aug, dataloader_train, \
+        dataloader_retain_with_aug, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
                                                                                                                  dataset_name=cfg['data']['dataset_name'],
                                                                                                                  n_forget_points=cfg.data.n_forget_points,
                                                                                                                  subsample_size=cfg.data.subsample_size,
@@ -424,11 +378,10 @@ def main(cfg):
     if not os.path.exists(f'{weights_dir}/original_model/original_model_weights.pt'):
         hyperparams = {}
         # re-initialize dataloaders
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                            dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
+        dataloader_train_with_aug, dataloader_retain_with_aug, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train_with_aug, dataloader_retain_with_aug, 
+                                                                                                                              dataloader_forget, dataloader_val, cfg.model.seed)
         trainer = NeuralNetworkTrainer(model=original_model, 
-                                       train_dataloader=dataloader_train, 
+                                       train_dataloader=dataloader_train_with_aug, 
                                        val_dataloader=dataloader_val, 
                                        logger=logger, 
                                        device=DEVICE, 
@@ -446,12 +399,11 @@ def main(cfg):
                                                     dataloader_forget, dataloader_val, results_dir, 'Original model', 
                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(original_train_fn, original_experiment_specs)
-        original_model
         torch.save(original_model.state_dict(), f'{weights_dir}/original_model/original_model_weights.pt')
         
     else:
         # original_model_sd = torch.load(f'{weights_dir}/{cfg["data"]["dataset_name"]}/original_model/original_model_val-acc=0.7525712025316458_epoch=164.pt', map_location=DEVICE)
-        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt')
+        original_model_sd = torch.load(f'{weights_dir}/original_model/original_model_weights.pt', map_location=DEVICE)
         original_model.load_state_dict(original_model_sd)
         
     ## Copy original model
@@ -464,18 +416,17 @@ def main(cfg):
         save_checkpoints = True #False
     
     elif cfg.model.model_type == 'vision-transformer':
-        retrained_model = build_vit(cfg)
+        retrained_model = build_vit(cfg).to(DEVICE)
         save_checkpoints = True
     
     # ============= Train/load retrained model =============
     if not os.path.exists(f'{weights_dir}/retrained_model/retrained_model_weights.pt'):
         hyperparams = {}
         # re-initialize dataloaders
-        dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
-                                                                                                            dataloader_forget, dataloader_val,
-                                                                                                            cfg.model.seed)
+        dataloader_train_with_aug, dataloader_retain_with_aug, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train_with_aug, dataloader_retain_with_aug, 
+                                                                                                                              dataloader_forget, dataloader_val, cfg.model.seed)
         trainer = NeuralNetworkTrainer(model=retrained_model, 
-                                        train_dataloader=dataloader_retain, 
+                                        train_dataloader=dataloader_retain_with_aug, 
                                         val_dataloader=dataloader_val, 
                                         logger=logger, 
                                         device=DEVICE, 
@@ -491,17 +442,18 @@ def main(cfg):
         
         retrained_train_fn = lambda: trainer()
         retrained_experiment_specs = ExperimentSpecs(retrained_model, dataloader_train, dataloader_retain, 
-                                                    dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
-                                                    cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
+                                                     dataloader_forget, dataloader_val, results_dir, 'Retrained model', 
+                                                     cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         run_and_eval(retrained_train_fn, retrained_experiment_specs)
         torch.save(retrained_model.state_dict(), f'{weights_dir}/retrained_model/retrained_model_weights.pt')
     
     else:
-        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights.pt')
+        retrained_model_sd = torch.load(f'{weights_dir}/retrained_model/retrained_model_weights.pt', map_location=DEVICE)
         retrained_model.load_state_dict(retrained_model_sd)
     
-    plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
-    plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
+    
+    # plot_wrong_predictions(retrained_model, dataloader_forget, DEVICE, 'retrained_model')
+    # plot_wrong_predictions(original_model, dataloader_forget, DEVICE, 'original_model')
 
     # import pandas as pd
     # with open(f'{results_dir}/{cfg["data"]["dataset_name"]}/all_results.json', 'r') as f:
@@ -515,7 +467,7 @@ def main(cfg):
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
-        ssd = SelectiveSynapticDampeningBOPairwise(unlearned_model, 
+        ssd = SelectiveSynapticDampening(unlearned_model, 
                                          alpha=hyperparams["alpha"], 
                                          _lambda=hyperparams["_lambda"],
                                           device=DEVICE)
@@ -527,11 +479,13 @@ def main(cfg):
 
     elif cfg.unlearn.method == "scrubr":
         from src.unlearners.scrub import ScrubR
-        hyperparams = {'alpha': 2,
-                       'gamma': 2,
+        hyperparams = {'alpha': 10,
+                       'gamma': 10,
                        'n_rounds': 4,#10,
-                       'n_repair_rounds': 2#10
+                       'n_repair_rounds': 4#10
                        }
+        lr = 1e-3 if cfg.model.model_type == 'neural-network' else 2e-4
+        hyperparams.update({'lr': lr})
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
@@ -539,7 +493,8 @@ def main(cfg):
                original_model=original_model,
                alpha=hyperparams['alpha'],
                gamma=hyperparams['gamma'],
-               device=DEVICE)
+               device=DEVICE,
+               lr=lr)
         scrubr_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                   results_dir, 'Scrub+R', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         apply_scrubr_fn = lambda: scrubr(retain_dataloader=dataloader_retain, 
@@ -566,7 +521,7 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, assd_experiment_specs)
 
     elif cfg.unlearn.method == 'ssd_v6':
-        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+        from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 1, 'k': 0.99, 'smooth_dampening': False, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
@@ -581,7 +536,7 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
 
     elif cfg.unlearn.method == 'ssd_v6_paired':
-        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+        from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 3, 'k': 0.99, 'smooth_dampening': False, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
@@ -596,7 +551,7 @@ def main(cfg):
         eval_js_divergence(unlearned_model, retrained_model, original_model, ssd_v6_experiment_specs)
     
     elif cfg.unlearn.method == 'ssd_v6_smooth':
-        from unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
+        from src.unlearners.selective_synaptic_dampening_BO_pairwise import SelectiveSynapticDampeningBOPairwise
         hyperparams = {'P': 1, 'k': 0.99, 'smooth_dampening': True, 'n_bo_iter': 50}
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
@@ -615,16 +570,27 @@ def main(cfg):
         from src.models.neural_net_with_sae import NeuralNetWithSAE
         from src.trainers.sae_trainer import SAETrainer
         from src.unlearners.sae_unlearner import SAEUnlearner
-        hyperparams = {'layer_num': 6, '_lambda': 0.01, 'alpha': 0.5}
-        hyperparams.update({'m': 6 * unlearned_model.net[hyperparams['layer_num']-2].lin_layer.out_features})
+
+        if cfg.model.model_type == 'neural-network':
+            hyperparams = {'layer_num': 6, '_lambda': 0.01, 'alpha': 0.5}
+            d = unlearned_model.net[hyperparams['layer_num']-2].lin_layer.out_features
+            hyperparams.update({'m': 6 * d}) # 3136 * 6
+
+        elif cfg.model.model_type == 'vision-transformer':
+            hyperparams = {'layer_num': 6, '_lambda': 150, 'alpha': 0.5}
+            d = unlearned_model.backbone.encoder.layer[hyperparams['layer_num']].output.dense.out_features
+            hyperparams.update({'m': 48 * d}) # 192 * 48
+        
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
         # instantiate & train SAE
-        sae = SAE(d=unlearned_model.net[hyperparams['layer_num']-2].in_features, m=hyperparams['m'], _lambda=hyperparams['_lambda']).to(DEVICE)
+        sae = SAE(d=d, m=hyperparams['m'], _lambda=hyperparams['_lambda']).to(DEVICE)
         
         unlearned_model = NeuralNetWithSAE(unlearned_model, sae, layer_num=hyperparams['layer_num'])
-        sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, device=DEVICE)
+        sae_trainer = SAETrainer(unlearned_model, dataloader_train, dataloader_val, device=DEVICE, 
+                                 n_epochs=50
+                                 )
         sae_train_fn = lambda: sae_trainer.train()
         sae_train_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                results_dir, 'SAE original', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
@@ -778,9 +744,18 @@ def main(cfg):
 
     elif cfg.unlearn.method =='teacher-ascend':
         from src.unlearners.teacher_ascend import TeacherAscender
-        hyperparams = {'n_epochs': 12, '_lambda': 2}
-        ta = TeacherAscender(unlearned_model, n_epochs=hyperparams['n_epochs'], 
-                             _lambda=hyperparams['_lambda'], device=DEVICE)
+        
+        if cfg.model.model_type == 'vision-transformer':
+            hyperparams = {'n_epochs': 35, '_lambda': 2}
+            hyperparams.update({'lr': 1e-4})
+        else:
+            hyperparams = {'n_epochs': 12, '_lambda': 2}
+            hyperparams.update({'lr': 1e-2})
+        ta = TeacherAscender(unlearned_model, 
+                             n_epochs=hyperparams['n_epochs'], 
+                             _lambda=hyperparams['_lambda'], 
+                             device=DEVICE, 
+                             lr=hyperparams['lr'])
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
