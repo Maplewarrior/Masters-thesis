@@ -20,9 +20,12 @@ class ViT(BaseModel):
                  n_patches: int,
                  dropout_prob: float,
                  tau: float,
-                 pooling_type: str
+                 pooling_type: str,
+                 seed: int
                  ) -> None:
         super().__init__()
+        self.set_seed(seed)
+        self.seed = seed
         self.d_patch = d_patch
         self.d_hidden = d_hidden
         self.d_ff = d_ff

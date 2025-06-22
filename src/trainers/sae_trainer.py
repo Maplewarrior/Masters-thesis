@@ -23,7 +23,7 @@ class SAETrainer(BaseTrainer):
         A class that supports training a SAE to reconstruct the activations of a trained neural network.
         This class is compatible with the SAEUnlearner class.
         """
-        self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        self.optimizer = optim.Adam(model.sae.parameters(), lr=learning_rate)
         self.lr_scheduler = None
         super().__init__(model, self.optimizer, train_dataloader, 
                          val_dataloader, logger, disable_tqdm, 
@@ -36,7 +36,7 @@ class SAETrainer(BaseTrainer):
     
     def update_epoch_metrics(self, metrics: dict, out: dict, y, N: int):
         metrics['accuracy'] += (out['probabilities'].argmax(dim=1) == y.argmax(dim=1)).sum().item() / (y.size(0) * N)
-        metrics['l0-norm'] += out['z'].norm(p=0, dim=-1).mean() / N
+        metrics['l0-norm'] += out['z'].detach().norm(p=0, dim=-1).mean() / N
         return metrics
     
     def init_train_metrics(self):

@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import pdb
 from src.models.base_model import BaseModel
@@ -7,7 +8,14 @@ class NeuralNetWithSAE(BaseModel):
         super().__init__()
         self.neural_net = neural_net
         self.sae = sae
-        self.layer_num = layer_num # where to apply the SAE on the neural network's forward pass 
+        self.layer_num = layer_num # where to apply the SAE on the neural network's forward pass
+        self.freeze_nn_parameters()
+    
+    def freeze_nn_parameters(self):
+        self.neural_net.eval()
+        for param in self.neural_net.parameters():
+            param.requires_grad = False
+
 
     def forward(self, x, start_idx = None, stop_idx = None):
         """
