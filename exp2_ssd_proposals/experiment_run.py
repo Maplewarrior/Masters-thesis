@@ -23,9 +23,11 @@ def ssd_bo_title(hyperparams):
         lamb = hyperparams["max"][f"_lambda_{i}"]
         num = i + 1
         plt_tit += f"$\\alpha_{num}={alpha:.2f}$, $\\lambda_{num}={lamb:.2f}$"
-        if i < n_hyperparam_pairs - 1:  # Add comma and space except for last item
-            plt_tit += ",   "
-
+        if i < n_hyperparam_pairs - 1:  # Add separator except for last item
+            if (i + 1) % 2 == 0:
+                plt_tit += ",\n"
+            else:
+                plt_tit += ",   "
     plt_tit = plt_tit.rstrip(', ')
 
     return plt_tit
