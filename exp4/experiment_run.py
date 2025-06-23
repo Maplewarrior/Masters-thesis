@@ -479,13 +479,21 @@ def main(cfg):
 
     elif cfg.unlearn.method == "scrubr":
         from src.unlearners.scrub import ScrubR
-        hyperparams = {'alpha': 10,
-                       'gamma': 10,
-                       'n_rounds': 4,#10,
-                       'n_repair_rounds': 4#10
-                       }
-        lr = 1e-3 if cfg.model.model_type == 'neural-network' else 2e-4
-        hyperparams.update({'lr': lr})
+        if cfg.data.dataset_name == 'MNIST':
+            hyperparams = {'alpha': 2, 
+                           'gamma': 2, 
+                           'n_rounds': 4,
+                           'n_repair_rounds': 2,
+                           'lr': 1e-3
+                          }
+        
+        elif cfg.data.dataset_name == 'CIFAR10':
+            hyperparams = {'alpha': 10,
+                           'gamma': 10,
+                           'n_rounds': 4,
+                           'n_repair_rounds': 4,
+                           'lr': 2e-4
+                          }
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
                                                                                                             cfg.model.seed)
@@ -494,7 +502,7 @@ def main(cfg):
                alpha=hyperparams['alpha'],
                gamma=hyperparams['gamma'],
                device=DEVICE,
-               lr=lr)
+               lr=hyperparams['lr'])
         scrubr_experiment_specs = ExperimentSpecs(unlearned_model, dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, 
                                                   results_dir, 'Scrub+R', cfg.data.dataset_name, hyperparams, cfg.model.seed, DEVICE)
         apply_scrubr_fn = lambda: scrubr(retain_dataloader=dataloader_retain, 
@@ -571,15 +579,15 @@ def main(cfg):
         from src.trainers.sae_trainer import SAETrainer
         from src.unlearners.sae_unlearner import SAEUnlearner
 
-        if cfg.model.model_type == 'neural-network':
+        if cfg.model.model_type == 'neural-network': # MNIST
             hyperparams = {'layer_num': 6, '_lambda': 0.01, 'alpha': 0.5}
             d = unlearned_model.net[hyperparams['layer_num']-2].lin_layer.out_features
-            hyperparams.update({'m': 6 * d}) # 3136 * 6
+            hyperparams.update({'m': 6 * d}) # 3136 * 6 
 
-        elif cfg.model.model_type == 'vision-transformer':
+        elif cfg.model.model_type == 'vision-transformer': # CIFAR-10
             hyperparams = {'layer_num': 6, '_lambda': 150, 'alpha': 0.5}
             d = unlearned_model.backbone.encoder.layer[hyperparams['layer_num']].output.dense.out_features
-            hyperparams.update({'m': 48 * d}) # 192 * 48
+            hyperparams.update({'m': 48 * d}) # 192 * 48 = 9216 (dictionary size)
         
         dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                             dataloader_forget, dataloader_val,
@@ -745,10 +753,11 @@ def main(cfg):
     elif cfg.unlearn.method =='teacher-ascend':
         from src.unlearners.teacher_ascend import TeacherAscender
         
-        if cfg.model.model_type == 'vision-transformer':
+        if cfg.model.model_type == 'vision-transformer': # CIFAR
             hyperparams = {'n_epochs': 35, '_lambda': 2}
             hyperparams.update({'lr': 1e-4})
-        else:
+        
+        else: # MNIST
             hyperparams = {'n_epochs': 12, '_lambda': 2}
             hyperparams.update({'lr': 1e-2})
         ta = TeacherAscender(unlearned_model, 

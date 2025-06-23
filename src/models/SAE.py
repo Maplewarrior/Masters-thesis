@@ -36,7 +36,6 @@ class SAE(BaseModel):
         assert torch.isclose(self.state_dict()['encoder.0.bias'], torch.zeros(self.m)).all(), 'Encoder bias not initalized to zeros'
         assert torch.isclose(self.state_dict()['decoder.bias'], torch.zeros(self.d)).all(), 'Decoder bias not initialized to zeros'
 
-
     def forward(self, x):
         z = self.encoder(x)
         xhat = self.decoder(z)

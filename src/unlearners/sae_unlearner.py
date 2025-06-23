@@ -1,23 +1,6 @@
 import torch
-import torch.nn as nn
 import pdb
-# from src.models.neural_network import NeuralNet
-# from src.models.SAE import SAE
 from src.unlearners.base_unlearner import BaseUnlearner
-from src.trainers.neural_network_trainer import NeuralNetworkTrainer
-
-class CustomSAECriterion(nn.Module):
-    def __init__(self, penalty_terms, _lambda) -> None:
-        super().__init__()
-        self.CE = nn.CrossEntropyLoss()
-        self.penalty_terms = penalty_terms
-        self._lambda = _lambda
-        
-    
-    def forward(self, logits, label, z):
-        fit_term = self.CE(logits, label)
-        reg_term = (self._lambda * z @ self.penalty_terms).mean()
-        return fit_term + reg_term
 
 class SAEUnlearner(BaseUnlearner):
     def __init__(self, model, alpha: float = 0.9, device : str = 'cpu') -> None:
