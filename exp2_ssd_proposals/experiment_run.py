@@ -319,10 +319,14 @@ def main(cfg):
             from src.unlearners.adaptive_ssd import AdaptiveSSD
             hyperparams, dampenings = AdaptiveSSD(unlearned_model, device=DEVICE)(dataloader_train, dataloader_forget, return_dampening=True)
 
+
+            alpha = hyperparams["alpha"]
+            _lambda = hyperparams["_lambda"]
+            
             results_dir = os.path.join(os.path.dirname(__file__), "results", f"{cfg.unlearn.method}", rogue)
             os.makedirs(results_dir, exist_ok=True)
 
-            plot_title = f"Adaptive SSD"
+            plot_title = f"Adaptive SSD\n$\\alpha={alpha:.2f}$, $\\lambda={_lambda:.2f}$"
             decision_boundary_plot(unlearned_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=decision_boundary_filename)
             
             fig = visualize_parameter_dampening(dampenings, type=dampening_plot_type)
