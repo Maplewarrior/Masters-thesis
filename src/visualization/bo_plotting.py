@@ -12,44 +12,6 @@ class ParamItem(pydantic.BaseModel):
     alpha_1: float
     _lambda_1: float
 
-
-def plot_bo_samples_basic(bo_result: list[ParamItem], savepath=None, exploration_factor=None):
-    """Plot the basic objective function samples from BoTorch optimization"""
-    # Extract data from results
-    alphas = np.array([bo_result[i]['params']['alpha_0'] for i in range(len(bo_result))])
-    lambdas = np.array([bo_result[i]['params']['_lambda_0'] for i in range(len(bo_result))])
-    targets = np.array([bo_result[i]['target'] for i in range(len(bo_result))])
-    
-    # Create sampling order for color coding
-    sampling_order = np.linspace(0, 1, len(alphas))
-    
-    # Create custom colormap from professional colors
-    custom_cmap = LinearSegmentedColormap.from_list("professional", professional_colors)
-    
-    plt.figure(figsize=(12, 4))
-    
-    # Plot 1: Objective vs Alpha
-    plt.subplot(1, 2, 1)
-    sc = plt.scatter(alphas, targets, c=sampling_order, cmap=custom_cmap, s=50, edgecolor='k', alpha=0.7)
-    plt.xlabel('Alpha')
-    plt.ylabel('Objective Value')
-    plt.title(f'Objective vs Alpha (Exploration Factor: {exploration_factor})')
-    plt.colorbar(sc, label='Sampling Order (0=early, 1=late)')
-    
-    # Plot 2: Objective vs Lambda
-    plt.subplot(1, 2, 2)
-    sc = plt.scatter(lambdas, targets, c=sampling_order, cmap=custom_cmap, s=50, edgecolor='k', alpha=0.7)
-    plt.xlabel('Lambda')
-    plt.ylabel('Objective Value')
-    plt.title(f'Objective vs Lambda (Exploration Factor: {exploration_factor})')
-    plt.colorbar(sc, label='Sampling Order (0=early, 1=late)')
-        
-    plt.tight_layout()
-    if savepath is not None:
-        plt.savefig(savepath)
-    else:
-        plt.show()
-
 def plot_convergence_analysis(bo_result: list[ParamItem], savepath=None, exploration_factor=None):
     """Plot convergence behavior of the BoTorch optimization"""
     
@@ -60,19 +22,31 @@ def plot_convergence_analysis(bo_result: list[ParamItem], savepath=None, explora
     running_max = np.maximum.accumulate(targets.round(4))
     total_best_ind = np.argmax(targets)
     
-    plt.figure(figsize=(10, 5))
+    plt.style.use('seaborn-v0_8-paper')
+    plt.rcParams['mathtext.fontset'] = 'stix'  # Use a LaTeX-like font for math text
+
+    # Color palette from objective plot
+    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
+
+    fig, ax = plt.subplots(figsize=(12, 10))
     
     # Plot 1: Objective value over iterations
-    plt.plot(iterations, targets, 'o-', alpha=0.7, color=professional_colors[0], label='Sampled Points')
-    plt.plot(iterations, running_max, '-', linewidth=2, color=professional_colors[1], label='Best So Far')
-    plt.xlabel('Iteration')
-    plt.ylabel('Objective Value')
-    plt.title(f'Optimization Convergence (Exploration Factor: {exploration_factor})')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.axvline(total_best_ind, color=professional_colors[2], linestyle='--', linewidth=2, label=f'Best: {targets[total_best_ind]:.4f} at iteration {total_best_ind}')
-    plt.legend()
+    ax.plot(iterations, targets, 'o-', alpha=0.7, color=colors[0], label='Sampled Points')
+    ax.plot(iterations, running_max, '-', linewidth=2.5, color=colors[6], label='Best So Far')
+    ax.set_xlabel('Iteration', fontsize=26)
+    ax.set_ylabel('$\\mathcal{L}_{BO}$', fontsize=26)
+    ax.set_title(f'Optimization Convergence (Exploration Factor: ${exploration_factor}$)', fontsize=30)
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.axvline(total_best_ind, color=colors[4], linestyle='--', linewidth=2, label=f'Best: ${targets[total_best_ind]:.4f}$ at iteration ${total_best_ind}$')
+    ax.legend(fontsize=24)
+
+    ax.tick_params(axis='both', which='major', labelsize=22)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+
     if savepath is not None:
-        plt.savefig(savepath)
+        plt.savefig(savepath, bbox_inches='tight')
     else:
         plt.show()
+    
+    plt.close(fig)

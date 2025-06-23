@@ -73,49 +73,42 @@ def main(cfg):
 
     objective_values = ssd_visualizer.search_hyperparameters_exhaustive(dataloader_train, dataloader_forget, dataloader_val, alpha_values)
 
-    plt.style.use('seaborn-v0_8-whitegrid')
+    plt.style.use('seaborn-v0_8-paper')
 
-    # Your specified color palette
-    colors = ['#ffa600', '#a05195', '#f95d6a', '#8172B3', '#CCB974', '#64B5CD', '#FC9E4F']
+    # Color palette from SCRUB plots
+    colors = ['#003f5c', '#2f4b7c', '#665191', '#a05195', '#d45087', '#f95d6a', '#ff7c43', '#ffa600']
 
-    # Create the figure with a nice size and DPI
-    plt.figure(figsize=(10, 7), dpi=100)
+    # Create the figure with a consistent style
+    fig, ax = plt.subplots(figsize=(12, 8))
+    fig.suptitle(r'$\mathcal{L}_{BO}$ as a function of $\alpha$, with $\lambda=1$', fontsize=34)
 
-    # Create the main plot with enhanced styling
-    plt.plot(alpha_values, objective_values, 
-            color=colors[0], 
-            linewidth=3, 
-            # markerfacecolor=colors[1], 
-            # markeredgecolor=colors[2], 
-            # markeredgewidth=2,
+
+    # Create the main plot
+    ax.plot(alpha_values, objective_values, 
+            color=colors[6], # Using a color from the SCRUB palette
+            linewidth=2.5, 
             alpha=0.9,
             label='Objective value')
 
     # Customize the plot appearance
-    plt.xlabel(r'$\alpha$', fontsize=14, fontweight='bold', color='#333333')
-    plt.ylabel(r'$\mathcal{L}_{BO}$', fontsize=14, fontweight='bold', color='#333333')
-    plt.title(r'$\mathcal{L}_{BO}$ as a function of $\alpha$. $\lambda=1$', fontsize=18, fontweight='bold', 
-            color='#2c3e50', pad=20)
-
+    ax.set_xlabel(r'$\alpha$', fontsize=28)
+    ax.set_ylabel(r'$\mathcal{L}_{BO}$', fontsize=28)
+    
     # Add legend with custom styling
-    plt.legend(fontsize=14, frameon=True, fancybox=True, shadow=False, 
-            framealpha=0.9, edgecolor='#cccccc', loc='best')
+    ax.legend(fontsize=24, frameon=True, fancybox=True, shadow=False, loc='best')
 
     # Customize tick parameters
-    plt.tick_params(axis='both', which='major', labelsize=12, colors='#333333')
-    plt.tick_params(axis='both', which='minor', labelsize=10, colors='#666666')
+    ax.tick_params(axis='both', which='major', labelsize=16)
 
-    plt.tight_layout(pad=0.0)
+    # Add a grid
+    ax.grid(True, linestyle=':', alpha=0.6)
 
-    # Optional: Add a subtle border around the plot area
-    for spine in plt.gca().spines.values():
-        spine.set_color('#cccccc')
-        spine.set_linewidth(1.2)
+    # Adjust layout to prevent title overlap
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
 
-
-    # Optional: Save the plot with high quality
-    filename = f"{dataset_number}_LBO_vs_alpha_lambda1" if not smooth_dampen else f"{dataset_number}_objective_vs_alpha_lambda1_smooth"
-    plt.savefig(f'{results_dir}/{filename}.pdf') 
+    # Save the plot with high quality
+    filename = f"{dataset_number}_LBO_vs_alpha_lambda1" if not smooth_dampen else f"{dataset_number}_LBO_vs_alpha_lambda1_smooth"
+    plt.savefig(f'{results_dir}/{filename}.pdf', bbox_inches='tight') 
 
 
 if __name__ == '__main__':
