@@ -98,9 +98,10 @@ def visualize_parameter_dampening_stacked(
     cbar_label = r'$\beta$ (1 = No Dampening, 0 = Full Dampening)'
     if FIM_ratio:
         all_max_vals = [t.max().item() for t in state_dict.values() if t.numel() > 0]
-        if all_max_vals:
-            max_val = max(all_max_vals)
-            vmax = max_val if max_val > 0 else 1.0
+        max_val = max(all_max_vals) if all_max_vals else 0.0
+        vmax = max(max_val, alpha_hyperparam)
+        if vmax <= 0:
+            vmax = 1.0
         cbar_label = '$\\hat{i}_j^{(\\mathcal{D}_f)} / \\hat{i}_j^{(\\mathcal{D})}$'
 
     norm = plt.Normalize(vmin=0, vmax=vmax)
