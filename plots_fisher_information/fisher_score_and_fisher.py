@@ -73,11 +73,7 @@ def plot_gaussian_score_function(samples: np.ndarray, param_range: np.ndarray,
         
         # Set up the figure with LaTeX rendering
         plt.rcParams.update({
-            'font.family': 'serif',
-            'font.serif': ['Computer Modern Roman'],
             'font.size': 14,
-            'text.usetex': True,
-            'text.latex.preamble': r'\usepackage{amsmath}',
             'mathtext.fontset': 'cm',
             'figure.figsize': (8, 6),
             'figure.dpi': 100,  # Reduced DPI for display
@@ -90,8 +86,9 @@ def plot_gaussian_score_function(samples: np.ndarray, param_range: np.ndarray,
         fig, ax = plt.subplots(figsize=(8, 6))
     
     # Use a single blue color instead of viridis colormap
-    blue_color = '#1f77b4'  # A nice matplotlib blue
-    
+    blue_color = '#665191'  # A nice matplotlib blue
+
+
     # Plot individual score values for each sample point
     for i in range(samples.shape[0]):
         sample_dataset = samples[i]
@@ -123,7 +120,9 @@ def plot_gaussian_score_function(samples: np.ndarray, param_range: np.ndarray,
                 fontsize=18, fontweight='bold')
     
     # Add formulas as text
-    formula_text = r"$\begin{aligned} p(x|\theta) &= \frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2}(x-\theta)^2} \\ s(\theta) &= x - \theta \end{aligned}$"
+    pdf_formula = r"$p(x|\theta) = \frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2}(x-\theta)^2}$"
+    score_formula = r"$s(\theta) = x - \theta$"
+    formula_text = pdf_formula + '\n' + score_formula
     
     ax.text(0.98, 0.98, formula_text,
             ha='right', va='top', transform=ax.transAxes,
@@ -166,11 +165,7 @@ def main():
     
     # Set up the figure with LaTeX rendering
     plt.rcParams.update({
-        'font.family': 'serif',
-        'font.serif': ['Computer Modern Roman'],
         'font.size': 14,
-        'text.usetex': True,
-        'text.latex.preamble': r'\usepackage{amsmath}\usepackage{amssymb}',
         'mathtext.fontset': 'cm',
         'figure.figsize': (12, 8),  # Reduced height from 10 to 6
         'figure.dpi': 300,
@@ -205,9 +200,10 @@ def main():
     all_scores = np.array(all_scores)
     
     # Plot horizontal histogram (rotated distribution)
-    histogram_color = '#9370DB'  # Medium Purple - sophisticated purple tone
+    histogram_color = '#ff7c43'  # Medium Purple - sophisticated purple tone
     sns.histplot(y=all_scores, color=histogram_color, alpha=0.8, ax=ax_dist, bins=bins)
-    
+
+
     # Add reference line at zero
     ax_dist.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
     
@@ -293,8 +289,8 @@ def main():
     
     # Also save as PNG for quick viewing
     plt.savefig('gaussian_score_and_fisher_information.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
-    main()
+    main()            

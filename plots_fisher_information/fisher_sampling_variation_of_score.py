@@ -118,7 +118,8 @@ def plot_score_functions(ax, samples: np.ndarray, score_func: Callable,
         score_formula: Formula for the score function
     """
     # Use a modern color palette
-    colors = sns.color_palette("viridis", n_colors=samples.shape[0])
+    custom_palette = ['#d45087', '#f95d6a', '#ff7c43', '#ffa600']
+    colors = sns.color_palette(custom_palette, n_colors=samples.shape[0])
     
     for i in range(samples.shape[0]):
         sample = samples[i]
@@ -141,8 +142,8 @@ def plot_score_functions(ax, samples: np.ndarray, score_func: Callable,
     title = f"{distribution_name} Distribution (n={n_samples})"
     ax.set_title(title, fontsize=14, fontweight='bold')
     
-    # Add formulas as text in the top right corner with aligned equals signs
-    formula_text = r"$\begin{aligned} p(x|\theta) &= " + pdf_formula.split("=")[1][:-1] + r" \\ s(\theta) &= " + score_formula.split("=")[1][:-1] + r" \end{aligned}$"
+    # Add formulas as text in the top right corner
+    formula_text = pdf_formula + '\n' + score_formula
     ax.text(0.98, 0.98, formula_text,
             ha='right', va='top', transform=ax.transAxes,
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=5),
@@ -157,12 +158,8 @@ def main():
     # Set a modern style with LaTeX rendering
     sns.set_style("whitegrid")
     plt.rcParams.update({
-        'font.family': 'serif',
-        'font.serif': ['Computer Modern Roman'],
         'font.size': 14,
-        'text.usetex': True,
-        'text.latex.preamble': r'\usepackage{amsmath}',
-        'mathtext.fontset': 'cm',
+        'mathtext.fontset': 'cm',  # Use Computer Modern for math text
         'figure.figsize': (15, 5),  # Modified for single row
         'figure.dpi': 300,
         'savefig.dpi': 600,
@@ -221,7 +218,7 @@ def main():
     
     # Also save as PNG for quick viewing
     plt.savefig('score_functions.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
