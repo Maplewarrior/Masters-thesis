@@ -108,15 +108,16 @@ def plot_data(X, y, rogue_point_idx=None):
         framealpha=0.95,
         facecolor='white',
         edgecolor='lightgray',
-        loc='best',
-        fontsize=10
+        loc='upper center',
+        bbox_to_anchor=(0.5, -0.10),
+        ncol=4,
+        fontsize=14
     )
     
     # Add labels and title
-    plt.xlabel('Feature 1', fontsize=12)
-    plt.ylabel('Feature 2', fontsize=12)
-    plt.title('Cluster Distribution', fontsize=14, fontweight='bold')
-    
+    plt.xlabel('Feature 1', fontsize=16)
+    plt.ylabel('Feature 2', fontsize=16)
+
     # Improve ticks
     plt.tick_params(direction='out', length=6, width=1)
     

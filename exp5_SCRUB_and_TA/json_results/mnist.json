@@ -1,0 +1,130 @@
+[
+    {
+      "Model name": "Original model",
+      "MIA-probability": [0.95, 0.03],
+      "Retain-accuracy": [1.00, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [86.48, 42.38]
+    },
+    {
+      "Model name": "Retrained model",
+      "MIA-probability": [0.88, 0.03],
+      "Retain-accuracy": [1.00, 0.00],
+      "Forget-accuracy": [0.95, 0.02],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [105.14, 103.70]
+    },
+    {
+      "Model name": "Amnesiac original",
+      "MIA-probability": [0.94, 0.03],
+      "Retain-accuracy": [1.00, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [460.32, 20.75]
+    },
+    {
+      "Model name": "Amnesiac",
+      "MIA-probability": [0.80, 0.08],
+      "Retain-accuracy": [0.80, 0.10],
+      "Forget-accuracy": [0.78, 0.11],
+      "Val-accuracy": [0.77, 0.10],
+      "Time (sec)": [286.53, 66.07]
+    },
+    {
+      "Model name": "Amnesiac + repair",
+      "MIA-probability": [0.90, 0.02],
+      "Retain-accuracy": [0.99, 0.01],
+      "Forget-accuracy": [0.97, 0.02],
+      "Val-accuracy": [0.94, 0.01],
+      "Time (sec)": [12.68, 0.52]
+    },
+    {
+      "Model name": "SSD",
+      "MIA-probability": [0.93, 0.03],
+      "Retain-accuracy": [0.99, 0.01],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.94, 0.01],
+      "Time (sec)": [1.68, 0.08]
+    },
+    {
+      "Model name": "BO-SSD",
+      "MIA-probability": [0.93, 0.04],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [7.28, 0.79]
+    },
+    {
+      "Model name": "BO-SSD paired",
+      "MIA-probability": [0.94, 0.03],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [7.68, 1.67]
+    },
+    {
+      "Model name": "BO-SSD smooth",
+      "MIA-probability": [0.78, 0.17],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.98, 0.02],
+      "Val-accuracy": [0.94, 0.01],
+      "Time (sec)": [7.60, 1.40]
+    },
+    {
+      "Model name": "Adaptive SSD",
+      "MIA-probability": [0.94, 0.02],
+      "Retain-accuracy": [1.00, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [1.82, 0.02]
+    },
+    {
+      "Model name": "SAE",
+      "MIA-probability": [0.84, 0.06],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [0.88, 0.01]
+    },
+    {
+      "Model name": "SAE original",
+      "MIA-probability": [0.94, 0.02],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.99, 0.01],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [89.98, 12.36]
+    },
+    {
+      "Model name": "SISA",
+      "MIA-probability": [0.41, 0.05],
+      "Retain-accuracy": [0.93, 0.00],
+      "Forget-accuracy": [0.91, 0.02],
+      "Val-accuracy": [0.92, 0.00],
+      "Time (sec)": [52.28, 1.59]
+    },
+    {
+      "Model name": "SISA original",
+      "MIA-probability": [0.39, 0.06],
+      "Retain-accuracy": [0.93, 0.00],
+      "Forget-accuracy": [0.93, 0.02],
+      "Val-accuracy": [0.92, 0.00],
+      "Time (sec)": [52.64, 1.13]
+    },
+    {
+      "Model name": "Scrub+R",
+      "MIA-probability": [0.91, 0.03],
+      "Retain-accuracy": [0.99, 0.00],
+      "Forget-accuracy": [0.98, 0.02],
+      "Val-accuracy": [0.95, 0.00],
+      "Time (sec)": [35.61, 1.16]
+    },
+    {
+      "Model name": "Teacher Ascent",
+      "MIA-probability": [0.69, 0.18],
+      "Retain-accuracy": [0.96, 0.03],
+      "Forget-accuracy": [0.86, 0.08],
+      "Val-accuracy": [0.91, 0.03],
+      "Time (sec)": [3.34, 2.30]
+    }
+  ]
