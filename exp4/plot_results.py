@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import io
 import os
+import numpy as np
 
 # --- 1. Data Preparation ---
 try:
@@ -103,7 +104,14 @@ for metric in metrics_to_plot:
     # Assign a distinct color to the retrained model and a single color to all others
     colors = [RETRAINED_COLOR if model == RETRAINED_MODEL_NAME else OTHER_MODEL_COLOR for model in plot_means.index]
 
-    ax.bar(plot_means.index, plot_means, yerr=plot_stds, capsize=5, color=colors, edgecolor='black')
+    y_err = plot_stds
+    is_bounded_metric = 'accuracy' in metric or 'probability' in metric
+    if is_bounded_metric:
+        lower_error = np.minimum(plot_stds, plot_means)
+        upper_error = np.minimum(plot_stds, 1 - plot_means)
+        y_err = [lower_error, upper_error]
+
+    ax.bar(plot_means.index, plot_means, yerr=y_err, capsize=5, color=colors, edgecolor='black')
 
     if RETRAINED_MODEL_NAME in plot_means.index:
         retrained_mean = plot_means[RETRAINED_MODEL_NAME]
@@ -171,6 +179,16 @@ else:
         
         # Use a single, distinct color for these baseline plots
         ax.bar(plot_means.index, plot_means, yerr=plot_stds, capsize=5, color=ORIGINAL_MODEL_COLOR, edgecolor='black')
+
+        y_err = plot_stds
+        is_bounded_metric = 'accuracy' in metric or 'probability' in metric
+        if is_bounded_metric:
+            lower_error = np.minimum(plot_stds, plot_means)
+            upper_error = np.minimum(plot_stds, 1 - plot_means)
+            y_err = [lower_error, upper_error]
+        
+        # Use a single, distinct color for these baseline plots
+        ax.bar(plot_means.index, plot_means, yerr=y_err, capsize=5, color=ORIGINAL_MODEL_COLOR, edgecolor='black')
 
         plot_title = metric.replace('-', ' ').replace('_', ' ').title()
         ax.set_title(f'Original Models: {plot_title}', fontsize=TITLE_FONTSIZE)
