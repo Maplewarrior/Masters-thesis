@@ -5,9 +5,10 @@ import os
 
 # --- 1. Data Preparation ---
 try:
-    results_folder = "real_data_results/MNIST"
+    dataset_name = "MNIST"
+    results_folder = f"real_data_results/{dataset_name}"
     script_dir = os.path.dirname(__file__) if '__file__' in locals() else '.'
-    file_path = os.path.join(script_dir, results_folder, 'MNIST_acc_mia_all.csv')
+    file_path = os.path.join(script_dir, results_folder, f'{dataset_name}_acc_mia_all.csv')
     df = pd.read_csv(file_path)
 except FileNotFoundError:
     raise FileNotFoundError(f"File not found: {file_path}")
@@ -107,14 +108,14 @@ for metric in metrics_to_plot:
     if RETRAINED_MODEL_NAME in plot_means.index:
         retrained_mean = plot_means[RETRAINED_MODEL_NAME]
         retrained_std = plot_stds.get(RETRAINED_MODEL_NAME, 0)
-        ax.axhline(y=retrained_mean, color="black", linestyle='--', linewidth=2)
+        ax.axhline(y=retrained_mean, color="black", linestyle='--', linewidth=2, label=f'{RETRAINED_MODEL_NAME} Mean')
         
         # make axhline for each std dev
         for i in range(1, 2):
             ax.axhline(y=retrained_mean + i*retrained_std, color="black", linestyle='--', linewidth=1)
             ax.axhline(y=retrained_mean - i*retrained_std, color="black", linestyle='--', linewidth=1)
 
-        ax.axhspan(retrained_mean - retrained_std, retrained_mean + retrained_std, color=RETRAINED_COLOR, alpha=0.40)
+        ax.axhspan(retrained_mean - retrained_std, retrained_mean + retrained_std, color=RETRAINED_COLOR, alpha=0.40, label=f'{RETRAINED_MODEL_NAME} Std Dev Range')
 
     plot_title = metric.replace('-', ' ').replace('_', ' ').title()
     ax.set_title(f'Model Comparison: {plot_title}', fontsize=TITLE_FONTSIZE)
@@ -133,6 +134,10 @@ for metric in metrics_to_plot:
             ax.set_ylim(top=global_max_time * 1.15)
         else:
             ax.set_ylim(bottom=0, top=global_max_time * 1.1)
+
+
+    
+    ax.legend(fontsize=TICK_FONTSIZE)
 
     plt.tight_layout()
     print(f"Generating and saving plot for {metric}...")
