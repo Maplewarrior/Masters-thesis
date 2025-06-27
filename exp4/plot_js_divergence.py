@@ -58,16 +58,24 @@ for dataset_type in dataset_order:
     mean_cols = ['JS div. retrained_mean', 'JS div. original_mean']
     std_cols = ['JS div. retrained_std', 'JS div. original_std']
     means_to_plot = plot_df[mean_cols]
-    stds_to_plot = plot_df[std_cols].copy()
-    
-    # Rename std columns to match mean columns for yerr alignment
-    stds_to_plot.columns = means_to_plot.columns
+    stds_to_plot = plot_df[std_cols]
+
+    # Create asymmetric error bars to prevent them from going below zero on a log scale
+    yerr_dict = {}
+    for mean_col, std_col in zip(mean_cols, std_cols):
+        if mean_col in means_to_plot and std_col in stds_to_plot:
+            means = means_to_plot[mean_col]
+            stds = stds_to_plot[std_col]
+            # Lower error is the minimum of the mean and std, so it doesn't go below zero
+            lower_error = np.minimum(means, stds)
+            upper_error = stds
+            yerr_dict[mean_col] = np.array([lower_error, upper_error])
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))
     
     means_to_plot.plot(
-        kind='bar', yerr=stds_to_plot, ax=ax, capsize=4, width=0.8,
+        kind='bar', yerr=yerr_dict, ax=ax, capsize=4, width=0.8,
         color=COLOR_PALETTE[:2], edgecolor='black'
     )
 
