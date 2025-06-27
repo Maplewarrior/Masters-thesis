@@ -6,7 +6,7 @@ import numpy as np
 # --- 1. Data Preparation ---
 try:
     # TODO: Make this configurable if needed, e.g., "MNIST"
-    dataset_name = "MNIST" 
+    dataset_name = "CIFAR10" 
     results_folder = f"real_data_results/{dataset_name}"
     script_dir = os.path.dirname(__file__) if '__file__' in locals() else '.'
     file_path = os.path.join(script_dir, results_folder, f'{dataset_name}_js_div_all.csv')
@@ -60,16 +60,16 @@ for dataset_type in dataset_order:
     means_to_plot = plot_df[mean_cols]
     stds_to_plot = plot_df[std_cols]
 
-    # Create asymmetric error bars to prevent them from going below zero on a log scale
+    # Create asymmetric error bars to prevent them from going below zero.
     yerr_dict = {}
     for mean_col, std_col in zip(mean_cols, std_cols):
         if mean_col in means_to_plot and std_col in stds_to_plot:
             means = means_to_plot[mean_col]
             stds = stds_to_plot[std_col]
-            # Lower error is the minimum of the mean and std, so it doesn't go below zero
+            # Lower error is the minimum of the mean and std, so it doesn't go below zero.
             lower_error = np.minimum(means, stds)
             upper_error = stds
-            yerr_dict[mean_col] = np.array([lower_error, upper_error])
+            yerr_dict[mean_col] = np.array([lower_error.values, upper_error.values])
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -83,15 +83,13 @@ for dataset_type in dataset_order:
     dataset_title = dataset_type.title()
     ax.set_title(f'JS Divergence Comparison on {dataset_title} Set', 
                  fontsize=TITLE_FONTSIZE, pad=20)
-    ax.set_ylabel('JS Divergence (log scale)', fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel('JS Divergence', fontsize=LABEL_FONTSIZE)
     ax.set_xlabel('')
     
     plt.xticks(rotation=45, ha='right', fontsize=TICK_FONTSIZE)
     ax.tick_params(axis='y', labelsize=TICK_FONTSIZE)
     ax.grid(True, which="both", ls="--", axis='y', color='grey', alpha=0.7)
     ax.set_axisbelow(True)
-
-    ax.set_yscale('log')
 
     # Customize legend
     handles, labels = ax.get_legend_handles_labels()
