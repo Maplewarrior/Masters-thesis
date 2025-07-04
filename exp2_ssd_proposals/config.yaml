@@ -48,6 +48,7 @@ unlearn:
   ssd:
     alpha: 30
     _lambda: 1
+    plot_gif: False
   ssd_bo:
     k: 1
     bo_plot_exploration_factor: 2.5

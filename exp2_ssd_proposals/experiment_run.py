@@ -9,6 +9,8 @@ from src.visualization.dampening_visualization import visualize_parameter_dampen
 from src.plotting.decision_boundary_plot import decision_boundary_plot
 from src.utils.load_rogue_data import get_data
 from src.visualization.bo_plotting import plot_convergence_analysis
+import numpy as np
+import imageio
 
 def count_updated_params(original_model, unlearned_model):
     pass
@@ -160,7 +162,31 @@ def main(cfg):
             fig = visualize_parameter_dampening(FIM_ratio, type=dampening_plot_type, FIM_ratio=True, alpha_hyperparam=alpha)
             plt.savefig(f'{results_dir}/{dataset_number}_FIM_ratio_dampening_selection.pdf')
 
-        
+            fig = visualize_parameter_dampening(FIM_ratio, type=dampening_plot_type, FIM_ratio=True, alpha_hyperparam="no-value")
+            plt.savefig(f'{results_dir}/{dataset_number}_FIM_ratio_dampening_selection_no_alpha.pdf')
+
+
+
+            if cfg.unlearn.ssd.plot_gif:
+                alpha_gif = 120
+                gif_duration = 140
+                gif_frames = 240
+                alpha_linspace = np.linspace(0, alpha_gif, gif_frames)
+
+                gif_dir = f'{results_dir}/gif'
+                os.makedirs(gif_dir, exist_ok=True)
+                image_paths = []
+                for alpha in alpha_linspace:
+                    fig = visualize_parameter_dampening(FIM_ratio, type=dampening_plot_type, FIM_ratio=True, alpha_hyperparam=alpha)
+                    image_path = f'{gif_dir}/{dataset_number}_FIM_ratio_dampening_selection_alpha{alpha}.png'
+                    plt.savefig(image_path)
+                    image_paths.append(image_path)
+                    plt.close()
+                # Now make gif out of the images
+                images = [imageio.imread(image_path) for image_path in image_paths]
+                imageio.mimsave(f'{results_dir}/{dataset_number}_dampening_visualization.gif', images, duration=gif_duration, loop=0)
+
+
         elif cfg.unlearn.method == "ssd-layerwise":
             from src.unlearners.selective_synaptic_dampening_layerwise import SelectiveSynapticDampeningLayerwise as SelectiveSynapticDampening_ablation
 
