@@ -189,8 +189,8 @@ def preprocess_mnist_data(train_dataset, test_dataset):
     # min max normalize images using train min and max values
     x_max = X_train.max()
     x_min = X_train.min()
-    X_train = (X_train - x_max) / (x_max - x_min)
-    X_test = (X_test - x_max) / (x_max - x_min)
+    X_train = (X_train - x_min) / (x_max - x_min) # NOTE: SHOULD BE MIN IN THE ENUMERATOR
+    X_test = (X_test - x_min) / (x_max - x_min) # # NOTE: SHOULD BE MIN IN THE ENUMERATOR
     
     # one-hot encode y values
     y_train = torch.zeros((y_train.size(0), n_classes)).scatter_(dim=1, index=y_train.unsqueeze(1), value=1)
@@ -360,7 +360,7 @@ if __name__ == '__main__':
     # cifar_train, cifar_test = download_cifar_dataset('exp4/data')
     # preprocess_cifar_data(cifar_train, cifar_test)
     root_dir = os.path.join(os.path.dirname(__file__), 'data')
-    train_loader, retain_loader, forget_loader, test_loader, forget_idxs = get_image_unlearn_data(root_dir, 'CIFAR10', 150, None, (4, 4), 16, 42)
+    train_loader, retain_loader, forget_loader, test_loader, forget_idxs = get_image_unlearn_data(root_dir, 'CIFAR10', 100, None, (4, 4), 16, 42)
     from src.models.vision_transformer import ViT
     d_patch = 4 * 4 * 3
     model = ViT(d_patch=d_patch, d_hidden=128, d_ff=256, d_k = 36, n_layers=3, n_heads=4, n_classes=10, n_patches=64, tau=6, img_size=(32,32), patch_size=(4,4))

@@ -48,8 +48,8 @@ def preprocess_mnist_data(train_data, train_target, test_data, test_target, x_mi
     if not x_max:
         x_max = X_train.max()
 
-    X_train = (X_train - x_max) / (x_max - x_min)
-    X_test = (X_test - x_max) / (x_max - x_min)
+    X_train = (X_train - x_min) / (x_max - x_min)
+    X_test = (X_test - x_min) / (x_max - x_min)
     
     # one-hot encode y values
     y_train = torch.zeros((y_train.size(0), n_classes)).scatter_(dim=1, index=y_train.unsqueeze(1), value=1)

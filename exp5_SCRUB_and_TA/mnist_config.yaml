@@ -28,10 +28,14 @@ data:
   # cifar parameters
   split_type: "tsne_box" # "tsne_box" or "random"
   tsne_box_coordinates: 
-    x_min: 10.2
-    x_max: 11.0
-    y_min: -4.3
-    y_max: -0.4
+    # x_min: 10.2 #-6.2 
+    # x_max: 11.0 # -3.4
+    # y_min: -4.3 # -1.6
+    # y_max: -0.4 # 1.011
+    x_min: -6.2 #10.2
+    x_max: -3.4 #11.0
+    y_min: -1.6 # -4.3
+    y_max:  1.0 # -0.4
   image_size:
     - 32
     - 32
@@ -41,7 +45,7 @@ data:
 
 trainer: 
   lr: 0.001
-  n_epochs: 15
+  n_epochs: 30
   disable_tqdm: False
   do_early_stopping: False #True
   weight_decay: 0.0
@@ -49,7 +53,7 @@ trainer:
   lr_scheduler: 
 
 model: 
-  seeds: [42, 43, 44] #MNIST: 42
+  seeds: [42] #[42, 43, 44] #MNIST: 42
   model_type: 'neural-network'
   neural_network_parameters:
     width_factor: 4 # MNIST: 4
@@ -60,8 +64,8 @@ unlearn:
   method: "scrub" # "scrub" or "teacher_ascend"
   teacher_ascend:
     versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true], ["ce-retain-no-reg", false], ["entropy-retain-no-reg", false]]
-    n_epochs: 100
-    _lambda: 64 # 64
+    n_epochs: 150
+    _lambda: 2 # 64
   scrub:
     alpha: 2
     gamma: 2

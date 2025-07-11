@@ -1,3 +1,12 @@
+
+"""
+This experiment constitutes future work.
+
+We assess the following:
+    - Can a repair phase improve teacher ascent overforgetting?
+    - How sensitive is SCRUB+R to the number of epochs when one includes the repair phase at each epoch? 
+"""
+
 import hydra
 import wandb
 import torch
@@ -134,7 +143,6 @@ def calculate_model_metrics(model, dataloaders, device, model_name=None, save_pa
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     print("Starting experiment with configuration: %s", cfg.data.dataset_name)
-
     hpc_root_path = '/work3/s204138/MachineUnlearning'
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -148,8 +156,9 @@ def main(cfg):
     if cfg.unlearn.method == 'teacher_ascend':
         hyperparams_postfix = f"{cfg.unlearn.teacher_ascend.n_epochs}epochs_{cfg.unlearn.teacher_ascend._lambda}lambda"
         results_root_dir = os.path.join(absolute_root_path, 'results', f'teacher_ascend_{hyperparams_postfix}')
+        # weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
         weights_root_dir = os.path.join(hpc_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
-        
+
     elif cfg.unlearn.method == 'scrub':
         hyperparams_postfix = f"{cfg.unlearn.scrub.alpha}alpha_{cfg.unlearn.scrub.gamma}gamma_{cfg.unlearn.scrub.n_rounds}rounds_{cfg.unlearn.scrub.n_repair_rounds}repair_rounds"
         results_root_dir = os.path.join(absolute_root_path, 'results', f'scrub_{hyperparams_postfix}')
@@ -315,19 +324,26 @@ def main(cfg):
         if cfg.unlearn.method == 'teacher_ascend':
             print("Initializing Teacher Ascender")
             from src.unlearners.teacher_ascend import TeacherAscender
-            hyperparams = {'n_epochs': cfg.unlearn.teacher_ascend.n_epochs, '_lambda': cfg.unlearn.teacher_ascend._lambda}
+            hyperparams = {'n_epochs': cfg.unlearn.teacher_ascend.n_epochs, '_lambda': cfg.unlearn.teacher_ascend._lambda, 'lr': 1e-3}
 
             mia_model = MIA(device=DEVICE)
             unlearning_evaluator = UnlearningEvaluator(device=DEVICE)
             js_div_func = unlearning_evaluator.JS_divergence
 
-            ta_versions_lists = cfg.unlearn.teacher_ascend.versions
-            ta_versions = [tuple(v) for v in ta_versions_lists]
+            # ta_versions_lists = cfg.unlearn.teacher_ascend.versions
             # convert to list of tuples 
+            ta_versions = [("entropy-retain-repair", True)] # include repair phase & use the FIM ratio. #[tuple(v) for v in ta_versions_lists]
+            # ta_versions = [("entropy-retain", True)]
             for (version, is_FIM_ratio) in ta_versions:
                 print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
-                ta_version = TeacherAscender(copy.deepcopy(original_model), n_epochs=hyperparams['n_epochs'], 
-                                    _lambda=hyperparams['_lambda'], device=DEVICE, MIA=mia_model, js_div_func=js_div_func, retrain_model=retrained_model)
+                ta_version = TeacherAscender(copy.deepcopy(original_model), 
+                                    n_epochs=hyperparams['n_epochs'], 
+                                    _lambda=hyperparams['_lambda'], 
+                                    device=DEVICE, 
+                                    MIA=mia_model, 
+                                    js_div_func=js_div_func, 
+                                    retrain_model=retrained_model, 
+                                    lr=hyperparams['lr'])
                 ta_version_metrics = ta_version(dataloader_retain, dataloader_forget, dataloader_val, eval=True, version=version, is_FIM_ratio=is_FIM_ratio)
                 fim_ratio_string = "_fimratio" if is_FIM_ratio else ""
                 with open(f'{results_dir}/ta_metrics_{version}{fim_ratio_string}_{seed}.json', 'w') as f:
@@ -336,7 +352,6 @@ def main(cfg):
             dataloader_train, dataloader_retain, dataloader_forget, dataloader_val = re_instantiate_dataloaders(dataloader_train, dataloader_retain, 
                                                                                                                 dataloader_forget, dataloader_val,
                                                                                                                 seed)
-
 
 
         # ========================== Unlearn: SCRUB ==========================
