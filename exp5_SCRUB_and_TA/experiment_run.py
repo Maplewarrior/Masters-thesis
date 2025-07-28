@@ -17,7 +17,7 @@ from src.trainers.neural_network_trainer import NeuralNetworkTrainer
 from src.evaluation.membership_inference_attack import MIA
 from src.evaluation.unlearning_evaluator import UnlearningEvaluator
 from prepare_image_data import get_image_unlearn_data
-from prepare_image_data_v2 import get_image_unlearn_data as get_image_unlearn_data_tsne_box
+from prepare_image_data_tsne import get_image_unlearn_data as get_image_unlearn_data_tsne_box
 import time
 import json
 

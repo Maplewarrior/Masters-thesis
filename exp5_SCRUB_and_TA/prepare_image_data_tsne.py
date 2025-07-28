@@ -198,7 +198,7 @@ def split_data_by_tsne_box(boundary: dict = None,
         return train_dataset, retain_dataset, forget_dataset, validation_dataset, forget_indices
 
 
-def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None, subsample_size: int = None):
+def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: dict = None, subsample_size: int = None, return_tsne_results: bool = False):
     
     if boundary is None:
         boundary = {
@@ -211,18 +211,31 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
     # Make a folder if it does not exist
     coords_string = f"{boundary['x_min']}_{boundary['x_max']}_{boundary['y_min']}_{boundary['y_max']}"
     folder_name = os.path.join(root_dir, f"tsne_box_{coords_string}_{subsample_size}")
-
+    # pdb.set_trace()
     # load data if it exists
     if os.path.exists(os.path.join(folder_name, "data.pt")):
         print(f"Loading data from {folder_name}")
         data = torch.load(os.path.join(folder_name, "data.pt"), weights_only=False)
+        
+        if return_tsne_results:
+            return data['train_loader'], data['retain_loader'], data['forget_loader'], data['validation_loader'], data['forget_indices'], data['tsne_results']
+        
         return data['train_loader'], data['retain_loader'], data['forget_loader'], data['validation_loader'], data['forget_indices']
 
-    train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
-        boundary=boundary,
-        return_tsne_results=False,
-        subsample_size=subsample_size
-    )
+    if return_tsne_results:
+        train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices, tsne_results = split_data_by_tsne_box(
+            boundary=boundary,
+            return_tsne_results=return_tsne_results,
+            subsample_size=subsample_size
+        )
+
+    else:
+        train_dataset, retain_dataset, forget_dataset, test_dataset, forget_indices = split_data_by_tsne_box(
+            boundary=boundary,
+            return_tsne_results=return_tsne_results,
+            subsample_size=subsample_size
+        )
+    
 
     from prepare_image_data import create_image_dataloaders
 
@@ -245,9 +258,12 @@ def get_image_unlearn_data(root_dir: str, batch_size: int, seed: int, boundary: 
         'retain_loader': retain_loader,
         'forget_loader': forget_loader,
         'validation_loader': validation_loader,
-        'forget_indices': forget_indices
+        'forget_indices': forget_indices,
+        'tsne_results': tsne_results
     }, os.path.join(folder_name, "data.pt"))
 
+    if return_tsne_results:
+        return train_loader, retain_loader, forget_loader, validation_loader, forget_indices, tsne_results
 
     return train_loader, retain_loader, forget_loader, validation_loader, forget_indices
 
