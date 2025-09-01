@@ -122,7 +122,6 @@ def decision_boundary_plot(model, original_model, dataloader_retrain, dataloader
         plt.title(plot_title if plot_title is not None else "", 
                   fontsize=26)
         plt.xlabel('Feature 1', fontsize=22)
-        plt.xlabel('Feature 1', fontsize=22)
         plt.ylabel('Feature 2', fontsize=22)
         
         # Add legend with box and all custom entries

@@ -42,7 +42,18 @@ class DecisionBoundaryCreator:
         
         return xx, yy, decision_boundary.float()  # Convert back to float for plotting
 
-    # ... existing code ...
+    def create_entropy_grid(self, x_interval: tuple[float, float], y_interval: tuple[float, float]):
+        x = torch.linspace(x_interval[0], x_interval[1] , 1000)
+        y = torch.linspace(y_interval[0], y_interval[1], 1000)
+        xx, yy = torch.meshgrid(x, y, indexing='xy')
+
+        grid = torch.stack([xx.flatten(), yy.flatten()], dim=1)
+        output = self.model.inference(grid)
+        probabilities = output['probabilities']  # Use predictions key
+        entropies = (-(probabilities + 1e-8).log() * probabilities).sum(dim=-1)
+        entropy_grid = entropies.reshape(xx.shape)
+
+        return xx, yy, entropy_grid
 
     def plot_retain_data(self, X, y, classes, colors):
         for class_idx, color in zip(classes, colors):

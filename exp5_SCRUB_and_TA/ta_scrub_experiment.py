@@ -190,7 +190,6 @@ def interpolate_points_generator(X, nn_idxs, n_interp_points: int = 100):
                 x_interp = x * alpha + (1-alpha) * x_nbr
                 yield x_interp.unsqueeze(0)
 
-
 def interpolate_points_batch(X, nn_idxs, n_interp_points: int = 100, batch_size: int = 512):
     from itertools import islice
     generator = interpolate_points_generator(X, nn_idxs, n_interp_points)
@@ -289,12 +288,7 @@ def create_entropy_tsne_plot(model, y,
     plt.savefig('grid_entropies.png', dpi=300)
     import pdb; pdb.set_trace()
     plt.show()
-
-
-
-    
-    
-
+        
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
     print("Starting experiment with configuration: %s", cfg.data.dataset_name)
@@ -302,8 +296,7 @@ def main(cfg):
     absolute_root_path = os.path.dirname(__file__) if cfg.absolute_root_path == 'local' else cfg.absolute_root_path
     DEVICE = ('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device: %s", DEVICE)
-    
-    
+
     print(f'Running Teacher Ascent Analysis experiments on device "{DEVICE}"!')
     print(f"All results will be saved to: {absolute_root_path}")
     dataset_dir = os.path.join(absolute_root_path, 'data')
@@ -311,8 +304,8 @@ def main(cfg):
     if cfg.unlearn.method == 'teacher_ascend':
         hyperparams_postfix = f"{cfg.unlearn.teacher_ascend.n_epochs}epochs_{cfg.unlearn.teacher_ascend._lambda}lambda"
         results_root_dir = os.path.join(absolute_root_path, 'results', f'teacher_ascend_{hyperparams_postfix}')
-        # weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
-        weights_root_dir = os.path.join(hpc_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
+        weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
+        # weights_root_dir = os.path.join(hpc_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
 
     elif cfg.unlearn.method == 'scrub':
         hyperparams_postfix = f"{cfg.unlearn.scrub.alpha}alpha_{cfg.unlearn.scrub.gamma}gamma_{cfg.unlearn.scrub.n_rounds}rounds_{cfg.unlearn.scrub.n_repair_rounds}repair_rounds"
@@ -478,23 +471,23 @@ def main(cfg):
                                 DEVICE, 'Retrained model',
                                 save_path=f'{results_dir}/retrained_model_metrics_{seed}.json')
 
-        num_neighbors = 3
-        n_interp_points = 25
-        n_imgs_per_batch = 10
-        batch_size = n_interp_points * num_neighbors * n_imgs_per_batch
+        # num_neighbors = 3
+        # n_interp_points = 25
+        # n_imgs_per_batch = 10
+        # batch_size = n_interp_points * num_neighbors * n_imgs_per_batch
         
-        nn_idxs = get_nearest_neighbor_idxs(dataloader_train.dataset.X, dataloader_train.dataset.y, tsne_results, num_neighbors)
-        interp_img_generator = interpolate_points_batch(dataloader_train.dataset.X, nn_idxs, n_interp_points=n_interp_points, batch_size=batch_size)
-        interp_tsne_generator = interpolate_points_batch(torch.tensor(tsne_results), nn_idxs, n_interp_points=n_interp_points, batch_size=batch_size)
+        # nn_idxs = get_nearest_neighbor_idxs(dataloader_train.dataset.X, dataloader_train.dataset.y, tsne_results, num_neighbors)
+        # interp_img_generator = interpolate_points_batch(dataloader_train.dataset.X, nn_idxs, n_interp_points=n_interp_points, batch_size=batch_size)
+        # interp_tsne_generator = interpolate_points_batch(torch.tensor(tsne_results), nn_idxs, n_interp_points=n_interp_points, batch_size=batch_size)
         
-        create_entropy_tsne_plot(original_model, dataloader_train.dataset.y,
-                                 interp_img_generator, tsne_results,
-                                 interp_tsne_generator,
-                                 (tsne_results[:, 0].min(), tsne_results[:, 0].max()),
-                                 (tsne_results[:, 1].min(), tsne_results[:, 1].max()),
-                                 n_imgs_per_batch, device='cuda')
+        # create_entropy_tsne_plot(original_model, dataloader_train.dataset.y,
+        #                          interp_img_generator, tsne_results,
+        #                          interp_tsne_generator,
+        #                          (tsne_results[:, 0].min(), tsne_results[:, 0].max()),
+        #                          (tsne_results[:, 1].min(), tsne_results[:, 1].max()),
+        #                          n_imgs_per_batch, device='cuda')
         
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
         # ========================== Unlearn: Teacher Ascender ==========================
         if cfg.unlearn.method == 'teacher_ascend':

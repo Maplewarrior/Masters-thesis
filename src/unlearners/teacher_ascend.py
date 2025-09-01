@@ -282,6 +282,7 @@ class TeacherAscender:
             - Maximize cross entropy between prediction and y on forget data --> works better for data poisoning.
             - Both?
         """
+        original_model = copy.deepcopy(self.model)
         if val_loader is not None:
             validate_err_dataloader = self.construct_validation_set(forget_loader, val_loader)
 
@@ -304,8 +305,8 @@ class TeacherAscender:
         original_sd = copy.deepcopy(self.model.state_dict())
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
-        FIM_forget = self.calculate_FIM(forget_loader) # used for descend
-        FIM_original = self.calculate_FIM(retain_loader) # used for ascend
+        FIM_forget = self.calculate_FIM(forget_loader) # used for descent
+        FIM_original = self.calculate_FIM(retain_loader) # used for ascent
         FIM_ratio = self.calculate_FIM_ratio(FIM_original, FIM_forget)
         FIM_ratio_masked = self.mask_FIM_ratio(FIM_ratio, FIM_forget)
 
@@ -341,6 +342,7 @@ class TeacherAscender:
         probs_rewind = torch.cat(probs_rewind)
         
         ent_rewind_0 = self.calculate_entropy({'probabilities': probs_rewind})
+        ent_repair = ent_rewind_0
 
         # probs_rewind = []
         # for b in retain_loader:
@@ -395,6 +397,7 @@ class TeacherAscender:
                                 desc=f'Batch Processing',
                                 total=n_batches,
                                 leave=False) if verbose else enumerate(forget_loader)
+            
             if epoch == 0 or (n_forget_epochs - epoch) == 1 or (epoch == (self.n_epochs - 1)):
                 probs_rewind = []
                 for b in retain_loader_sub:
@@ -433,7 +436,6 @@ class TeacherAscender:
                 print(f'Ent rewind: {ent_rewind}')
                 # pdb.set_trace()
                 #ent_rewind = 0.5 * ent_rewind + 0.5 * ent_retain
-                ent_repair = ent_rewind_0
 
 
             for batch_idx, batch in batch_iterator:
@@ -482,23 +484,20 @@ class TeacherAscender:
                     if epoch < (n_forget_epochs):
                         # forget_term = self.calculate_entropy(out_f) * ent_schedule[epoch]
                         # pdb.set_trace()
+                        out_r_original = original_model.inference(x_r)
                         forget_term = self.calculate_entropy(out_f) * ent_schedule[epoch]
-                        
-                        retain_term = self.calculate_fit_term(out_r, y_r) #+ self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities'])
+                        retain_term = self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities']) # self.calculate_fit_term(out_r, y_r) +
                         # entropy_retain_sub = self.calculate_entropy(out_r_sub)
                         # retain_term_sub = self.calculate_fit_term(out_r_sub, y_r_sub)
-
                         loss = -forget_term + retain_term + weighted_reg_term # maximize entropy, minimize fit, reg term
-
                     else:
-                        
                         # reg_term = #self._lambda / 2 * self.calculate_reg_term(FIM_ratio_masked, original_sd)
                         # retain_term = self.calculate_fit_term(out_r, y_r)
-                        # out_r_original = original_model.inference(x_r)
-                        retain_term = self.calculate_fit_term(out_r, y_r) #+ self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities'])
-                        forget_term = self.calculate_entropy(out_f)
+                        out_r_original = original_model.inference(x_r)
+                        retain_term = self.calculate_fit_term(out_r, y_r) + self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities'])
+                        # forget_term = self.calculate_entropy(out_f)
 
-                        loss = retain_term + weighted_reg_term + ent_repair_schedule[epoch - n_forget_epochs] * (forget_term - ent_repair)**2
+                        loss = retain_term + weighted_reg_term #+ ent_repair_schedule[epoch - n_forget_epochs] * (forget_term - ent_repair)**2
 
                     # # retain_term = self.calculate_fit_term(out_r, y_r)
                     # # loss = -ent_schedule[epoch]*forget_term + retain_term + weighted_reg_term # maximize entropy, minimize fit, reg term
@@ -534,8 +533,6 @@ class TeacherAscender:
                 if lr_scheduler is not None:
                     lr_scheduler.step()
 
-        FF = self.calculate_FIM(forget_loader)
-        pdb.set_trace()
         if eval:
             return metrics
 
