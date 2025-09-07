@@ -60,7 +60,8 @@ class TeacherAscender:
         return FIM
 
     def entropy_schedule(self, num_epochs):
-        schedule = [1 / (1+ i**1.75 / num_epochs) for i in range(num_epochs)]
+        # schedule = [1 / (1+ i**1.75 / num_epochs) for i in range(num_epochs)]
+        schedule = [1 / (1+ i**2 / num_epochs) for i in range(num_epochs)]
         return schedule
 
     def calculate_reg_term(self, FIM_original, original_sd):
@@ -94,7 +95,6 @@ class TeacherAscender:
 
         return FIM_ratio
     
-
     def mask_FIM_ratio(self, FIM_ratio, FIM_forget):
         """
         Set all the values in FIM_ratio where FIM_forget > 0 to zero
@@ -210,14 +210,6 @@ class TeacherAscender:
 
         return dataloader
 
-    def calculate_classwise_kl(self, out_f, y_f, class_rewind_probs):
-        """
-        out_f (dict): A model output for the forget batch.
-        y_f (tensor): The class labels corresponding to the forget batch.
-        class_rewind_probs (tensor): A n_classses x n_classes tensor containing the lass probabilities of the model 
-                                     obtained immediately after the min-max phase on the rewind set.
-        """
-        
     def calculate_entanglement_score(self, retain_loader, forget_loader, stop_idx):
         retain_embeddings = []
         forget_embeddings = []
@@ -253,6 +245,11 @@ class TeacherAscender:
         p_log = torch.clamp(p, min=1e-8).log()
         q = torch.clamp(q, min=1e-8) # avoid numeric issues
         return torch.nn.functional.kl_div(p_log, q, reduction='batchmean')
+
+    def calculate_distilled_kl(self, logits_p, logits_q, T: int=1):
+        p_log = torch.nn.functional.softmax(logits_p / T, dim=-1).clamp(min=1e-8).log()
+        q = torch.nn.functional.softmax((logits_q / T), dim=-1).clamp(min=1e-8)
+        return torch.nn.functional.kl_div(p_log, q, reduction='batchmean') * (T**2)
 
     def collect_avg_classwise_probs(self, dataloader):
         avg_probs = []
@@ -308,19 +305,13 @@ class TeacherAscender:
         FIM_forget = self.calculate_FIM(forget_loader) # used for descent
         FIM_original = self.calculate_FIM(retain_loader) # used for ascent
         FIM_ratio = self.calculate_FIM_ratio(FIM_original, FIM_forget)
-        FIM_ratio_masked = self.mask_FIM_ratio(FIM_ratio, FIM_forget)
 
         # Calculate total number of batches for the inner loop
         n_batches = len(forget_loader)
 
-        ### Additions ###
         n_forget_epochs = self.n_epochs // 2
-        
         retain_loader_sub = self.construct_retain_subset(forget_loader, retain_loader)
-        
-        ent_schedule = self.entropy_schedule(self.n_epochs // 2)
-        ent_repair_schedule = list(reversed(self.entropy_schedule(self.n_epochs // 2)))
-        
+                
         total_steps = n_batches * self.n_epochs
         warmup_steps = int(0.15 * self.n_epochs)
 
@@ -333,15 +324,18 @@ class TeacherAscender:
                 progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
                 return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
-        lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
+        lr_scheduler = None #optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
         
-        probs_rewind = []
-        for b in validate_err_dataloader:
-            x_v = b[0].to(self.device)
-            probs_rewind.append(self.model.inference(x_v)['probabilities'])
-        probs_rewind = torch.cat(probs_rewind)
+        if len(validate_err_dataloader):
+            probs_rewind = []
+            for b in validate_err_dataloader:
+                x_v = b[0].to(self.device)
+                probs_rewind.append(self.model.inference(x_v)['probabilities'])
+            probs_rewind = torch.cat(probs_rewind)
+            ent_rewind_0 = self.calculate_entropy({'probabilities': probs_rewind})
+        else:
+            ent_rewind_0 = None
         
-        ent_rewind_0 = self.calculate_entropy({'probabilities': probs_rewind})
         ent_repair = ent_rewind_0
 
         # probs_rewind = []
@@ -357,10 +351,6 @@ class TeacherAscender:
         epoch_iterator = tqdm(range(self.n_epochs), desc='Epochs', leave=True) if verbose else range(self.n_epochs)
 
         for epoch in epoch_iterator:
-            if epoch == n_forget_epochs:
-                FIM_forget = self.calculate_FIM(forget_loader) # used for descend
-                FIM_original = self.calculate_FIM(retain_loader) # used for ascend
-                FIM_ratio = self.calculate_FIM_ratio(FIM_original, FIM_forget)
 
             if self.MIA is not None:
                 mia_prob = self.MIA(self.model, retain_loader, forget_loader, val_loader)
@@ -399,21 +389,22 @@ class TeacherAscender:
                                 leave=False) if verbose else enumerate(forget_loader)
             
             if epoch == 0 or (n_forget_epochs - epoch) == 1 or (epoch == (self.n_epochs - 1)):
-                probs_rewind = []
-                for b in retain_loader_sub:
-                    x_v = b[0].to(self.device)
-                    probs_rewind.append(self.model.inference(x_v)['probabilities'])
-                probs_rewind = torch.cat(probs_rewind)
-                
-                ent_rs = self.calculate_entropy({'probabilities': probs_rewind})
-
-                probs_rewind = []
-                for b in validate_err_dataloader:
-                    x_v = b[0].to(self.device)
-                    probs_rewind.append(self.model.inference(x_v)['probabilities'])
-                probs_rewind = torch.cat(probs_rewind)
-                
-                ent_rewind = self.calculate_entropy({'probabilities': probs_rewind})
+                ent_rs = ent_rewind = None 
+                if len(retain_loader_sub):
+                    probs_rewind = []
+                    for b in retain_loader_sub:
+                        x_v = b[0].to(self.device)
+                        probs_rewind.append(self.model.inference(x_v)['probabilities'])
+                    probs_rewind = torch.cat(probs_rewind)
+                    ent_rs = self.calculate_entropy({'probabilities': probs_rewind})
+                if len(validate_err_dataloader):
+                    probs_rewind = []
+                    for b in validate_err_dataloader:
+                        x_v = b[0].to(self.device)
+                        probs_rewind.append(self.model.inference(x_v)['probabilities'])
+                    probs_rewind = torch.cat(probs_rewind)
+                    
+                    ent_rewind = self.calculate_entropy({'probabilities': probs_rewind})
 
                 probs_rewind = []
                 for b in retain_loader:
@@ -437,7 +428,6 @@ class TeacherAscender:
                 # pdb.set_trace()
                 #ent_rewind = 0.5 * ent_rewind + 0.5 * ent_retain
 
-
             for batch_idx, batch in batch_iterator:
                 optimizer.zero_grad()
 
@@ -448,13 +438,8 @@ class TeacherAscender:
                 x_r = batch_retain[0].to(self.device)
                 y_r = batch_retain[1].to(self.device)
 
-                batch_retain_sub = next(iter(retain_loader_sub))
-                x_r_sub = batch_retain_sub[0].to(self.device)
-                y_r_sub = batch_retain_sub[1].to(self.device)
-
                 out_f = self.model(x_f)
                 out_r = self.model(x_r)
-                out_r_sub = self.model(x_r_sub)
 
                 reg_term = self.calculate_reg_term(FIM_ratio, original_sd) if is_FIM_ratio else self.calculate_reg_term(FIM_original, original_sd)
                 weighted_reg_term = self._lambda / 2 * reg_term
@@ -480,24 +465,63 @@ class TeacherAscender:
                     metrics['loss_terms']['repair'].append(retain_term.item())
 
                 elif version == "entropy-retain-repair":
-                    # elif version == 'l1-reg':
                     if epoch < (n_forget_epochs):
-                        # forget_term = self.calculate_entropy(out_f) * ent_schedule[epoch]
-                        # pdb.set_trace()
-                        out_r_original = original_model.inference(x_r)
-                        forget_term = self.calculate_entropy(out_f) * ent_schedule[epoch]
-                        retain_term = self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities']) # self.calculate_fit_term(out_r, y_r) +
+                        T_forget = 1
+                        T_retain = 2
+                        out_f_original = original_model.inference(x_f)
+
+                        random_logits = torch.ones_like(out_f['probabilities'])
+                        random_probs = random_logits / out_f['probabilities'].size(1)
+                        
+                        forget_term = self.calculate_entropy(out_f) #* ent_schedule[epoch]
+                        # forget_term = -self.calculate_distilled_kl(random_logits, out_f['logits'], T=T_forget) #-self.calculate_kl_div(random_probs, out_f['probabilities'])
+                        
+                        # forget_term = -self.calculate_distilled_kl(random_logits, out_f['logits'], T=T_forget) # reverse KL (equivalent to entropy but works better)
+                        # forget_term = self.calculate_distilled_kl(y_f * 100, out_f['logits'], T=T_forget) + self.calculate_entropy(out_f)
+                        # forget_term = self.calculate_distilled_kl(out_f_original['logits'], out_f['logits'], T_forget)#+ self.calculate_entropy(out_f)
+                        """
+                        DistilledKL seems to induce more forgetting than regular KL...
+                        Ruled out:
+                            - forget_term = -self.calculate_distilled_kl(out_f['logits'], random_logits, T=4)
+                            - forget_term = -self.calculate_distilled_kl(random_logits, out_f['logits'], T=4) # works better than above but still too aggressive
+                            - forget_term = -self.calculate_kl_div(random_probs, out_f['probabilities']) # too aggressive in MIA
+                            - forget_term = -self.calculate_kl_div(random_probs, out_f['probabilities']) # best option so far, still too aggressive in MIA
+
+                        With forget_term = -self.calculate_kl_div(random_probs, out_f['probabilities'])
+                        
+                        Ruled out:
+                            -  retain_term = self.calculate_distilled_kl(out_r['logits'], out_r_original['logits'], T=4) # too aggressive in MIA, drops acc.
+                        
+                        Best so far:
+                            forget_term = -self.calculate_distilled_kl(random_logits, out_f['logits'], T=2)
+                            retain_term = self.calculate_fit_term(out_r, y_r)
+                        
+                        Could also work:
+                            - forget_term = self.calculate_distilled_kl(out_f['logits'], out_f_original['logits'], T_forget=1
+                            - forget_term = self.calculate_distilled_kl(out_f_original['logits'], out_f['logits'], T_forget=1
+                        
+                        If forgetting an entire class either:
+                            - forget_term = self.calculate_distilled_kl(y_f * 100, out_f['logits'], T=T_forget) + self.calculate_entropy(out_f)
+                            - forget_term = self.calculate_distilled_kl(out_f['logits'], out_f_original['logits'], T_forget)
+                        """
+                        
+                        retain_term = self.calculate_fit_term(out_r, y_r) #+ self.calculate_distilled_kl(out_r['logits'], out_r_original['logits'], T=T_retain) #self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities']) #+ 
+                        # retain_term = self.calculate_distilled_kl(out_r_original['logits'], out_r['logits'], T=T_retain)
                         # entropy_retain_sub = self.calculate_entropy(out_r_sub)
                         # retain_term_sub = self.calculate_fit_term(out_r_sub, y_r_sub)
                         loss = -forget_term + retain_term + weighted_reg_term # maximize entropy, minimize fit, reg term
                     else:
-                        # reg_term = #self._lambda / 2 * self.calculate_reg_term(FIM_ratio_masked, original_sd)
+                        T_repair = 8
+                        # weighted_reg_term = self._lambda / 2 * self.calculate_reg_term(FIM_ratio_masked, original_sd)
                         # retain_term = self.calculate_fit_term(out_r, y_r)
                         out_r_original = original_model.inference(x_r)
-                        retain_term = self.calculate_fit_term(out_r, y_r) + self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities'])
+                        # retain_term = self.calculate_fit_term(out_r, y_r) + self.calculate_distilled_kl(out_r['logits'], out_r_original['logits'], T=T_repair) #self.calculate_kl_div(out_r['probabilities'], out_r_original['probabilities'])
+                        retain_term = self.calculate_fit_term(out_r, y_r) + self.calculate_distilled_kl(out_r_original['logits'], out_r['logits'], T=T_repair)
+                        # retain_term = self.calculate_distilled_kl(out_r_original['logits'], out_r['logits'], T=T_repair)
                         # forget_term = self.calculate_entropy(out_f)
 
-                        loss = retain_term + weighted_reg_term #+ ent_repair_schedule[epoch - n_forget_epochs] * (forget_term - ent_repair)**2
+                        loss = retain_term #+ weighted_reg_term #+ (forget_term - ent_repair)**2 *  ent_repair_schedule[epoch - n_forget_epochs]
+                
 
                     # # retain_term = self.calculate_fit_term(out_r, y_r)
                     # # loss = -ent_schedule[epoch]*forget_term + retain_term + weighted_reg_term # maximize entropy, minimize fit, reg term
@@ -507,7 +531,6 @@ class TeacherAscender:
                     retain_term = self.calculate_fit_term(out_r, y_r)
                     l1 = torch.norm(torch.cat([p.view(-1) for p in self.model.parameters()]), 1)
                     loss = retain_term + weighted_reg_term + l1
-
 
                 elif version == "entropy-retain-no-reg":
                     forget_term = self.calculate_entropy(out_f)

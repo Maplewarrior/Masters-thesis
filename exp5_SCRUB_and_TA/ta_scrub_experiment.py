@@ -286,8 +286,6 @@ def create_entropy_tsne_plot(model, y,
     plt.ylabel("t-SNE dim 2")
     plt.tight_layout()
     plt.savefig('grid_entropies.png', dpi=300)
-    import pdb; pdb.set_trace()
-    plt.show()
         
 @hydra.main(config_path=".", config_name="mnist_config")
 def main(cfg):
@@ -304,8 +302,8 @@ def main(cfg):
     if cfg.unlearn.method == 'teacher_ascend':
         hyperparams_postfix = f"{cfg.unlearn.teacher_ascend.n_epochs}epochs_{cfg.unlearn.teacher_ascend._lambda}lambda"
         results_root_dir = os.path.join(absolute_root_path, 'results', f'teacher_ascend_{hyperparams_postfix}')
-        weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
-        # weights_root_dir = os.path.join(hpc_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
+        # weights_root_dir = os.path.join(absolute_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
+        weights_root_dir = os.path.join(hpc_root_path, 'weights', f'teacher_ascend_{hyperparams_postfix}')
 
     elif cfg.unlearn.method == 'scrub':
         hyperparams_postfix = f"{cfg.unlearn.scrub.alpha}alpha_{cfg.unlearn.scrub.gamma}gamma_{cfg.unlearn.scrub.n_rounds}rounds_{cfg.unlearn.scrub.n_repair_rounds}repair_rounds"
@@ -323,6 +321,9 @@ def main(cfg):
     
     elif cfg.data.split_type == "random":
         results_folder_name = f"{cfg.data.split_type}_{cfg.data.n_forget_points}"
+    
+    elif cfg.data.split_type == 'whole_class':
+        results_folder_name = f"{cfg.data.split_type}_3"
 
     results_dir = os.path.join(results_root_dir, results_folder_name)
     weights_dir = os.path.join(weights_root_dir, results_folder_name)
@@ -348,7 +349,16 @@ def main(cfg):
                                                                                                                                   seed=cfg.data.seed,
                                                                                                                                   boundary=bounding_box_coords,
                                                                                                                                   return_tsne_results=True)
-                                                                       
+        
+        elif cfg.data.split_type == 'whole_class':
+            dataloader_train, dataloader_retain, dataloader_forget, dataloader_val, forget_idxs = get_image_unlearn_data(root_dir=dataset_dir,
+                                                                                                                         dataset_name=cfg['data']['dataset_name'],
+                                                                                                                         n_forget_points=cfg.data.n_forget_points,
+                                                                                                                         subsample_size=cfg.data.subsample_size,
+                                                                                                                         patch_size=cfg.data.patch_size,
+                                                                                                                         batch_size=cfg.data.batch_size,
+                                                                                                                         seed=cfg.data.seed,
+                                                                                                                         split_type='class')                                                                   
         print("MNIST dataloaders created. Train size: %d, Forget size: %d", 
                    len(dataloader_train.dataset), len(dataloader_forget.dataset))
     
@@ -501,10 +511,11 @@ def main(cfg):
 
             # ta_versions_lists = cfg.unlearn.teacher_ascend.versions
             # convert to list of tuples 
-            ta_versions = [("entropy-retain-repair", True)] # include repair phase & use the FIM ratio. #[tuple(v) for v in ta_versions_lists]
+            ta_versions =  [("entropy-retain", False)] #[("entropy-retain-repair", True)] # include repair phase & use the FIM ratio. #[tuple(v) for v in ta_versions_lists]
             # ta_versions = [("entropy-retain", True)]
             for (version, is_FIM_ratio) in ta_versions:
                 print(f"Running Teacher Ascent with version: {version} and is_FIM_ratio: {is_FIM_ratio}")
+                
                 ta_version = TeacherAscender(copy.deepcopy(original_model), 
                                     n_epochs=hyperparams['n_epochs'], 
                                     _lambda=hyperparams['_lambda'], 

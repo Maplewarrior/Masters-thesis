@@ -225,8 +225,8 @@ def main(cfg):
     entropy_plot(retrained_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=entropy_plot_filename)
 
     from src.unlearners.teacher_ascend import TeacherAscender
-    epochs = 250
-    _lambda = 2
+    epochs = 200
+    _lambda = 64 # 2
     ta_model = copy.deepcopy(original_model)
     ta = TeacherAscender(ta_model, n_epochs=epochs, 
                         _lambda=_lambda, device=DEVICE)
@@ -243,6 +243,10 @@ def main(cfg):
     entropy_plot_filename = f"{dataset_number}_entropy_teacher_ascent"
     entropy_plot_filename = f'{entropy_plot_filename}_repair' if ta_version == 'entropy-retain-repair' else entropy_plot_filename
     entropy_plot(ta_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title=plot_title, filename=entropy_plot_filename)
+
+
+    entropy_plot_filename = f"{dataset_number}_entropy_original"
+    entropy_plot(original_model, original_model, dataloader_retain, dataloader_train, dataloader_forget.dataset.X, results_dir, plot_title='Original', filename=entropy_plot_filename)
 
 if __name__ == "__main__":
     main()

@@ -51,6 +51,15 @@ def split_retain_forget_random(X_train, y_train, n_forget_points: int):
     y_forget = y_train[forget_mask]
     return X_retain, y_retain, X_forget, y_forget, forget_idxs
 
+def split_retain_forget_class(X_train, y_train, forget_class: int):
+    forget_mask = (y_train.argmax(dim=-1) == forget_class)
+    forget_idxs = torch.where(forget_mask)
+
+    X_retain = X_train[~forget_mask]
+    y_retain = y_train[~forget_mask]
+    X_forget = X_train[forget_mask]
+    y_forget = y_train[forget_mask]
+    return X_retain, y_retain, X_forget, y_forget, forget_idxs 
 
 def subsample_train(X_train, y_train, subsample_size: int = None):
     idxs = torch.randperm(X_train.size(0))[:subsample_size]
@@ -127,7 +136,8 @@ class MNISTDataset(Dataset):
     def __len__(self):
         return self.X.size(0)
 
-def get_mnist_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: int, subsample_size: int, batch_size: int, seed: int):
+def get_mnist_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: int, subsample_size: int, batch_size: int, seed: int, split_type: str = 'random'):
+    assert split_type in ['random', 'class']
     torch.manual_seed(seed)
     if not os.path.exists(f'{root_dir}/{dataset_name}/processed'):
         # download train & test datasets
@@ -150,7 +160,11 @@ def get_mnist_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: in
         y_test = torch.load(f'{root_dir}/{dataset_name}/processed/y_test.pt')
 
     # create retain-forget split
-    X_retain, y_retain, X_forget, y_forget, forget_idxs = split_retain_forget_random(X_train, y_train, n_forget_points=n_forget_points)
+    if split_type == 'random':
+        X_retain, y_retain, X_forget, y_forget, forget_idxs = split_retain_forget_random(X_train, y_train, n_forget_points=n_forget_points)
+    
+    elif split_type == 'class':
+        X_retain, y_retain, X_forget, y_forget, forget_idxs = split_retain_forget_class(X_train, y_train, forget_class=3)
     
     print(f'Forget class distribution:\n{y_forget.argmax(dim=-1).unique(return_counts=True)[1].tolist()}')
     # create datasets
@@ -163,9 +177,9 @@ def get_mnist_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: in
                                                                                        test_dataset, batch_size, seed)
     return train_loader, retain_loader, forget_loader, test_loader, forget_idxs
 
-def get_image_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: int, subsample_size: int, patch_size: tuple[int], batch_size: int, seed: int):
+def get_image_unlearn_data(root_dir: str, dataset_name: str, n_forget_points: int, subsample_size: int, patch_size: tuple[int], batch_size: int, seed: int, split_type: str = 'random'):
     if dataset_name == 'MNIST':
-        return get_mnist_unlearn_data(root_dir, dataset_name, n_forget_points, subsample_size, batch_size, seed)
+        return get_mnist_unlearn_data(root_dir, dataset_name, n_forget_points, subsample_size, batch_size, seed, split_type)
     else:
         raise NotImplementedError()
 

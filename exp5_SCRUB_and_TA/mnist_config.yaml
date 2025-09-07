@@ -26,20 +26,20 @@ data:
   n_classes: 10
   n_channels: 3
   # cifar parameters
-  split_type: "tsne_box" # "tsne_box" or "random"
+  split_type: "random" # "tsne_box" or "random" # "whole_class" 
   tsne_box_coordinates:
-    # x_min: -4.2 
+    # x_min: -4.2
     # x_max: -2.6
     # y_min: -6.25
     # y_max: -4.8 
-    # x_min: 10.2 #-6.2 
-    # x_max: 11.0 # -3.4
-    # y_min: -4.3 # -1.6
-    # y_max: -0.4 # 1.0
-    x_min: -6.2 #10.2
-    x_max: -3.4 #11.0
-    y_min: -1.6 # -4.3
-    y_max:  1.0 # -0.4
+    x_min: 10.2
+    x_max: 11.0
+    y_min: -4.3
+    y_max: -0.4
+    # x_min: -6.2
+    # x_max: -3.4
+    # y_min: -1.6
+    # y_max:  1.0
   image_size:
     - 32
     - 32
@@ -69,7 +69,7 @@ unlearn:
   teacher_ascend:
     versions: [["ce", false], ["entropy", false], ["ce-retain", false], ["entropy-retain", false], ["ce", true], ["entropy", true], ["ce-retain", true], ["entropy-retain", true], ["ce-retain-no-reg", false], ["entropy-retain-no-reg", false]]
     n_epochs: 100
-    _lambda: 2 # 64
+    _lambda: 64
   scrub:
     alpha: 2
     gamma: 2
